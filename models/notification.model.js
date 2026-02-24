@@ -2,11 +2,11 @@ const mongoose = require("mongoose");
 
 const notificationSchema = new mongoose.Schema(
   {
-    account_id: mongoose.Schema.Types.ObjectId,
-    title: String,
-    message: String,
-    is_read: Boolean,
-    created_at: Date
+    account_id: { type: mongoose.Schema.Types.ObjectId, ref: "Account", required: true },
+    title: { type: String, required: true },
+    message: { type: String, required: true },
+    is_read: { type: Boolean, required: true },
+    created_at: { type: Date, default: Date.now, required: true }
   },
   {
     collection: "notifications",

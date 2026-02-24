@@ -2,25 +2,22 @@ const mongoose = require("mongoose");
 
 const bookingSchema = new mongoose.Schema(
   {
-    account_id: mongoose.Schema.Types.ObjectId,
-    club_id: mongoose.Schema.Types.ObjectId,
-    table_number: String,
-    play_date: Date,
-    start_time: String,
-    end_time: String,
-    services: [
-      {
-        service_id: mongoose.Schema.Types.ObjectId,
-        name: String,
-        price: Number,
-        quantity: Number
-      }
-    ],
-    deposit: Number,
-    total_bill: Number,
-    status: String,
-    created_at: Date,
-    created_by: mongoose.Schema.Types.ObjectId
+    account_id: { type: mongoose.Schema.Types.ObjectId, ref: "Account", required: true },
+    table_id: { type: mongoose.Schema.Types.ObjectId, ref: "BilliardTable", required: true },
+    play_date: { type: Date, required: true },
+    start_time: { type: String, required: true },
+    end_time: { type: String, required: true },
+    code_number: { type: String, required: true, unique: true },
+    deposit: { type: Number, required: true },
+    hour_price: { type: Number, required: true },
+    total_bill: { type: Number },
+    note: { type: String },
+    status: {
+      type: String,
+      enum: ["Pending", "Booked", "Playing", "Cancelled", "Completed"],
+      required: true
+    },
+    created_at: { type: Date, default: Date.now, required: true }
   },
   {
     collection: "bookings",

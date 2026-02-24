@@ -2,21 +2,19 @@ const mongoose = require("mongoose");
 
 const invoiceSchema = new mongoose.Schema(
   {
-    booking_id: mongoose.Schema.Types.ObjectId,
-    table_cost: Number,
-    services: [
-      {
-        service_id: mongoose.Schema.Types.ObjectId,
-        unit_price: Number,
-        quantity: Number
-      }
-    ],
-    total_service: Number,
-    payment_method: String,
-    status: String,
-    note: String,
-    created_at: Date,
-    created_by: mongoose.Schema.Types.ObjectId
+    booking_id: { type: mongoose.Schema.Types.ObjectId, ref: "Booking", required: true },
+    table_cost: { type: Number, required: true },
+    total_service: { type: Number, required: true },
+    invoice_number: { type: String, required: true, unique: true },
+    invoice_date: { type: Date, required: true },
+    payment_method: { type: String, enum: ["payOS", "Cash"], required: true },
+    status: {
+      type: String,
+      enum: ["Unpaid", "Paid"],
+      required: true
+    },
+    note: { type: String },
+    created_at: { type: Date, default: Date.now, required: true }
   },
   {
     collection: "invoices",
