@@ -11,10 +11,16 @@ const accountSchema = new mongoose.Schema(
     email: {
       type: String,
       required: [true, "Email is required"],
-      unique: true,
       lowercase: true,
       trim: true,
       match: [/^\S+@\S+\.\S+$/, "Invalid email format"],
+    },
+
+    phone: {
+      type: String,
+      trim: true,
+      match: [/^[0-9]{9,11}$/, "Invalid phone number"],
+      set: v => v === "" ? null : v
     },
 
     password_hash: {
@@ -22,18 +28,13 @@ const accountSchema = new mongoose.Schema(
       required: function () {
         return this.provider === "local";
       },
-      select: false, // không trả về khi query
+      select: false,
     },
 
     provider: {
       type: String,
       enum: ["local", "google"],
       default: "local",
-    },
-
-    provider_id: {
-      type: String,
-      default: null,
     },
 
     role_id: {
@@ -59,16 +60,17 @@ const accountSchema = new mongoose.Schema(
 );
 
 
-// 📌 Index rõ ràng
-accountSchema.index({ email: 1 });
+accountSchema.index({ email: 1 }, { unique: true });
 
 
-// 📌 Tự động remove password khi trả JSON
+accountSchema.index({ phone: 1 }, { unique: true, sparse: true });
+
+accountSchema.index({ provider_id: 1 }, { unique: true, sparse: true });
+
 accountSchema.methods.toJSON = function () {
   const obj = this.toObject();
   delete obj.password_hash;
   return obj;
 };
-
 
 module.exports = mongoose.model("Account", accountSchema);
