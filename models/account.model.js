@@ -4,15 +4,17 @@ const accountSchema = new mongoose.Schema(
   {
     fullname: {
       type: String,
-      required: true,
+      required: [true, "Fullname is required"],
+      trim: true,
     },
 
     email: {
       type: String,
-      required: true,
+      required: [true, "Email is required"],
       unique: true,
       lowercase: true,
       trim: true,
+      match: [/^\S+@\S+\.\S+$/, "Invalid email format"],
     },
 
     password_hash: {
@@ -20,6 +22,7 @@ const accountSchema = new mongoose.Schema(
       required: function () {
         return this.provider === "local";
       },
+      select: false, // không trả về khi query
     },
 
     provider: {
@@ -36,7 +39,7 @@ const accountSchema = new mongoose.Schema(
     role_id: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "Role",
-      required: true,
+      required: [true, "Role is required"],
     },
 
     status: {
@@ -52,7 +55,20 @@ const accountSchema = new mongoose.Schema(
       createdAt: "created_at",
       updatedAt: "updated_at",
     },
-  },
+  }
 );
+
+
+// 📌 Index rõ ràng
+accountSchema.index({ email: 1 });
+
+
+// 📌 Tự động remove password khi trả JSON
+accountSchema.methods.toJSON = function () {
+  const obj = this.toObject();
+  delete obj.password_hash;
+  return obj;
+};
+
 
 module.exports = mongoose.model("Account", accountSchema);

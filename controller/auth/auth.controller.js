@@ -127,58 +127,52 @@ const resendOtp = async (req, res) => {
     }
 };
 
-// const registerGoogle = async (req, res) => {
-//     try {
-//         const { tokenId, roleName } = req.body;
+const registerGoogle = async (req, res) => {
+  try {
+    const { tokenId } = req.body;
 
-//         const ticket = await client.verifyIdToken({
-//             idToken: tokenId,
-//             audience: process.env.VITE_GOOGLE_CLIENT_ID,
-//         });
+    const ticket = await client.verifyIdToken({
+      idToken: tokenId,
+      audience: process.env.VITE_GOOGLE_CLIENT_ID,
+    });
 
-//         const payload = ticket.getPayload();
-//         const { email, name, picture, sub } = payload;
+    const payload = ticket.getPayload();
+    const { email, name, picture, sub } = payload;
 
-//         // Kiểm tra nếu account đã tồn tại
-//         let account = await Account.findOne({ email });
-//         if (account) {
-//             return res.status(400).json({ message: "Email đã được đăng ký" });
-//         }
+    let account = await Account.findOne({ email });
+    if (account)
+      return res.status(400).json({ message: "Email đã được đăng ký" });
 
-//         const role = await Role.findOne({ name: roleName || "CUSTOMER" });
+    const role = await Role.findOne({ name: "CUSTOMER" });
+    if (!role)
+      return res.status(500).json({ message: "Role CUSTOMER chưa được tạo" });
 
-//         account = new Account({
-//             email,
-//             password_hash: null,
-//             provider: "google",
-//             provider_id: sub,
-//             email_verified: true,
-//             status: "ACTIVE",
-//             role_id: role ? role._id : null,
-//         });
-//         await account.save();
+    account = await Account.create({
+      fullname: name,   // 🔥 THÊM DÒNG NÀY
+      email,
+      provider: "google",
+      provider_id: sub,
+      status: "ACTIVE",
+      role_id: role._id,
+    });
 
-//         const user = new User({
-//             account_id: account._id,
-//             full_name: name,
-//             phone: null,
-//             avatar_url: picture,
-//             date_of_birth: null,
-//             gender: null,
-//         });
-//         await user.save();
+    return res.status(201).json({
+      message: "Đăng ký Google thành công",
+    });
 
-//         return res.status(201).json({ message: "Đăng ký Google thành công" });
-//     } catch (error) {
-//         res.status(500).json({ message: "Server error", error: error.message });
-//     }
-// };
+  } catch (error) {
+    res.status(500).json({
+      message: "Server error",
+      error: error.message,
+    });
+  }
+};
 
 const forgotPassword = async (req, res) => {
   try {
     const { email } = req.body;
 
-    const account = await Account.findOne({ email });
+    const account = await Account.findOne({ email }).select("+password_hash");
     if (!account)
       return res.status(404).json({ message: "Không tìm thấy account" });
 
@@ -207,7 +201,7 @@ const login = async (req, res) => {
   try {
     const { email, password } = req.body;
 
-    const account = await Account.findOne({ email });
+    const account = await Account.findOne({ email }).select("+password_hash");
 
     if (!account)
       return res.status(404).json({ message: "Email không tồn tại" });
@@ -235,42 +229,42 @@ const login = async (req, res) => {
   }
 };
 
-// const loginGoogle = async (req, res) => {
-//     try {
-//         const { tokenId } = req.body;
+const loginGoogle = async (req, res) => {
+    try {
+        const { tokenId } = req.body;
 
-//         const ticket = await client.verifyIdToken({
-//             idToken: tokenId,
-//             audience: process.env.VITE_GOOGLE_CLIENT_ID,
-//         });
+        const ticket = await client.verifyIdToken({
+            idToken: tokenId,
+            audience: process.env.VITE_GOOGLE_CLIENT_ID,
+        });
 
-//         const payload = ticket.getPayload();
-//         const { email } = payload;
+        const payload = ticket.getPayload();
+        const { email } = payload;
 
-//         let account = await Account.findOne({ email });
-//         if (!account) {
-//             return res.status(404).json({ message: "Tài khoản Google chưa được đăng ký" });
-//         }
+        let account = await Account.findOne({ email });
+        if (!account) {
+            return res.status(404).json({ message: "Tài khoản Google chưa được đăng ký" });
+        }
 
-//         // Kiểm tra trạng thái
-//         if (account.status !== "ACTIVE" || !account.email_verified) {
-//             return res.status(403).json({ message: "Tài khoản chưa được kích hoạt" });
-//         }
+        // Kiểm tra trạng thái
+        if (account.status !== "ACTIVE") {
+            return res.status(403).json({ message: "Tài khoản chưa được kích hoạt" });
+        }
 
-//         const token = jwt.sign(
-//             { accountId: account._id, roleId: account.role_id },
-//             process.env.JWT_SECRET,
-//             { expiresIn: "7d" }
-//         );
+        const token = jwt.sign(
+            { accountId: account._id, roleId: account.role_id },
+            process.env.JWT_SECRET,
+            { expiresIn: "7d" }
+        );
 
-//         return res.json({
-//             message: "Đăng nhập Google thành công",
-//             token,
-//         });
-//     } catch (error) {
-//         res.status(500).json({ message: error.message });
-//     }
-// };
+        return res.json({
+            message: "Đăng nhập Google thành công",
+            token,
+        });
+    } catch (error) {
+        res.status(500).json({ message: error.message });
+    }
+};
 
 const getRoleNameById = async (req, res) => {
     const { id } = req.body;
@@ -336,10 +330,10 @@ module.exports = {
     getRoleNameById,
     register,
     verifyOtp,
-    // registerGoogle,
+    registerGoogle,
     forgotPassword,
     login,
-    // loginGoogle,
+    loginGoogle,
     resendOtp,
     googleAuth
 };
