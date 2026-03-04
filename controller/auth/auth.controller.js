@@ -227,7 +227,9 @@ const login = async (req, res) => {
   try {
     const { email, password } = req.body;
 
-    const account = await Account.findOne({ email }).select("+password_hash");
+    const account = await Account.findOne({ email })
+      .select("+password_hash")
+      .populate("role_id", "name");
 
     if (!account)
       return res.status(404).json({ message: "Email không tồn tại" });
@@ -242,13 +244,22 @@ const login = async (req, res) => {
     if (!isMatch)
       return res.status(400).json({ message: "Sai mật khẩu" });
 
+    const roleName = account.role_id.name;
+
     const token = jwt.sign(
-      { accountId: account._id, roleId: account.role_id },
+      { 
+        accountId: account._id, 
+        role: roleName   
+      },
       process.env.JWT_SECRET,
       { expiresIn: "7d" }
     );
 
-    res.json({ message: "Đăng nhập thành công", token });
+    res.json({ 
+      message: "Đăng nhập thành công", 
+      token,
+      role: roleName   
+    });
 
   } catch (error) {
     res.status(500).json({ message: error.message });
