@@ -4,6 +4,7 @@ const feedbackSchema = new mongoose.Schema(
     {
         account_id: { type: mongoose.Schema.Types.ObjectId, ref: "Account", required: true },
         booking_id: { type: mongoose.Schema.Types.ObjectId, ref: "Booking", required: true },
+        club_id: { type: mongoose.Schema.Types.ObjectId, ref: "Club" },
         rating: { type: Number, required: true },
         comment: { type: String },
         reply_content: { type: String },

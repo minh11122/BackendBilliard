@@ -1,23 +1,24 @@
-// middleware/optionalAuthenticate.middleware.js
-const jwt = require("jsonwebtoken");
+const Role = require("../models/role.model");
 
-const optionalAuthenticate = (req, res, next) => {
-  const authHeader = req.headers.authorization;
-  
-  // Không có token thì bỏ qua, cho next()
-  if (!authHeader || !authHeader.startsWith("Bearer ")) {
-    return next();
-  }
+const authorize = (...allowedRoles) => {
+  return async (req, res, next) => {
+    try {
+      const role = await Role.findById(req.user.roleId);
+      if (!role) {
+        return res.status(404).json({ message: "Role not found" });
+      }
 
-  const token = authHeader.split(" ")[1];
-  try {
-    const decoded = jwt.verify(token, process.env.JWT_SECRET);
-    req.user = decoded; // có user -> backend xác định được accountId
-  } catch (error) {
-    console.warn("⚠️ Token không hợp lệ, bỏ qua:", error.message);
-  }
+      if (!allowedRoles.includes(role.name)) {
+        return res.status(403).json({ message: "Forbidden" });
+      }
 
-  next();
+      req.user.roleName = role.name;
+      next();
+    } catch (error) {
+      console.error(error);
+      res.status(500).json({ message: "Server error" });
+    }
+  };
 };
 
-module.exports = optionalAuthenticate;
+module.exports = authorize;
