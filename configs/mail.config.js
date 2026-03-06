@@ -1,14 +1,14 @@
 const axios = require("axios");
-require("dotenv").config(); 
+require("dotenv").config(); // load biến môi trường từ .env
 
-const BREVO_API_KEY = process.env.BREVO_API_KEY; 
+const BREVO_API_KEY = process.env.BREVO_API_KEY; // lấy từ .env
 
 const sendMail = async ({ to, subject, html }) => {
   try {
     const res = await axios.post(
       "https://api.brevo.com/v3/smtp/email",
       {
-        sender: { name: "Billard", email: "minhlthe173541@fpt.edu.vn" },
+        sender: { name: "Billard", email: "lem29140@gmail.com" },
         to: [{ email: to }],
         subject,
         htmlContent: html,
