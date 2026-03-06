@@ -3,7 +3,10 @@ const jwt = require("jsonwebtoken");
 const bcrypt = require("bcryptjs");
 const { generateOtp } = require("../../utils/generateOtp");
 const { generateTempPassword } = require("../../utils/generateTempPassword");
-const { sendOtpEmail, sendResetPasswordEmail } = require("../../services/mail.service");
+const {
+  sendOtpEmail,
+  sendResetPasswordEmail,
+} = require("../../services/mail.service");
 
 const Account = require("../../models/account.model");
 const Role = require("../../models/role.model");
@@ -17,7 +20,9 @@ const register = async (req, res) => {
     const { fullname, email, phone, password, confirmPassword } = req.body;
 
     if (!fullname || !email || !password || !confirmPassword) {
-      return res.status(400).json({ message: "Vui lòng nhập đầy đủ thông tin" });
+      return res
+        .status(400)
+        .json({ message: "Vui lòng nhập đầy đủ thông tin" });
     }
 
     if (password !== confirmPassword) {
@@ -52,7 +57,7 @@ const register = async (req, res) => {
       password_hash: hashedPassword,
       provider: "local",
       status: "PENDING",
-      role_id: role._id
+      role_id: role._id,
     });
 
     const otpCode = generateOtp();
@@ -61,20 +66,18 @@ const register = async (req, res) => {
     await Otp.findOneAndUpdate(
       { account_id: account._id },
       { otp_code: otpCode, attempts: 0, expires_at: expiresAt },
-      { upsert: true }
+      { upsert: true },
     );
 
     await sendOtpEmail(email, otpCode);
 
     res.status(201).json({ message: "Đăng ký thành công, OTP đã gửi" });
-
   } catch (error) {
-
     // 🔥 Bắt lỗi duplicate từ MongoDB phòng trường hợp race condition
     if (error.code === 11000) {
       const field = Object.keys(error.keyPattern)[0];
       return res.status(400).json({
-        message: `${field === "email" ? "Email" : "Số điện thoại"} đã tồn tại`
+        message: `${field === "email" ? "Email" : "Số điện thoại"} đã tồn tại`,
       });
     }
 
@@ -92,8 +95,7 @@ const verifyOtp = async (req, res) => {
       return res.status(404).json({ message: "Không tìm thấy account" });
 
     const otp = await Otp.findOne({ account_id: account._id });
-    if (!otp)
-      return res.status(400).json({ message: "OTP không tồn tại" });
+    if (!otp) return res.status(400).json({ message: "OTP không tồn tại" });
 
     if (otp.expires_at < new Date())
       return res.status(400).json({ message: "OTP đã hết hạn" });
@@ -113,7 +115,6 @@ const verifyOtp = async (req, res) => {
     await Otp.deleteOne({ _id: otp._id });
 
     res.json({ message: "Xác thực thành công" });
-
   } catch (error) {
     res.status(500).json({ message: error.message });
   }
@@ -121,36 +122,38 @@ const verifyOtp = async (req, res) => {
 
 // resend otp
 const resendOtp = async (req, res) => {
-    try {
-        const { email } = req.body;
+  try {
+    const { email } = req.body;
 
-        const account = await Account.findOne({ email });
-        if (!account) {
-            return res.status(404).json({ message: "Không tìm thấy account" });
-        }
-
-        if (account.status !== "PENDING") {
-            return res.status(400).json({ message: "Tài khoản đã được kích hoạt, không cần OTP" });
-        }
-
-        // Sinh OTP mới
-        const otpCode = generateOtp();
-        const expiresAt = new Date(Date.now() + 1 * 60 * 1000); // 1 phút
-
-        await Otp.findOneAndUpdate(
-            { account_id: account._id },
-            { otp_code: otpCode, attempts: 0, expires_at: expiresAt },
-            { upsert: true, new: true }
-        );
-
-        // Gửi email
-        await sendOtpEmail(email, otpCode);
-
-        return res.json({ message: "OTP mới đã được gửi" });
-    } catch (error) {
-        console.error("Error in resendOtp:", error);
-        res.status(500).json({ message: error.message });
+    const account = await Account.findOne({ email });
+    if (!account) {
+      return res.status(404).json({ message: "Không tìm thấy account" });
     }
+
+    if (account.status !== "PENDING") {
+      return res
+        .status(400)
+        .json({ message: "Tài khoản đã được kích hoạt, không cần OTP" });
+    }
+
+    // Sinh OTP mới
+    const otpCode = generateOtp();
+    const expiresAt = new Date(Date.now() + 1 * 60 * 1000); // 1 phút
+
+    await Otp.findOneAndUpdate(
+      { account_id: account._id },
+      { otp_code: otpCode, attempts: 0, expires_at: expiresAt },
+      { upsert: true, new: true },
+    );
+
+    // Gửi email
+    await sendOtpEmail(email, otpCode);
+
+    return res.json({ message: "OTP mới đã được gửi" });
+  } catch (error) {
+    console.error("Error in resendOtp:", error);
+    res.status(500).json({ message: error.message });
+  }
 };
 
 const registerGoogle = async (req, res) => {
@@ -174,7 +177,7 @@ const registerGoogle = async (req, res) => {
       return res.status(500).json({ message: "Role CUSTOMER chưa được tạo" });
 
     account = await Account.create({
-      fullname: name,   // 🔥 THÊM DÒNG NÀY
+      fullname: name, // 🔥 THÊM DÒNG NÀY
       email,
       provider: "google",
       provider_id: sub,
@@ -185,7 +188,6 @@ const registerGoogle = async (req, res) => {
     return res.status(201).json({
       message: "Đăng ký Google thành công",
     });
-
   } catch (error) {
     res.status(500).json({
       message: "Server error",
@@ -203,7 +205,9 @@ const forgotPassword = async (req, res) => {
       return res.status(404).json({ message: "Không tìm thấy account" });
 
     if (account.provider !== "local")
-      return res.status(400).json({ message: "Tài khoản Google không dùng mật khẩu" });
+      return res
+        .status(400)
+        .json({ message: "Tài khoản Google không dùng mật khẩu" });
 
     if (account.status !== "ACTIVE")
       return res.status(400).json({ message: "Tài khoản chưa kích hoạt" });
@@ -217,7 +221,6 @@ const forgotPassword = async (req, res) => {
     await sendResetPasswordEmail(email, tempPassword);
 
     res.json({ message: "Mật khẩu tạm thời đã được gửi" });
-
   } catch (error) {
     res.status(500).json({ message: error.message });
   }
@@ -235,84 +238,87 @@ const login = async (req, res) => {
       return res.status(404).json({ message: "Email không tồn tại" });
 
     if (account.provider !== "local")
-      return res.status(400).json({ message: "Vui lòng đăng nhập bằng Google" });
+      return res
+        .status(400)
+        .json({ message: "Vui lòng đăng nhập bằng Google" });
 
     if (account.status !== "ACTIVE")
       return res.status(403).json({ message: "Tài khoản chưa kích hoạt" });
 
     const isMatch = await bcrypt.compare(password, account.password_hash);
-    if (!isMatch)
-      return res.status(400).json({ message: "Sai mật khẩu" });
+    if (!isMatch) return res.status(400).json({ message: "Sai mật khẩu" });
 
     const roleName = account.role_id.name;
 
     const token = jwt.sign(
-      { 
-        accountId: account._id, 
-        role: roleName   
+      {
+        accountId: account._id,
+        role: roleName,
+        roleId: account.role_id
       },
       process.env.JWT_SECRET,
-      { expiresIn: "7d" }
+      { expiresIn: "7d" },
     );
 
-    res.json({ 
-      message: "Đăng nhập thành công", 
+    res.json({
+      message: "Đăng nhập thành công",
       token,
-      role: roleName   
+      role: roleName,
     });
-
   } catch (error) {
     res.status(500).json({ message: error.message });
   }
 };
 
 const loginGoogle = async (req, res) => {
-    try {
-        const { tokenId } = req.body;
+  try {
+    const { tokenId } = req.body;
 
-        const ticket = await client.verifyIdToken({
-            idToken: tokenId,
-            audience: process.env.VITE_GOOGLE_CLIENT_ID,
-        });
+    const ticket = await client.verifyIdToken({
+      idToken: tokenId,
+      audience: process.env.VITE_GOOGLE_CLIENT_ID,
+    });
 
-        const payload = ticket.getPayload();
-        const { email } = payload;
+    const payload = ticket.getPayload();
+    const { email } = payload;
 
-        let account = await Account.findOne({ email });
-        if (!account) {
-            return res.status(404).json({ message: "Tài khoản Google chưa được đăng ký" });
-        }
-
-        // Kiểm tra trạng thái
-        if (account.status !== "ACTIVE") {
-            return res.status(403).json({ message: "Tài khoản chưa được kích hoạt" });
-        }
-
-        const token = jwt.sign(
-            { accountId: account._id, roleId: account.role_id },
-            process.env.JWT_SECRET,
-            { expiresIn: "7d" }
-        );
-
-        return res.json({
-            message: "Đăng nhập Google thành công",
-            token,
-        });
-    } catch (error) {
-        res.status(500).json({ message: error.message });
+    let account = await Account.findOne({ email });
+    if (!account) {
+      return res
+        .status(404)
+        .json({ message: "Tài khoản Google chưa được đăng ký" });
     }
+
+    // Kiểm tra trạng thái
+    if (account.status !== "ACTIVE") {
+      return res.status(403).json({ message: "Tài khoản chưa được kích hoạt" });
+    }
+
+    const token = jwt.sign(
+      { accountId: account._id, roleId: account.role_id },
+      process.env.JWT_SECRET,
+      { expiresIn: "7d" },
+    );
+
+    return res.json({
+      message: "Đăng nhập Google thành công",
+      token,
+    });
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
 };
 
 const getRoleNameById = async (req, res) => {
-    const { id } = req.body;
-    try {
-        const role = await Role.findById(id).select("name"); 
-        if (!role) return res.status(404).json({ message: "Role not found" });
-        res.json({ name: role.name });
-    } catch (err) {
-        console.error(err); // in lỗi ra để debug
-        res.status(500).json({ message: "Server error" });
-    }
+  const { id } = req.body;
+  try {
+    const role = await Role.findById(id).select("name");
+    if (!role) return res.status(404).json({ message: "Role not found" });
+    res.json({ name: role.name });
+  } catch (err) {
+    console.error(err); // in lỗi ra để debug
+    res.status(500).json({ message: "Server error" });
+  }
 };
 
 const googleAuth = async (req, res) => {
@@ -340,7 +346,7 @@ const googleAuth = async (req, res) => {
         provider: "google",
         provider_id: sub,
         status: "ACTIVE",
-        role_id: role._id
+        role_id: role._id,
       });
     }
 
@@ -353,43 +359,23 @@ const googleAuth = async (req, res) => {
     const token = jwt.sign(
       { accountId: account._id, roleId: account.role_id },
       process.env.JWT_SECRET,
-      { expiresIn: "7d" }
+      { expiresIn: "7d" },
     );
 
     res.json({ message: "Đăng nhập Google thành công", token });
-
   } catch (error) {
     res.status(500).json({ message: error.message });
   }
 };
 
 module.exports = {
-    getRoleNameById,
-    register,
-    verifyOtp,
-    registerGoogle,
-    forgotPassword,
-    login,
-    loginGoogle,
-    resendOtp,
-    googleAuth
+  getRoleNameById,
+  register,
+  verifyOtp,
+  registerGoogle,
+  forgotPassword,
+  login,
+  loginGoogle,
+  resendOtp,
+  googleAuth,
 };
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
