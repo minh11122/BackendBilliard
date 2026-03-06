@@ -2,18 +2,23 @@ const mongoose = require("mongoose");
 
 const serviceSchema = new mongoose.Schema(
   {
-    club_id: mongoose.Schema.Types.ObjectId,
-    name: String,
-    price: Number,
-    discount_percent: Number,
-    description: String,
-    status: String,
-    created_at: Date,
-    created_by: mongoose.Schema.Types.ObjectId
+    club_id: { type: mongoose.Schema.Types.ObjectId, ref: "Club", required: true },
+    name: { type: String, required: true },
+    image_url: { type: String, default: null },
+    price: { type: Number, required: true },
+    discount_percent: { type: Number, default: 0 },
+    description: { type: String },
+    status: {
+      type: String,
+      enum: ["ACTIVE", "INACTIVE"],
+      default: "ACTIVE"
+    },
+    created_by: { type: mongoose.Schema.Types.ObjectId, ref: "Account" }
   },
   {
     collection: "services",
-    versionKey: false
+    versionKey: false,
+    timestamps: { createdAt: "created_at", updatedAt: "updated_at" }
   }
 );
 
