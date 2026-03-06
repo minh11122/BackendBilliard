@@ -6,7 +6,7 @@ const imageSchema = new mongoose.Schema(
         image_url: { type: String, required: true },
         image_type: {
             type: String,
-            enum: ["Banner", "Avatar", "Background"],
+            enum: ["Banner", "Avatar", "Background","legal documents"],
             required: true
         }
     },
