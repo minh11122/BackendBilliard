@@ -4,6 +4,8 @@ const BilliardTable = require("../models/billiard_table.model");
 const Feedback = require("../models/feedback.model");
 const TableType = require("../models/table_type.model");
 
+
+
 // Lấy danh sách câu lạc bộ
 const getAllClubs = async (req, res) => {
   try {
@@ -121,7 +123,70 @@ const getClubById = async (req, res) => {
   }
 };
 
+// Chủ quán đăng ký câu lạc bộ
+//Duc
+//4/3/2026
+const registerClub = async (req, res) => {
+  try {
+    const { name, address, phone, tax_code, description, legalDocuments } = req.body;
+
+    if (!req.user || !req.user.accountId) {
+      return res.status(401).json({ success: false, message: "Không xác thực được người dùng" });
+    }
+
+    if (!name || !address || !phone || !tax_code) {
+      return res.status(400).json({
+        success: false,
+        message: "Vui lòng nhập đầy đủ tên CLB, địa chỉ, số điện thoại và mã số thuế"
+      });
+    }
+
+    const existingClub = await Club.findOne({ tax_code });
+    if (existingClub) {
+      return res.status(400).json({
+        success: false,
+        message: "Mã số thuế đã tồn tại"
+      });
+    }
+
+    const club = await Club.create({
+      account_id: req.user.accountId,
+      name,
+      address,
+      phone,
+      tax_code,
+      description: description || "",
+      status: "Pending"
+    });
+
+    if (Array.isArray(legalDocuments) && legalDocuments.length > 0) {
+      const images = legalDocuments
+        .filter((url) => !!url)
+        .map((url) => ({
+          club_id: club._id,
+          image_url: url,
+          image_type: "legal documents"
+        }));
+
+      if (images.length > 0) {
+        await Image.insertMany(images);
+      }
+    }
+
+    const createdClub = await Club.findById(club._id).lean();
+
+    return res.status(201).json({
+      success: true,
+      message: "Đăng ký câu lạc bộ thành công, vui lòng chờ duyệt",
+      data: createdClub
+    });
+  } catch (error) {
+    console.error("Lỗi khi đăng ký CLB:", error);
+    return res.status(500).json({ success: false, message: "Lỗi Server" });
+  }
+};
 module.exports = {
+  registerClub,
   getAllClubs,
   getClubById,
 };
