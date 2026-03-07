@@ -140,6 +140,54 @@ const rejectClub = async (req, res) => {
     }
 };
 
+// ==================== GET CLUBS (with optional status filter) ====================
+const getClubs = async (req, res) => {
+    try {
+        const { status } = req.query;
+        const filter = status ? { status } : {};
+        const clubs = await Club.find(filter)
+            .populate("account_id", "fullname email phone")
+            .sort({ created_at: -1 })
+            .lean();
+        res.status(200).json({ success: true, data: clubs });
+    } catch (error) {
+        console.error("Lỗi getClubs:", error);
+        res.status(500).json({ success: false, message: "Lỗi server" });
+    }
+};
+
+// ==================== LOCK CLUB ====================
+const lockClub = async (req, res) => {
+    try {
+        const club = await Club.findByIdAndUpdate(
+            req.params.id,
+            { status: "Locked" },
+            { new: true }
+        );
+        if (!club) return res.status(404).json({ success: false, message: "Không tìm thấy CLB" });
+        res.status(200).json({ success: true, message: "Đã khoá CLB", data: club });
+    } catch (error) {
+        console.error("Lỗi lockClub:", error);
+        res.status(500).json({ success: false, message: "Lỗi server" });
+    }
+};
+
+// ==================== UNLOCK CLUB ====================
+const unlockClub = async (req, res) => {
+    try {
+        const club = await Club.findByIdAndUpdate(
+            req.params.id,
+            { status: "Approved" },
+            { new: true }
+        );
+        if (!club) return res.status(404).json({ success: false, message: "Không tìm thấy CLB" });
+        res.status(200).json({ success: true, message: "Đã mở khoá CLB", data: club });
+    } catch (error) {
+        console.error("Lỗi unlockClub:", error);
+        res.status(500).json({ success: false, message: "Lỗi server" });
+    }
+};
+
 // ==================== APPROVE POST ====================
 const approvePost = async (req, res) => {
     try {
@@ -175,8 +223,11 @@ const rejectPost = async (req, res) => {
 
 module.exports = {
     getDashboard,
+    getClubs,
     approveClub,
     rejectClub,
+    lockClub,
+    unlockClub,
     approvePost,
     rejectPost
 };
