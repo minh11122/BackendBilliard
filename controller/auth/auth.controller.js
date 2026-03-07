@@ -251,10 +251,10 @@ const login = async (req, res) => {
     const roleName = account.role_id.name;
 
     const token = jwt.sign(
-      {
-        accountId: account._id,
-        role: roleName,
-        roleId: account.role_id
+      { 
+        accountId: account._id, 
+        roleId: account.role_id._id,
+        role: roleName   
       },
       process.env.JWT_SECRET,
       { expiresIn: "7d" },
