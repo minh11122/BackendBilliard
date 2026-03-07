@@ -58,7 +58,25 @@ const getAllClubs = async (req, res) => {
             club.reviewsCount = 0;
         }
 
-        club.distance = (Math.random() * 10).toFixed(1) + " km"; // Giả lập khoảng cách
+        // Mock coordinates for demonstration based on names/addresses in Hanoi
+        const mockCoords = {
+          "Togetherly Billiards Club": { lat: 21.0365, lng: 105.7828 },
+          "Royal Billiards Cầu Giấy": { lat: 21.0298, lng: 105.7845 },
+          "Royal Billiards Đống Đa": { lat: 21.0112, lng: 105.8234 },
+          "Royal Billiards Hai Bà Trưng": { lat: 20.9984, lng: 105.8532 },
+          "Dragon Billiards Thanh Xuân": { lat: 20.9947, lng: 105.8118 },
+          "Dragon Billiards Ba Đình": { lat: 21.0308, lng: 105.8282 },
+          "Galaxy Billiards Hoàn Kiếm": { lat: 21.0238, lng: 105.8524 },
+          "Victory Billiards Tây Hồ": { lat: 21.0625, lng: 105.8247 },
+          "Pro Billiards Bắc Từ Liêm": { lat: 21.0658, lng: 105.7812 },
+          "Champion Billiards Hoàng Mai": { lat: 20.9968, lng: 105.8427 }
+        };
+
+        const coords = mockCoords[club.name] || { lat: 21.0, lng: 105.8 };
+        club.lat = club.lat || coords.lat;
+        club.lng = club.lng || coords.lng;
+
+        club.distance = null; // Distance will be calculated on frontend
         
         return club;
       })

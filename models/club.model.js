@@ -8,6 +8,8 @@ const clubSchema = new mongoose.Schema(
     phone: { type: String, required: true },
     tax_code: { type: String, required: true, unique: true },
     description: { type: String },
+    lat: { type: Number },
+    lng: { type: Number },
     status: {
       type: String,
       enum: ["Pending", "Approved", "Rejected", "Locked"],
