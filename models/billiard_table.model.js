@@ -11,6 +11,7 @@ const billiardTableSchema = new mongoose.Schema(
         status: {
             type: String,
             enum: ["Available", "Maintenance"],
+            default: "Available",
             required: true
         },
         created_at: { type: Date, default: Date.now, required: true }
@@ -20,5 +21,6 @@ const billiardTableSchema = new mongoose.Schema(
         versionKey: false
     }
 );
+billiardTableSchema.index({ club_id: 1, table_number: 1 }, { unique: true });
 
 module.exports = mongoose.model("BilliardTable", billiardTableSchema);
