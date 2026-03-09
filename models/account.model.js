@@ -7,7 +7,6 @@ const accountSchema = new mongoose.Schema(
       required: [true, "Fullname is required"],
       trim: true,
     },
-
     email: {
       type: String,
       required: [true, "Email is required"],
@@ -15,14 +14,16 @@ const accountSchema = new mongoose.Schema(
       trim: true,
       match: [/^\S+@\S+\.\S+$/, "Invalid email format"],
     },
-
     phone: {
       type: String,
       trim: true,
       match: [/^[0-9]{9,11}$/, "Invalid phone number"],
-      set: v => v === "" ? null : v
+      set: (v) => (v === "" ? null : v),
     },
-
+    avatar_url: {
+      type: String,
+      default: null,
+    },
     password_hash: {
       type: String,
       required: function () {
@@ -56,12 +57,10 @@ const accountSchema = new mongoose.Schema(
       createdAt: "created_at",
       updatedAt: "updated_at",
     },
-  }
+  },
 );
 
-
 accountSchema.index({ email: 1 }, { unique: true });
-
 
 accountSchema.index({ phone: 1 }, { unique: true, sparse: true });
 

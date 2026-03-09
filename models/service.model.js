@@ -49,7 +49,8 @@ const serviceSchema = new mongoose.Schema(
   },
   {
     collection: "services",
-    versionKey: false
+    versionKey: false,
+    timestamps: { createdAt: "created_at", updatedAt: "updated_at" }
   }
 );
 
