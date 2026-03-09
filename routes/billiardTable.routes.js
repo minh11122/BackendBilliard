@@ -9,6 +9,7 @@ router.post("/types", tableController.createTableType);
 router.get("/", tableController.getBilliardTables);
 router.post("/", uploadCloud.single("image"), tableController.createBilliardTable);
 
-router.put("/:id", tableController.updateBilliardTable);
+router.get("/:id", tableController.getBilliardTableById);
+router.put("/:id", uploadCloud.single("image"), tableController.updateBilliardTable);
 router.delete("/:id", tableController.deleteBilliardTable);
 module.exports = router;

@@ -259,7 +259,8 @@ const login = async (req, res) => {
     res.json({ 
       message: "Đăng nhập thành công", 
       token,
-      role: roleName   
+      role: roleName,
+      fullname: account.fullname
     });
 
   } catch (error) {

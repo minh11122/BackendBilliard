@@ -121,7 +121,41 @@ const getClubById = async (req, res) => {
   }
 };
 
+// Lấy danh sách câu lạc bộ của chủ quán (theo accountId)
+const getClubsByAccount = async (req, res) => {
+  try {
+    // Lấy accountId từ token đã được middleware giải mã (JWT sign { accountId, roleId, role })
+    const account_id = req.user?.accountId || req.query.account_id;
+
+    if (!account_id) {
+      return res.status(400).json({ success: false, message: "Không tìm thấy thông tin tài khoản (account_id)" });
+    }
+
+    const clubs = await Club.find({ account_id }).lean();
+
+    // Lấy thêm ảnh bìa nếu cần thiết
+    const result = await Promise.all(
+      clubs.map(async (club) => {
+        const images = await Image.find({ club_id: club._id, image_type: "Banner" }).lean();
+        club.avatar = images.length > 0 ? images[0].image_url : null;
+        return club;
+      })
+    );
+
+    res.status(200).json({ 
+      success: true, 
+      message: "Lấy danh sách quán thành công",
+      count: result.length, 
+      data: result 
+    });
+  } catch (error) {
+    console.error("Lỗi khi lấy danh sách CLB của chủ quán:", error);
+    res.status(500).json({ success: false, message: "Lỗi Server" });
+  }
+};
+
 module.exports = {
   getAllClubs,
   getClubById,
+  getClubsByAccount,
 };

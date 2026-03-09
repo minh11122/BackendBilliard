@@ -4,7 +4,7 @@ const TableType = require("../models/table_type.model");
 /**
  * Lấy danh sách bàn theo điều kiện (phân trang, tìm kiếm, lọc)
  */
-const getTables = async ({ club_id, page = 1, limit = 5, search, table_type_id, status }) => {
+const getTables = async (club_id, { page = 1, limit = 5, search, table_type_id, status } = {}) => {
     const query = { club_id: new mongoose.Types.ObjectId(club_id) };
 
     // 1. Tìm kiếm theo tên hoặc số bàn (Không phân biệt hoa thường)
@@ -41,6 +41,21 @@ const getTables = async ({ club_id, page = 1, limit = 5, search, table_type_id, 
         totalPages: Math.ceil(total / limit),
         currentPage: parseInt(page)
     };
+};
+
+/**
+ * Lấy chi tiết một bàn bida theo ID
+ */
+const getTableById = async (tableId) => {
+    const table = await BilliardTable.findById(tableId).populate("table_type_id", "name");
+    
+    if (!table) {
+        const error = new Error("Không tìm thấy bàn!");
+        error.statusCode = 404;
+        throw error;
+    }
+    
+    return table;
 };
 
 /**
@@ -155,6 +170,7 @@ const createTableType = async (typeData) => {
 
 module.exports = {
     getTables,
+    getTableById,
     getTableStatusCounts,
     createTable,
     updateTable,
