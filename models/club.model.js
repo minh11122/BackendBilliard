@@ -8,8 +8,11 @@ const clubSchema = new mongoose.Schema(
     phone: { type: String, required: true },
     tax_code: { type: String, required: true, unique: true },
     description: { type: String },
+    opening_time: { type: String, default: "08:00" },
+    closing_time: { type: String, default: "23:30" },
     lat: { type: Number },
     lng: { type: Number },
+    district: { type: String },
     status: {
       type: String,
       enum: ["Pending", "Approved", "Rejected", "Locked"],

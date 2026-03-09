@@ -3,6 +3,7 @@ const Image = require("../models/image.model");
 const BilliardTable = require("../models/billiard_table.model");
 const Feedback = require("../models/feedback.model");
 const TableType = require("../models/table_type.model");
+const { geocodeAddress } = require("../utils/geocoding");
 
 
 
@@ -25,6 +26,21 @@ const getAllClubs = async (req, res) => {
     // Lấy thêm điểm đánh giá trung bình & giá từ cho mỗi club, và ảnh bìa
     const result = await Promise.all(
       clubs.map(async (club) => {
+        // Nếu thiếu tọa độ hoặc quận, cố gắng geocode (chỉ làm nếu cần thiết để tránh throttle)
+        if (!club.lat || !club.lng || !club.district) {
+          const geoData = await geocodeAddress(club.address);
+          if (geoData) {
+            club.lat = geoData.lat;
+            club.lng = geoData.lng;
+            club.district = geoData.district;
+            // Cập nhật lại vào DB để lần sau không cần geocode nữa
+            await Club.updateOne(
+              { _id: club._id }, 
+              { lat: geoData.lat, lng: geoData.lng, district: geoData.district }
+            );
+          }
+        }
+
         // Lấy ảnh bìa
         const images = await Image.find({ club_id: club._id, image_type: "Banner" }).lean();
         club.avatar = images.length > 0 ? images[0].image_url : null;
@@ -146,7 +162,7 @@ const getClubById = async (req, res) => {
 //4/3/2026
 const registerClub = async (req, res) => {
   try {
-    const { name, address, phone, tax_code, description, legalDocuments } = req.body;
+    const { name, address, phone, tax_code, description, legalDocuments, opening_time, closing_time } = req.body;
 
     if (!req.user || !req.user.accountId) {
       return res.status(401).json({ success: false, message: "Không xác thực được người dùng" });
@@ -167,13 +183,33 @@ const registerClub = async (req, res) => {
       });
     }
 
+    // Thử geocode địa chỉ ngay khi đăng ký
+    let lat = 0;
+    let lng = 0;
+    let district = "";
+    try {
+      const geoData = await geocodeAddress(address);
+      if (geoData) {
+        lat = geoData.lat;
+        lng = geoData.lng;
+        district = geoData.district;
+      }
+    } catch (err) {
+      console.warn("Lỗi geocode khi đăng ký:", err.message);
+    }
+
     const club = await Club.create({
       account_id: req.user.accountId,
       name,
       address,
       phone,
       tax_code,
+      lat,
+      lng,
+      district,
       description: description || "",
+      opening_time: opening_time || "08:00",
+      closing_time: closing_time || "23:30",
       status: "Pending"
     });
 
