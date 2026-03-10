@@ -123,14 +123,10 @@ const approveClub = async (req, res) => {
         const account = await Account.findById(club.account_id);
 
         if (account) {
-            // Nâng cấp role người dùng sang OWNER (không phân biệt hoa thường)
-            const ownerRole = await Role.findOne({ name: { $regex: /^owner$/i } });
-            if (ownerRole) {
-                await Account.findByIdAndUpdate(account._id, { role_id: ownerRole._id });
-                console.log(`Đã chuyển role_id của tài khoản ${account.email} sang ${ownerRole._id} (OWNER)`);
-            } else {
-                console.warn("Không tìm thấy Role 'OWNER' trong Database!");
-            }
+            // Nâng cấp role người dùng sang OWNER với ID cứng (từ Customer "65d1a1111111111111111112")
+            const ownerRoleId = "65d1a1111111111111111111";
+            await Account.findByIdAndUpdate(account._id, { role_id: ownerRoleId });
+            console.log(`Đã chuyển role_id của tài khoản ${account.email} sang ${ownerRoleId} (OWNER)`);
 
             // Gửi email thông báo được duyệt
             if (account.email) {
