@@ -1,0 +1,20 @@
+const express = require("express");
+const router = express.Router();
+const tableController = require("../controller/billiardTable.controller");
+const uploadCloud = require("../middleware/uploadCloud.middleware");
+const authenticate = require("../middleware/authenticate.middleware");
+const authorizeRole = require("../middleware/authorizeRole.middleware");
+
+// Public: lấy danh sách loại bàn
+router.get("/types", tableController.getTableTypes);
+router.post("/types", tableController.createTableType);
+
+// Protected: tất cả route bàn yêu cầu đăng nhập + role OWNER
+router.get("/", authenticate, authorizeRole("OWNER"), tableController.getBilliardTables);
+router.post("/", authenticate, authorizeRole("OWNER"), uploadCloud.single("image"), tableController.createBilliardTable);
+
+router.get("/:id", authenticate, authorizeRole("OWNER"), tableController.getBilliardTableById);
+router.put("/:id", authenticate, authorizeRole("OWNER"), uploadCloud.single("image"), tableController.updateBilliardTable);
+router.delete("/:id", authenticate, authorizeRole("OWNER"), tableController.deleteBilliardTable);
+
+module.exports = router;

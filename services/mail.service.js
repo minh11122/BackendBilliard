@@ -128,6 +128,121 @@ const generateResetPasswordEmail = (to, tempPassword) => {
     `;
 };
 
+// Template email thông báo duyệt CLB thành công
+const generateClubApprovalEmail = (to) => {
+    return `
+    <!DOCTYPE html>
+    <html>
+    <head>
+        <meta charset="utf-8">
+        <title>Đăng ký Câu lạc bộ thành công</title>
+        <style>
+            body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; }
+            .container { max-width: 600px; margin: 0 auto; padding: 20px; }
+            .header { background-color: #4CAF50; color: white; padding: 20px; text-align: center; }
+            .content { padding: 20px; background-color: #f9f9f9; }
+            .info-box { 
+                background-color: #fff; 
+                border: 2px solid #4CAF50; 
+                padding: 20px; 
+                text-align: center; 
+                margin: 20px 0;
+                border-radius: 8px;
+            }
+            .info-title { 
+                font-size: 24px; 
+                font-weight: bold; 
+                color: #4CAF50; 
+                margin: 10px 0;
+            }
+            .footer { padding: 20px; text-align: center; color: #666; font-size: 12px; }
+        </style>
+    </head>
+    <body>
+        <div class="container">
+            <div class="header">
+                <h1>Đăng ký Câu lạc bộ thành công</h1>
+            </div>
+            <div class="content">
+                <h2>Xin chào ${to},</h2>
+                <p>Chúc mừng! Đơn đăng ký tham gia hệ thống của Câu lạc bộ của bạn đã được quản trị viên duyệt.</p>
+                
+                <div class="info-box">
+                    <div class="info-title">Đã trở thành Quản lý CLB (Owner)</div>
+                    <p>Tài khoản của bạn đã được nâng cấp. Bạn có thể đăng nhập vào hệ thống để bắt đầu thiết lập thông tin, bàn bida và dịch vụ ngay.</p>
+                </div>
+                
+                <p>Hãy liên hệ với chúng tôi nếu bạn cần bất kỳ sự hỗ trợ nào trong quá trình cài đặt hệ thống.</p>
+            </div>
+            <div class="footer">
+                <p>© 2024 Hệ thống của chúng tôi. Tất cả quyền được bảo lưu.</p>
+                <p>Email này được gửi tự động, vui lòng không trả lời.</p>
+            </div>
+        </div>
+    </body>
+    </html>
+    `;
+};
+
+// Template email thông báo từ chối duyệt CLB
+const generateClubRejectionEmail = (to, reason) => {
+    return `
+    <!DOCTYPE html>
+    <html>
+    <head>
+        <meta charset="utf-8">
+        <title>Kết quả đăng ký Câu lạc bộ</title>
+        <style>
+            body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; }
+            .container { max-width: 600px; margin: 0 auto; padding: 20px; }
+            .header { background-color: #f44336; color: white; padding: 20px; text-align: center; }
+            .content { padding: 20px; background-color: #f9f9f9; }
+            .info-box { 
+                background-color: #fff; 
+                border: 2px solid #f44336; 
+                padding: 20px; 
+                margin: 20px 0;
+                border-radius: 8px;
+            }
+            .info-title { 
+                font-size: 20px; 
+                font-weight: bold; 
+                color: #f44336; 
+                margin-bottom: 10px;
+            }
+            .reason-content {
+                font-size: 16px;
+                color: #555;
+            }
+            .footer { padding: 20px; text-align: center; color: #666; font-size: 12px; }
+        </style>
+    </head>
+    <body>
+        <div class="container">
+            <div class="header">
+                <h1>Kết quả đăng ký Câu lạc bộ</h1>
+            </div>
+            <div class="content">
+                <h2>Xin chào ${to},</h2>
+                <p>Cảm ơn bạn đã quan tâm và đăng ký tham gia hệ thống của chúng tôi. Tuy nhiên, sau khi xem xét hồ sơ, quản trị viên đã từ chối đơn đăng ký của bạn với lý do sau:</p>
+                
+                <div class="info-box">
+                    <div class="info-title">Lý do từ chối:</div>
+                    <div class="reason-content">${reason || "Không có lý do cụ thể."}</div>
+                </div>
+                
+                <p>Bạn có thể liên hệ trực tiếp với chúng tôi hoặc tạo lại yêu cầu nếu đã khắc phục được các lý do nêu trên.</p>
+            </div>
+            <div class="footer">
+                <p>© 2024 Hệ thống của chúng tôi. Tất cả quyền được bảo lưu.</p>
+                <p>Email này được gửi tự động, vui lòng không trả lời.</p>
+            </div>
+        </div>
+    </body>
+    </html>
+    `;
+};
+
 // Gửi OTP
 const sendOtpEmail = async (to, otpCode) => {
     const html = generateOtpTemplate(to, otpCode);
@@ -148,4 +263,29 @@ const sendResetPasswordEmail = async (to, tempPassword) => {
     });
 };
 
-module.exports = { sendOtpEmail, sendResetPasswordEmail };
+// Gửi email báo duyệt CLB
+const sendClubApprovalEmail = async (to) => {
+    const html = generateClubApprovalEmail(to);
+    return await sendMail({
+        to,
+        subject: "Đăng ký Câu lạc bộ thành công",
+        html,
+    });
+};
+
+// Gửi email báo từ chối CLB
+const sendClubRejectionEmail = async (to, reason) => {
+    const html = generateClubRejectionEmail(to, reason);
+    return await sendMail({
+        to,
+        subject: "Kết quả đăng ký Câu lạc bộ",
+        html,
+    });
+};
+
+module.exports = { 
+    sendOtpEmail, 
+    sendResetPasswordEmail,
+    sendClubApprovalEmail,
+    sendClubRejectionEmail
+};

@@ -17,43 +17,40 @@ const client = new OAuth2Client(process.env.VITE_GOOGLE_CLIENT_ID);
 // Đăng ký (tạo account + gửi OTP)
 const register = async (req, res) => {
   try {
-    const { fullname, email, phone, password, confirmPassword } = req.body;
+    let { fullname, email, password, confirmPassword } = req.body;
 
-    if (!fullname || !email || !password || !confirmPassword) {
+    if (!email || !password || !confirmPassword) {
       return res
         .status(400)
-        .json({ message: "Vui lòng nhập đầy đủ thông tin" });
+        .json({ message: "Vui lòng nhập email và mật khẩu" });
     }
 
     if (password !== confirmPassword) {
-      return res.status(400).json({ message: "Mật khẩu xác nhận không khớp" });
+      return res.status(400).json({
+        message: "Mật khẩu xác nhận không khớp",
+      });
+    }
+
+    // 👉 lấy tạm email làm fullname
+    if (!fullname) {
+      fullname = email.split("@")[0];
     }
 
     // Check email
     const existingEmail = await Account.findOne({ email });
     if (existingEmail) {
-      return res.status(400).json({ message: "Email đã tồn tại" });
-    }
-
-    // Check phone nếu có nhập
-    if (phone) {
-      const existingPhone = await Account.findOne({ phone });
-      if (existingPhone) {
-        return res.status(400).json({ message: "Số điện thoại đã tồn tại" });
-      }
+      return res.status(400).json({
+        message: "Email đã tồn tại",
+      });
     }
 
     const role = await Role.findOne({ name: "CUSTOMER" });
-    if (!role) {
-      return res.status(500).json({ message: "Role CUSTOMER chưa được tạo" });
-    }
 
     const hashedPassword = await bcrypt.hash(password, 10);
 
     const account = await Account.create({
       fullname,
       email,
-      phone: phone || null,
       password_hash: hashedPassword,
       provider: "local",
       status: "PENDING",
@@ -71,13 +68,15 @@ const register = async (req, res) => {
 
     await sendOtpEmail(email, otpCode);
 
-    res.status(201).json({ message: "Đăng ký thành công, OTP đã gửi" });
+    res.status(201).json({
+      message: "Đăng ký thành công, OTP đã gửi",
+    });
   } catch (error) {
-    // 🔥 Bắt lỗi duplicate từ MongoDB phòng trường hợp race condition
     if (error.code === 11000) {
       const field = Object.keys(error.keyPattern)[0];
       return res.status(400).json({
-        message: `${field === "email" ? "Email" : "Số điện thoại"} đã tồn tại`,
+        message:
+          field === "email" ? "Email đã tồn tại" : "Số điện thoại đã tồn tại",
       });
     }
 
@@ -253,8 +252,8 @@ const login = async (req, res) => {
     const token = jwt.sign(
       {
         accountId: account._id,
+        roleId: account.role_id._id,
         role: roleName,
-        roleId: account.role_id
       },
       process.env.JWT_SECRET,
       { expiresIn: "7d" },
@@ -264,6 +263,7 @@ const login = async (req, res) => {
       message: "Đăng nhập thành công",
       token,
       role: roleName,
+      fullname: account.fullname,
     });
   } catch (error) {
     res.status(500).json({ message: error.message });
