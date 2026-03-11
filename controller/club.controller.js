@@ -26,7 +26,7 @@ const getAllClubs = async (req, res) => {
     // Lấy thêm điểm đánh giá trung bình & giá từ cho mỗi club, và ảnh bìa
     const result = await Promise.all(
       clubs.map(async (club) => {
-        // Nếu thiếu tọa độ hoặc quận, cố gắng geocode (chỉ làm nếu cần thiết để tránh throttle)
+        // Nếu thiếu tọa độ hoặc quận, cố gắng geocode 
         if (!club.lat || !club.lng || !club.district) {
           const geoData = await geocodeAddress(club.address);
           if (geoData) {
@@ -119,7 +119,19 @@ const getClubById = async (req, res) => {
     const images = await Image.find({ club_id: id }).lean();
     club.images = images;
 
-    // Lấy danh sách bàn
+    // Tự động trả lại bàn Holding đã hết hạn giữ chỗ
+    await BilliardTable.updateMany(
+      {
+        club_id: id,
+        status: "Holding",
+        held_until: { $lte: new Date() }
+      },
+      {
+        $set: { status: "Available", held_by: null, held_until: null }
+      }
+    );
+
+    // Lấy danh sách bàn (sau khi đã cleanup)
     const tables = await BilliardTable.find({ club_id: id }).populate("table_type_id").lean();
     club.tables = tables;
 
