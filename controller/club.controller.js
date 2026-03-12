@@ -3,13 +3,16 @@ const Image = require("../models/image.model");
 const BilliardTable = require("../models/billiard_table.model");
 const Feedback = require("../models/feedback.model");
 const TableType = require("../models/table_type.model");
+const Province = require("../models/province.model");
+const District = require("../models/district.model");
+const { geocodeAddress } = require("../utils/geocoding");
 
 
 
 // Lấy danh sách câu lạc bộ
 const getAllClubs = async (req, res) => {
   try {
-    const { keyword, price, tableType, rating } = req.query;
+    const { keyword, price, tableType, rating, province_code, district_code } = req.query;
 
     const query = { status: "Approved" };
 
@@ -20,11 +23,49 @@ const getAllClubs = async (req, res) => {
       ];
     }
 
+    if (province_code) {
+      query.province_code = province_code;
+    }
+
+    if (district_code) {
+      query.district_code = district_code;
+    }
+
     const clubs = await Club.find(query).lean();
 
     // Lấy thêm điểm đánh giá trung bình & giá từ cho mỗi club, và ảnh bìa
     const result = await Promise.all(
       clubs.map(async (club) => {
+        // Lấy tên Tỉnh và Quận/Huyện/Xã
+        if (club.province_code) {
+          const province = await Province.findOne({ code: club.province_code }).lean();
+          club.province_name = province ? province.name : null;
+        }
+        if (club.district_code) {
+          const districtDoc = await District.findOne({ code: club.district_code }).lean();
+          club.district_name = districtDoc ? (districtDoc.name_with_type || districtDoc.name) : null;
+        }
+
+        // Nếu thiếu tọa độ, cố gắng geocode (chỉ ưu tiên dùng data đã lưu)
+        if (!club.lat || !club.lng) {
+          const province = club.province_code ? await Province.findOne({ code: club.province_code }).lean() : null;
+          const districtDoc = club.district_code ? await District.findOne({ code: club.district_code }).lean() : null;
+          
+          const geoData = await geocodeAddress(
+            club.address, 
+            province ? province.name : "", 
+            districtDoc ? (districtDoc.name_with_type || districtDoc.name) : ""
+          );
+
+          if (geoData) {
+            club.lat = geoData.lat;
+            club.lng = geoData.lng;
+            club.district = geoData.district; // Update the old district field too
+            // Update DB once
+            await Club.updateOne({ _id: club._id }, { lat: geoData.lat, lng: geoData.lng, district: geoData.district });
+          }
+        }
+
         // Lấy ảnh bìa
         const images = await Image.find({ club_id: club._id, image_type: "Banner" }).lean();
         club.avatar = images.length > 0 ? images[0].image_url : null;
@@ -45,7 +86,6 @@ const getAllClubs = async (req, res) => {
           club.tableTypes = [];
         }
 
-        // Lấy rating
         // Lấy rating 
         const feedbacks = await Feedback.find({ club_id: club._id }).lean();
         
@@ -58,7 +98,7 @@ const getAllClubs = async (req, res) => {
             club.reviewsCount = 0;
         }
 
-        club.distance = (Math.random() * 10).toFixed(1) + " km"; // Giả lập khoảng cách
+        club.distance = null; // Distance will be calculated on frontend
         
         return club;
       })
@@ -85,7 +125,29 @@ const getClubById = async (req, res) => {
     const images = await Image.find({ club_id: id }).lean();
     club.images = images;
 
-    // Lấy danh sách bàn
+    // Lấy tên Tỉnh và Quận/Huyện/Xã
+    if (club.province_code) {
+      const province = await Province.findOne({ code: club.province_code }).lean();
+      club.province_name = province ? province.name : null;
+    }
+    if (club.district_code) {
+      const districtDoc = await District.findOne({ code: club.district_code }).lean();
+      club.district_name = districtDoc ? (districtDoc.name_with_type || districtDoc.name) : null;
+    }
+
+    // Tự động trả lại bàn Holding đã hết hạn giữ chỗ
+    await BilliardTable.updateMany(
+      {
+        club_id: id,
+        status: "Holding",
+        held_until: { $lte: new Date() }
+      },
+      {
+        $set: { status: "Available", held_by: null, held_until: null }
+      }
+    );
+
+    // Lấy danh sách bàn (sau khi đã cleanup)
     const tables = await BilliardTable.find({ club_id: id }).populate("table_type_id").lean();
     club.tables = tables;
 
@@ -163,7 +225,7 @@ const getClubsByAccount = async (req, res) => {
 //4/3/2026
 const registerClub = async (req, res) => {
   try {
-    const { name, address, phone, tax_code, description, legalDocuments } = req.body;
+    const { name, address, phone, tax_code, description, legalDocuments, opening_time, closing_time } = req.body;
 
     if (!req.user || !req.user.accountId) {
       return res.status(401).json({ success: false, message: "Không xác thực được người dùng" });
@@ -184,13 +246,43 @@ const registerClub = async (req, res) => {
       });
     }
 
+    // Thử geocode địa chỉ ngay khi đăng ký
+    let lat = 0;
+    let lng = 0;
+    let districtNameField = "";
+    try {
+      const province = await Province.findOne({ code: req.body.province_code }).lean();
+      const districtDoc = await District.findOne({ code: req.body.district_code }).lean();
+
+      const geoData = await geocodeAddress(
+        address, 
+        province ? province.name : "", 
+        districtDoc ? (districtDoc.name_with_type || districtDoc.name) : ""
+      );
+
+      if (geoData) {
+        lat = geoData.lat;
+        lng = geoData.lng;
+        districtNameField = geoData.district;
+      }
+    } catch (err) {
+      console.warn("Lỗi geocode khi đăng ký:", err.message);
+    }
+
     const club = await Club.create({
       account_id: req.user.accountId,
       name,
       address,
       phone,
       tax_code,
+      lat,
+      lng,
+      district: districtNameField, // Old logic: what Mapbox thinks the district is
+      province_code: req.body.province_code,
+      district_code: req.body.district_code,
       description: description || "",
+      opening_time: opening_time || "08:00",
+      closing_time: closing_time || "23:30",
       status: "Pending"
     });
 
