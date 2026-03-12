@@ -3,7 +3,7 @@ const BilliardTable = require("../models/billiard_table.model");
 const Club = require("../models/club.model");
 const Parameter = require("../models/parameter.model");
 
-const HOLD_MINUTES = 10;
+const HOLD_MINUTES = 0.5;
 
 // Tạo booking + giữ chỗ bàn
 const createBooking = async (req, res) => {

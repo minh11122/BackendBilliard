@@ -3,6 +3,8 @@ const Image = require("../models/image.model");
 const BilliardTable = require("../models/billiard_table.model");
 const Feedback = require("../models/feedback.model");
 const TableType = require("../models/table_type.model");
+const Province = require("../models/province.model");
+const District = require("../models/district.model");
 const { geocodeAddress } = require("../utils/geocoding");
 
 
@@ -10,7 +12,7 @@ const { geocodeAddress } = require("../utils/geocoding");
 // Lấy danh sách câu lạc bộ
 const getAllClubs = async (req, res) => {
   try {
-    const { keyword, price, tableType, rating } = req.query;
+    const { keyword, price, tableType, rating, province_code, district_code } = req.query;
 
     const query = { status: "Approved" };
 
@@ -21,23 +23,46 @@ const getAllClubs = async (req, res) => {
       ];
     }
 
+    if (province_code) {
+      query.province_code = province_code;
+    }
+
+    if (district_code) {
+      query.district_code = district_code;
+    }
+
     const clubs = await Club.find(query).lean();
 
     // Lấy thêm điểm đánh giá trung bình & giá từ cho mỗi club, và ảnh bìa
     const result = await Promise.all(
       clubs.map(async (club) => {
-        // Nếu thiếu tọa độ hoặc quận, cố gắng geocode 
-        if (!club.lat || !club.lng || !club.district) {
-          const geoData = await geocodeAddress(club.address);
+        // Lấy tên Tỉnh và Quận/Huyện/Xã
+        if (club.province_code) {
+          const province = await Province.findOne({ code: club.province_code }).lean();
+          club.province_name = province ? province.name : null;
+        }
+        if (club.district_code) {
+          const districtDoc = await District.findOne({ code: club.district_code }).lean();
+          club.district_name = districtDoc ? (districtDoc.name_with_type || districtDoc.name) : null;
+        }
+
+        // Nếu thiếu tọa độ, cố gắng geocode (chỉ ưu tiên dùng data đã lưu)
+        if (!club.lat || !club.lng) {
+          const province = club.province_code ? await Province.findOne({ code: club.province_code }).lean() : null;
+          const districtDoc = club.district_code ? await District.findOne({ code: club.district_code }).lean() : null;
+          
+          const geoData = await geocodeAddress(
+            club.address, 
+            province ? province.name : "", 
+            districtDoc ? (districtDoc.name_with_type || districtDoc.name) : ""
+          );
+
           if (geoData) {
             club.lat = geoData.lat;
             club.lng = geoData.lng;
-            club.district = geoData.district;
-            // Cập nhật lại vào DB để lần sau không cần geocode nữa
-            await Club.updateOne(
-              { _id: club._id }, 
-              { lat: geoData.lat, lng: geoData.lng, district: geoData.district }
-            );
+            club.district = geoData.district; // Update the old district field too
+            // Update DB once
+            await Club.updateOne({ _id: club._id }, { lat: geoData.lat, lng: geoData.lng, district: geoData.district });
           }
         }
 
@@ -61,7 +86,6 @@ const getAllClubs = async (req, res) => {
           club.tableTypes = [];
         }
 
-        // Lấy rating
         // Lấy rating 
         const feedbacks = await Feedback.find({ club_id: club._id }).lean();
         
@@ -73,24 +97,6 @@ const getAllClubs = async (req, res) => {
             club.rating = 0;
             club.reviewsCount = 0;
         }
-
-        // Mock coordinates for demonstration based on names/addresses in Hanoi
-        const mockCoords = {
-          "Togetherly Billiards Club": { lat: 21.0365, lng: 105.7828 },
-          "Royal Billiards Cầu Giấy": { lat: 21.0298, lng: 105.7845 },
-          "Royal Billiards Đống Đa": { lat: 21.0112, lng: 105.8234 },
-          "Royal Billiards Hai Bà Trưng": { lat: 20.9984, lng: 105.8532 },
-          "Dragon Billiards Thanh Xuân": { lat: 20.9947, lng: 105.8118 },
-          "Dragon Billiards Ba Đình": { lat: 21.0308, lng: 105.8282 },
-          "Galaxy Billiards Hoàn Kiếm": { lat: 21.0238, lng: 105.8524 },
-          "Victory Billiards Tây Hồ": { lat: 21.0625, lng: 105.8247 },
-          "Pro Billiards Bắc Từ Liêm": { lat: 21.0658, lng: 105.7812 },
-          "Champion Billiards Hoàng Mai": { lat: 20.9968, lng: 105.8427 }
-        };
-
-        const coords = mockCoords[club.name] || { lat: 21.0, lng: 105.8 };
-        club.lat = club.lat || coords.lat;
-        club.lng = club.lng || coords.lng;
 
         club.distance = null; // Distance will be calculated on frontend
         
@@ -118,6 +124,16 @@ const getClubById = async (req, res) => {
     // Lấy danh sách ảnh
     const images = await Image.find({ club_id: id }).lean();
     club.images = images;
+
+    // Lấy tên Tỉnh và Quận/Huyện/Xã
+    if (club.province_code) {
+      const province = await Province.findOne({ code: club.province_code }).lean();
+      club.province_name = province ? province.name : null;
+    }
+    if (club.district_code) {
+      const districtDoc = await District.findOne({ code: club.district_code }).lean();
+      club.district_name = districtDoc ? (districtDoc.name_with_type || districtDoc.name) : null;
+    }
 
     // Tự động trả lại bàn Holding đã hết hạn giữ chỗ
     await BilliardTable.updateMany(
@@ -233,13 +249,21 @@ const registerClub = async (req, res) => {
     // Thử geocode địa chỉ ngay khi đăng ký
     let lat = 0;
     let lng = 0;
-    let district = "";
+    let districtNameField = "";
     try {
-      const geoData = await geocodeAddress(address);
+      const province = await Province.findOne({ code: req.body.province_code }).lean();
+      const districtDoc = await District.findOne({ code: req.body.district_code }).lean();
+
+      const geoData = await geocodeAddress(
+        address, 
+        province ? province.name : "", 
+        districtDoc ? (districtDoc.name_with_type || districtDoc.name) : ""
+      );
+
       if (geoData) {
         lat = geoData.lat;
         lng = geoData.lng;
-        district = geoData.district;
+        districtNameField = geoData.district;
       }
     } catch (err) {
       console.warn("Lỗi geocode khi đăng ký:", err.message);
@@ -253,7 +277,9 @@ const registerClub = async (req, res) => {
       tax_code,
       lat,
       lng,
-      district,
+      district: districtNameField, // Old logic: what Mapbox thinks the district is
+      province_code: req.body.province_code,
+      district_code: req.body.district_code,
       description: description || "",
       opening_time: opening_time || "08:00",
       closing_time: closing_time || "23:30",

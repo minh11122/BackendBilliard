@@ -12,7 +12,9 @@ const clubSchema = new mongoose.Schema(
     closing_time: { type: String, default: "23:30" },
     lat: { type: Number },
     lng: { type: Number },
-    district: { type: String },
+    district: { type: String }, // Old field, kept for migration
+    province_code: { type: String },
+    district_code: { type: String },
     status: {
       type: String,
       enum: ["Pending", "Approved", "Rejected", "Locked"],

@@ -15,4 +15,5 @@ router.use("/bookings", bookingRoutes);
 
 router.use("/subscriptions", subscriptionRoutes);
 router.use("/tables", tableRoutes);
+router.use("/locations", require("./location.routes"));
 module.exports = router;
