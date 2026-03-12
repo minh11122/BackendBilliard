@@ -368,6 +368,32 @@ const googleAuth = async (req, res) => {
   }
 };
 
+const getInforById = async (req, res) => {
+  try {
+    const accountId = req.user.accountId; // lấy từ token
+
+    const account = await Account.findById(accountId)
+      .populate("role_id", "name") // nếu muốn lấy tên role
+      .select("-password_hash"); // ẩn password
+
+    if (!account) {
+      return res.status(404).json({
+        message: "Account not found",
+      });
+    }
+
+    res.json({
+      message: "Get profile success",
+      data: account,
+    });
+  } catch (error) {
+    res.status(500).json({
+      message: "Server error",
+      error: error.message,
+    });
+  }
+};
+
 module.exports = {
   getRoleNameById,
   register,
@@ -378,4 +404,5 @@ module.exports = {
   loginGoogle,
   resendOtp,
   googleAuth,
+  getInforById
 };
