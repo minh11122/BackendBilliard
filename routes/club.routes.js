@@ -6,5 +6,6 @@ const authenticate = require("../middleware/authenticate.middleware");
 router.post("/register-owner-account", authenticate, clubController.registerClub);
 router.get("/", clubController.getAllClubs);
 router.get("/owner/clubs", authenticate, clubController.getClubsByAccount);
+router.put("/:id", authenticate, clubController.updateClub);
 router.get("/:id", clubController.getClubById);
 module.exports = router;

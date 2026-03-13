@@ -66,9 +66,16 @@ const getAllClubs = async (req, res) => {
           }
         }
 
-        // Lấy ảnh bìa
-        const images = await Image.find({ club_id: club._id, image_type: "Banner" }).lean();
-        club.avatar = images.length > 0 ? images[0].image_url : null;
+        // Lấy ảnh bìa (Ưu tiên Avatar, sau đó đến Banner)
+        const clubImages = await Image.find({ 
+          club_id: club._id, 
+          image_type: { $in: ["Avatar", "Banner"] } 
+        }).lean();
+        
+        const mainImage = clubImages.find(img => img.image_type === "Avatar") || 
+                          clubImages.find(img => img.image_type === "Banner");
+                          
+        club.avatar = mainImage ? mainImage.image_url : null;
 
         // Lấy danh sách loại bàn
         const tables = await BilliardTable.find({ club_id: club._id }).populate("table_type_id").lean();
@@ -162,10 +169,19 @@ const getClubById = async (req, res) => {
     // Nếu có query thời gian, tính toán trạng thái khả dụng thực tế
     if (play_date && startTime) {
       const Booking = require("../models/booking.model");
+      
+      const openMin = timeToMinutes(club.opening_time || "08:00");
+      const is24h = club.opening_time === "00:00" && club.closing_time === "00:00";
+      
       const reqStartMin = timeToMinutes(startTime);
-      const reqEndMin = reqStartMin + (parseInt(duration) || 2) * 60;
+      const reqDuration = parseInt(duration) || 2;
+      const reqEndMin = reqStartMin + reqDuration * 60;
+      
       const targetDate = new Date(play_date);
       targetDate.setHours(0, 0, 0, 0);
+
+      const prevDay = new Date(targetDate);
+      prevDay.setDate(prevDay.getDate() - 1);
 
       const nextDay = new Date(targetDate);
       nextDay.setDate(nextDay.getDate() + 1);
@@ -173,36 +189,54 @@ const getClubById = async (req, res) => {
       for (const table of tables) {
         if (table.status === "Maintenance") continue;
 
-        // Tìm các booking chồng lấn trong khoảng thời gian yêu cầu
-        // Một booking chồng lấn nếu: start < requestedEnd && end > requestedStart
-        const overlappingBookings = await Booking.find({
+        // Fetch bookings from target date AND previous day (spill-over check)
+        const bookings = await Booking.find({
           table_id: table._id,
-          play_date: { $gte: targetDate, $lt: nextDay },
+          play_date: { $gte: prevDay, $lt: nextDay },
           status: { $in: ["Pending", "Booked", "Playing"] }
         }).lean();
 
         let isOccupied = false;
         let isHolding = false;
 
-        for (const b of overlappingBookings) {
-          const bStartMin = timeToMinutes(b.start_time);
-          const bEndMin = timeToMinutes(b.end_time);
+        for (const b of bookings) {
+          const bDate = new Date(b.play_date);
+          bDate.setHours(0, 0, 0, 0);
+          
+          let bStart = timeToMinutes(b.start_time);
+          let bEnd = timeToMinutes(b.end_time);
 
-          if (bStartMin < reqEndMin && bEndMin > reqStartMin) {
-            if (b.status === "Booked" || b.status === "Playing") {
-              isOccupied = true;
-              break;
-            }
-            if (b.status === "Pending") {
-              // Kiểm tra xem đơn Pending này còn trong thời gian giữ chỗ không
-              // Bàn model có held_until, nhưng nếu nhiều người cùng Pending thì Booking có thể check thêm
-              // Ở đây ta đơn giản hoá: Nếu có bất kỳ Pending nào chồng lấn thì coi như Holding
-              isHolding = true;
-            }
+          // Normalize times relative to targetDate
+          if (bDate < targetDate) {
+             // If booking started yesterday, shift its times by -1440 minutes relative to today's midnight?
+             // Actually, it's easier to think: does yesterday's booking end after 24:00?
+             // If yesterday's end < yesterday's start, it cross midnight.
+             if (bEnd <= bStart) {
+                // It ends today at bEnd minutes past midnight.
+                // Current query time is [reqStartMin, reqEndMin] relative to today's midnight.
+                // Overlap if: reqStartMin < bEnd
+                if (reqStartMin < bEnd) {
+                   if (b.status === "Booked" || b.status === "Playing") isOccupied = true;
+                   else isHolding = true;
+                }
+             }
+             continue; // Done with yesterday's booking
           }
+
+          // Case: Booking is today
+          // Does today's booking cross midnight into tomorrow?
+          if (bEnd <= bStart) bEnd += 24 * 60;
+
+          // Standard overlap check today
+          if (bStart < reqEndMin && bEnd > reqStartMin) {
+            if (b.status === "Booked" || b.status === "Playing") isOccupied = true;
+            else isHolding = true;
+          }
+          
+          if (isOccupied) break;
         }
 
-        if (isOccupied) table.status = "Holding"; // UI hiện tại dùng Holding cho màu bận
+        if (isOccupied) table.status = "Holding";
         else if (isHolding) table.status = "Holding";
         else table.status = "Available";
       }
@@ -296,7 +330,9 @@ const registerClub = async (req, res) => {
       lat: frontendLat,
       lng: frontendLng,
       province_code,
-      district_code
+      district_code,
+      province_name,
+      district_name
     } = req.body;
 
     if (!req.user || !req.user.accountId) {
@@ -360,6 +396,8 @@ const registerClub = async (req, res) => {
       district: districtNameField,
       province_code,
       district_code,
+      province_name,
+      district_name,
       description: description || "",
       opening_time: opening_time || "08:00",
       closing_time: closing_time || "23:30",
@@ -392,9 +430,93 @@ const registerClub = async (req, res) => {
     return res.status(500).json({ success: false, message: "Lỗi Server" });
   }
 };
+// Cập nhật thông tin câu lạc bộ
+const updateClub = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const account_id = req.user.accountId;
+    const {
+      name,
+      address,
+      phone,
+      description,
+      opening_time,
+      closing_time,
+      lat,
+      lng,
+      province_code,
+      district_code,
+      province_name,
+      district_name,
+      avatar, // Single URL
+      backgrounds // Array of URLs
+    } = req.body;
+
+    const club = await Club.findOne({ _id: id, account_id });
+    if (!club) {
+      return res.status(404).json({ success: false, message: "Không tìm thấy câu lạc bộ hoặc bạn không có quyền sửa" });
+    }
+
+    // Cập nhật các trường cơ bản
+    if (name) club.name = name;
+    if (address) club.address = address;
+    if (phone) club.phone = phone;
+    if (description) club.description = description;
+    if (opening_time) club.opening_time = opening_time;
+    if (closing_time) club.closing_time = closing_time;
+    if (lat !== undefined) club.lat = lat;
+    if (lng !== undefined) club.lng = lng;
+    if (province_code) club.province_code = province_code;
+    if (district_code) club.district_code = district_code;
+    if (province_name) club.province_name = province_name;
+    if (district_name) club.district_name = district_name;
+
+    // Map district name for backward compatibility if codes change
+    if (province_code || district_code) {
+      const districtDoc = await District.findOne({ code: district_code }).lean();
+      if (districtDoc) {
+        club.district = districtDoc.name_with_type || districtDoc.name;
+      }
+    }
+
+    await club.save();
+
+    // Xử lý ảnh Avatar (Chỉ giữ 1 cái mới nhất)
+    if (avatar) {
+      await Image.deleteMany({ club_id: id, image_type: "Avatar" });
+      await Image.create({
+        club_id: id,
+        image_url: avatar,
+        image_type: "Avatar"
+      });
+    }
+
+    // Xử lý ảnh Background (Nhiều ảnh)
+    if (Array.isArray(backgrounds)) {
+      // Ở đây ta đơn giản là ghi đè toàn bộ list background cũ bằng list mới
+      // Nếu muốn phức tạp hơn (xóa từng cái) thì cần logic khác, nhưng ghi đè là an toàn nhất từ frontend truyền xuống
+      await Image.deleteMany({ club_id: id, image_type: "Background" });
+      if (backgrounds.length > 0) {
+        const bgImages = backgrounds.map(url => ({
+          club_id: id,
+          image_url: url,
+          image_type: "Background"
+        }));
+        await Image.insertMany(bgImages);
+      }
+    }
+
+    res.status(200).json({ success: true, message: "Cập nhật thông tin thành công", data: club });
+  } catch (error) {
+    console.error("Lỗi khi cập nhật CLB:", error);
+    res.status(500).json({ success: false, message: "Lỗi Server" });
+  }
+};
+
 module.exports = {
   registerClub,
   getAllClubs,
   getClubById,
   getClubsByAccount,
+  updateClub
 };

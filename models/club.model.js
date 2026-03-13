@@ -15,6 +15,8 @@ const clubSchema = new mongoose.Schema(
     district: { type: String }, // Old field, kept for migration
     province_code: { type: String },
     district_code: { type: String },
+    province_name: { type: String },
+    district_name: { type: String },
     status: {
       type: String,
       enum: ["Pending", "Approved", "Rejected", "Locked"],

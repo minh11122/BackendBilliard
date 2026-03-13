@@ -32,34 +32,56 @@ const createBooking = async (req, res) => {
       return res.status(400).json({ success: false, message: "Bàn đang bảo trì" });
     }
 
-    // --- Slot-aware availability check ---
+    // --- Slot-aware availability check (Spill-over logic) ---
     const reqStartMin = timeToMinutes(start_time);
-    const reqEndMin = timeToMinutes(end_time);
+    const reqDuration = parseInt(duration) || 2;
+    const reqEndMin = reqStartMin + reqDuration * 60;
+    
     const targetDate = new Date(play_date);
     targetDate.setHours(0, 0, 0, 0);
+
+    const prevDay = new Date(targetDate);
+    prevDay.setDate(prevDay.getDate() - 1);
 
     const nextDay = new Date(targetDate);
     nextDay.setDate(nextDay.getDate() + 1);
 
-    // Tìm các đơn đặt/giữ chỗ có khả năng chồng lấn
-    const overlapping = await Booking.find({
+    // Fetch bookings from target date AND previous day
+    const bookings = await Booking.find({
       table_id,
-      play_date: { $gte: targetDate, $lt: nextDay },
+      play_date: { $gte: prevDay, $lt: nextDay },
       status: { $in: ["Pending", "Booked", "Playing"] }
     }).lean();
 
-    for (const b of overlapping) {
-      const bStartMin = timeToMinutes(b.start_time);
-      const bEndMin = timeToMinutes(b.end_time);
+    for (const b of bookings) {
+      const bDate = new Date(b.play_date);
+      bDate.setHours(0, 0, 0, 0);
+      
+      let bStart = timeToMinutes(b.start_time);
+      let bEnd = timeToMinutes(b.end_time);
 
-      if (bStartMin < reqEndMin && bEndMin > reqStartMin) {
+      let conflict = false;
+
+      if (bDate < targetDate) {
+        // Yesterday's booking: check if it ends today
+        if (bEnd <= bStart && reqStartMin < bEnd) {
+          conflict = true;
+        }
+      } else {
+        // Today's booking
+        if (bEnd <= bStart) bEnd += 24 * 60;
+        if (bStart < reqEndMin && bEnd > reqStartMin) {
+          conflict = true;
+        }
+      }
+
+      if (conflict) {
         // Nếu là đơn đã thanh toán hoặc đang chơi -> Chắn chắn bận
         if (b.status === "Booked" || b.status === "Playing") {
           return res.status(409).json({ success: false, message: "Khung giờ này đã có người đặt" });
         }
         
         // Nếu là đơn Pending -> Kiểm tra xem còn hiệu lực giữ chỗ không
-        // Ta cần check held_until của bàn tương ứng với đơn này (lấy record bàn hiện tại)
         if (b.status === "Pending") {
           if (table.status === "Holding" && table.held_until && new Date(table.held_until) > new Date()) {
              // Chỉ chặn nếu người đang giữ KHÔNG phải là user hiện tại
@@ -116,8 +138,8 @@ const createBooking = async (req, res) => {
       held_until: heldUntil
     });
 
-    // Lấy thông tin club
-    const club = await Club.findById(club_id).lean();
+    // Lấy thông tin club (đã query ở trên)
+    // const club = await Club.findById(club_id).lean();
 
     res.status(201).json({
       success: true,
