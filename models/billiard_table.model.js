@@ -10,10 +10,12 @@ const billiardTableSchema = new mongoose.Schema(
         price: { type: Number, required: true },
         status: {
             type: String,
-            enum: ["Available", "Maintenance"],
+            enum: ["Available", "Maintenance", "Holding"],
             default: "Available",
             required: true
         },
+        held_by: { type: mongoose.Schema.Types.ObjectId, ref: "Account" },
+        held_until: { type: Date },
         created_at: { type: Date, default: Date.now, required: true }
     },
     {
