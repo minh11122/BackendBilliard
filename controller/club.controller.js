@@ -225,7 +225,20 @@ const getClubsByAccount = async (req, res) => {
 //4/3/2026
 const registerClub = async (req, res) => {
   try {
-    const { name, address, phone, tax_code, description, legalDocuments, opening_time, closing_time } = req.body;
+    const { 
+      name, 
+      address, 
+      phone, 
+      tax_code, 
+      description, 
+      legalDocuments, 
+      opening_time, 
+      closing_time,
+      lat: frontendLat,
+      lng: frontendLng,
+      province_code,
+      district_code
+    } = req.body;
 
     if (!req.user || !req.user.accountId) {
       return res.status(401).json({ success: false, message: "Không xác thực được người dùng" });
@@ -246,27 +259,35 @@ const registerClub = async (req, res) => {
       });
     }
 
-    // Thử geocode địa chỉ ngay khi đăng ký
-    let lat = 0;
-    let lng = 0;
+    // Determine final coordinates and district name
+    let lat = frontendLat || 0;
+    let lng = frontendLng || 0;
     let districtNameField = "";
-    try {
-      const province = await Province.findOne({ code: req.body.province_code }).lean();
-      const districtDoc = await District.findOne({ code: req.body.district_code }).lean();
 
-      const geoData = await geocodeAddress(
-        address, 
-        province ? province.name : "", 
-        districtDoc ? (districtDoc.name_with_type || districtDoc.name) : ""
-      );
+    // Only geocode if coordinates are missing
+    if (!lat || !lng) {
+      try {
+        const province = await Province.findOne({ code: province_code }).lean();
+        const districtDoc = await District.findOne({ code: district_code }).lean();
 
-      if (geoData) {
-        lat = geoData.lat;
-        lng = geoData.lng;
-        districtNameField = geoData.district;
+        const geoData = await geocodeAddress(
+          address, 
+          province ? province.name : "", 
+          districtDoc ? (districtDoc.name_with_type || districtDoc.name) : ""
+        );
+
+        if (geoData) {
+          lat = geoData.lat;
+          lng = geoData.lng;
+          districtNameField = geoData.district;
+        }
+      } catch (err) {
+        console.warn("Lỗi geocode khi đăng ký:", err.message);
       }
-    } catch (err) {
-      console.warn("Lỗi geocode khi đăng ký:", err.message);
+    } else {
+        // If we have coordinates but no district text, try to get it for backward compatibility
+        const districtDoc = await District.findOne({ code: district_code }).lean();
+        districtNameField = districtDoc ? (districtDoc.name_with_type || districtDoc.name) : "";
     }
 
     const club = await Club.create({
@@ -277,9 +298,9 @@ const registerClub = async (req, res) => {
       tax_code,
       lat,
       lng,
-      district: districtNameField, // Old logic: what Mapbox thinks the district is
-      province_code: req.body.province_code,
-      district_code: req.body.district_code,
+      district: districtNameField,
+      province_code,
+      district_code,
       description: description || "",
       opening_time: opening_time || "08:00",
       closing_time: closing_time || "23:30",
