@@ -111,10 +111,19 @@ const getAllClubs = async (req, res) => {
   }
 };
 
+// Helper to compare times "HH:mm"
+const timeToMinutes = (timeStr) => {
+  if (!timeStr) return 0;
+  const [h, m] = timeStr.split(":").map(Number);
+  return h * 60 + m;
+};
+
 // Lấy chi tiết câu lạc bộ
 const getClubById = async (req, res) => {
   try {
     const { id } = req.params;
+    const { play_date, startTime, duration } = req.query;
+    
     const club = await Club.findById(id).lean();
 
     if (!club) {
@@ -135,7 +144,7 @@ const getClubById = async (req, res) => {
       club.district_name = districtDoc ? (districtDoc.name_with_type || districtDoc.name) : null;
     }
 
-    // Tự động trả lại bàn Holding đã hết hạn giữ chỗ
+    // Tự động trả lại bàn Holding đã hết hạn giữ chỗ (Cleanup chung)
     await BilliardTable.updateMany(
       {
         club_id: id,
@@ -147,8 +156,58 @@ const getClubById = async (req, res) => {
       }
     );
 
-    // Lấy danh sách bàn (sau khi đã cleanup)
+    // Lấy danh sách bàn
     const tables = await BilliardTable.find({ club_id: id }).populate("table_type_id").lean();
+    
+    // Nếu có query thời gian, tính toán trạng thái khả dụng thực tế
+    if (play_date && startTime) {
+      const Booking = require("../models/booking.model");
+      const reqStartMin = timeToMinutes(startTime);
+      const reqEndMin = reqStartMin + (parseInt(duration) || 2) * 60;
+      const targetDate = new Date(play_date);
+      targetDate.setHours(0, 0, 0, 0);
+
+      const nextDay = new Date(targetDate);
+      nextDay.setDate(nextDay.getDate() + 1);
+
+      for (const table of tables) {
+        if (table.status === "Maintenance") continue;
+
+        // Tìm các booking chồng lấn trong khoảng thời gian yêu cầu
+        // Một booking chồng lấn nếu: start < requestedEnd && end > requestedStart
+        const overlappingBookings = await Booking.find({
+          table_id: table._id,
+          play_date: { $gte: targetDate, $lt: nextDay },
+          status: { $in: ["Pending", "Booked", "Playing"] }
+        }).lean();
+
+        let isOccupied = false;
+        let isHolding = false;
+
+        for (const b of overlappingBookings) {
+          const bStartMin = timeToMinutes(b.start_time);
+          const bEndMin = timeToMinutes(b.end_time);
+
+          if (bStartMin < reqEndMin && bEndMin > reqStartMin) {
+            if (b.status === "Booked" || b.status === "Playing") {
+              isOccupied = true;
+              break;
+            }
+            if (b.status === "Pending") {
+              // Kiểm tra xem đơn Pending này còn trong thời gian giữ chỗ không
+              // Bàn model có held_until, nhưng nếu nhiều người cùng Pending thì Booking có thể check thêm
+              // Ở đây ta đơn giản hoá: Nếu có bất kỳ Pending nào chồng lấn thì coi như Holding
+              isHolding = true;
+            }
+          }
+        }
+
+        if (isOccupied) table.status = "Holding"; // UI hiện tại dùng Holding cho màu bận
+        else if (isHolding) table.status = "Holding";
+        else table.status = "Available";
+      }
+    }
+
     club.tables = tables;
 
     // Giá thấp nhất (Price từ)
@@ -158,7 +217,7 @@ const getClubById = async (req, res) => {
       club.priceFrom = 0;
     }
     
-    // Lấy rating thực tế cho detail (tuỳ chọn gộp aggregation)
+    // Lấy rating thực tế cho detail
     const feedbacks = await Feedback.find({ club_id: id }).populate("account_id").sort({ created_at: -1 }).lean();
     
     if (feedbacks.length > 0) {
