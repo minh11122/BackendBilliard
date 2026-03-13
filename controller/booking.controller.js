@@ -3,7 +3,14 @@ const BilliardTable = require("../models/billiard_table.model");
 const Club = require("../models/club.model");
 const Parameter = require("../models/parameter.model");
 
-const HOLD_MINUTES = 0.5;
+const HOLD_MINUTES = 10;
+
+// Helper to compare times "HH:mm"
+const timeToMinutes = (timeStr) => {
+  if (!timeStr) return 0;
+  const [h, m] = timeStr.split(":").map(Number);
+  return h * 60 + m;
+};
 
 // Tạo booking + giữ chỗ bàn
 const createBooking = async (req, res) => {
@@ -15,29 +22,75 @@ const createBooking = async (req, res) => {
       return res.status(400).json({ success: false, message: "Thiếu thông tin đặt bàn" });
     }
 
-    // Kiểm tra bàn có khả dụng không
+    // Kiểm tra bàn có tồn tại không
     const table = await BilliardTable.findById(table_id).populate("table_type_id");
     if (!table) {
       return res.status(404).json({ success: false, message: "Không tìm thấy bàn" });
     }
 
-    // Nếu bàn đang Holding nhưng đã hết hạn → trả lại Available
-    if (table.status === "Holding" && table.held_until && new Date(table.held_until) <= new Date()) {
-      await BilliardTable.findByIdAndUpdate(table_id, {
-        status: "Available", held_by: null, held_until: null
-      });
-      table.status = "Available";
-    }
-
-    // Kiểm tra nếu bàn đang Holding bởi người khác và chưa hết hạn
-    if (table.status === "Holding") {
-      if (String(table.held_by) !== String(accountId)) {
-        return res.status(409).json({ success: false, message: "Bàn đang được giữ chỗ bởi người khác" });
-      }
-    }
-
     if (table.status === "Maintenance") {
       return res.status(400).json({ success: false, message: "Bàn đang bảo trì" });
+    }
+
+    // --- Slot-aware availability check (Spill-over logic) ---
+    const reqStartMin = timeToMinutes(start_time);
+    const reqDuration = parseInt(duration) || 2;
+    const reqEndMin = reqStartMin + reqDuration * 60;
+    
+    const targetDate = new Date(play_date);
+    targetDate.setHours(0, 0, 0, 0);
+
+    const prevDay = new Date(targetDate);
+    prevDay.setDate(prevDay.getDate() - 1);
+
+    const nextDay = new Date(targetDate);
+    nextDay.setDate(nextDay.getDate() + 1);
+
+    // Fetch bookings from target date AND previous day
+    const bookings = await Booking.find({
+      table_id,
+      play_date: { $gte: prevDay, $lt: nextDay },
+      status: { $in: ["Pending", "Booked", "Playing"] }
+    }).lean();
+
+    for (const b of bookings) {
+      const bDate = new Date(b.play_date);
+      bDate.setHours(0, 0, 0, 0);
+      
+      let bStart = timeToMinutes(b.start_time);
+      let bEnd = timeToMinutes(b.end_time);
+
+      let conflict = false;
+
+      if (bDate < targetDate) {
+        // Yesterday's booking: check if it ends today
+        if (bEnd <= bStart && reqStartMin < bEnd) {
+          conflict = true;
+        }
+      } else {
+        // Today's booking
+        if (bEnd <= bStart) bEnd += 24 * 60;
+        if (bStart < reqEndMin && bEnd > reqStartMin) {
+          conflict = true;
+        }
+      }
+
+      if (conflict) {
+        // Nếu là đơn đã thanh toán hoặc đang chơi -> Chắn chắn bận
+        if (b.status === "Booked" || b.status === "Playing") {
+          return res.status(409).json({ success: false, message: "Khung giờ này đã có người đặt" });
+        }
+        
+        // Nếu là đơn Pending -> Kiểm tra xem còn hiệu lực giữ chỗ không
+        if (b.status === "Pending") {
+          if (table.status === "Holding" && table.held_until && new Date(table.held_until) > new Date()) {
+             // Chỉ chặn nếu người đang giữ KHÔNG phải là user hiện tại
+             if (String(b.account_id) !== String(accountId)) {
+               return res.status(409).json({ success: false, message: "Bàn đang được giữ chỗ bởi người khác trong khung giờ này" });
+             }
+          }
+        }
+      }
     }
 
     // Lấy tỷ lệ cọc từ Parameter (mặc định 30%)
@@ -85,8 +138,8 @@ const createBooking = async (req, res) => {
       held_until: heldUntil
     });
 
-    // Lấy thông tin club
-    const club = await Club.findById(club_id).lean();
+    // Lấy thông tin club (đã query ở trên)
+    // const club = await Club.findById(club_id).lean();
 
     res.status(201).json({
       success: true,
