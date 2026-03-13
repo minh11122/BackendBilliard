@@ -8,17 +8,11 @@ const createPayment = async ({
   type
 }) => {
 
+  console.log("CREATE PAYMENT CALLED");
+
   const orderCode = Date.now();
 
-  const paymentData = {
-    orderCode: orderCode,
-    amount: amount,
-    description: description,
-    returnUrl: "http://localhost:5173/owner/payment-success",
-    cancelUrl: "http://localhost:5173/owner/payment-cancel"
-  };
-
-  const paymentLink = await payosService.createPaymentLink(paymentData);
+  console.log("ORDER CODE:", orderCode);
 
   await TransactionHistory.create({
     account_id: accountId,
@@ -29,6 +23,18 @@ const createPayment = async ({
     transaction_time: new Date(),
     status: "PENDING"
   });
+
+  console.log("TRANSACTION CREATED");
+
+  const paymentData = {
+    orderCode,
+    amount,
+    description,
+    returnUrl: "http://localhost:5173/owner/payment-success",
+    cancelUrl: "http://localhost:5173/owner/payment-cancel"
+  };
+
+  const paymentLink = await payosService.createPaymentLink(paymentData);
 
   return {
     checkoutUrl: paymentLink.checkoutUrl,
