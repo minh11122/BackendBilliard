@@ -1,8 +1,11 @@
 const mongoose = require("mongoose");
 const BilliardTable = require("../models/billiard_table.model");
+const Booking = require("../models/booking.model");
 const TableType = require("../models/table_type.model");
+
 /**
  * Lấy danh sách bàn theo điều kiện (phân trang, tìm kiếm, lọc)
+ * Mỗi bàn được enrich thêm thông tin booking đang hoạt động (nếu có)
  */
 const getTables = async (club_id, { page = 1, limit = 5, search, table_type_id, status } = {}) => {
     const query = { club_id: new mongoose.Types.ObjectId(club_id) };
@@ -17,8 +20,8 @@ const getTables = async (club_id, { page = 1, limit = 5, search, table_type_id, 
         query.table_type_id = new mongoose.Types.ObjectId(table_type_id);
     }
 
-    // 3. Lọc theo Trạng thái
-    if (status) {
+    // 3. Lọc theo Trạng thái (chỉ áp dụng cho status bảng billiard_table)
+    if (status && ["Available", "Maintenance", "Holding"].includes(status)) {
         query.status = status;
     }
 
@@ -35,8 +38,40 @@ const getTables = async (club_id, { page = 1, limit = 5, search, table_type_id, 
     // 6. Đếm tổng số record để làm phân trang trên UI
     const total = await BilliardTable.countDocuments(query);
 
+    // 7. Lấy tất cả booking đang hoạt động cho các bàn này
+    const tableIds = tables.map(t => t._id);
+    const activeBookings = await Booking.find({
+        table_id: { $in: tableIds },
+        status: { $in: ["Playing", "Booked", "Pending"] }
+    })
+        .populate("account_id", "fullname email phone")
+        .sort({ created_at: -1 })
+        .lean();
+
+    // Tạo map: table_id -> booking mới nhất đang active
+    const bookingMap = {};
+    for (const b of activeBookings) {
+        const tid = b.table_id.toString();
+        // Ưu tiên Playing > Booked > Pending
+        if (!bookingMap[tid]) {
+            bookingMap[tid] = b;
+        } else {
+            const priority = { Playing: 3, Booked: 2, Pending: 1 };
+            if ((priority[b.status] || 0) > (priority[bookingMap[tid].status] || 0)) {
+                bookingMap[tid] = b;
+            }
+        }
+    }
+
+    // 8. Gắn booking vào từng bàn
+    const enrichedTables = tables.map(t => {
+        const tableObj = t.toObject();
+        tableObj.activeBooking = bookingMap[t._id.toString()] || null;
+        return tableObj;
+    });
+
     return {
-        tables,
+        tables: enrichedTables,
         total,
         totalPages: Math.ceil(total / limit),
         currentPage: parseInt(page)
@@ -59,28 +94,61 @@ const getTableById = async (tableId) => {
 };
 
 /**
- * Đếm số lượng bàn theo từng trạng thái (Tất cả, Sẵn sàng, Đang sử dụng, Bảo trì)
+ * Đếm số lượng bàn theo trạng thái thực tế (kết hợp billiard_table + booking)
+ * - Playing: bàn có booking đang ở trạng thái Playing
+ * - Booked: bàn có booking Booked (chưa check-in)
+ * - Holding: bàn đang bị giữ chỗ (Holding) hoặc có booking Pending
+ * - Available: bàn sẵn sàng, không có booking active
+ * - Maintenance: bàn đang bảo trì
  */
 const getTableStatusCounts = async (club_id) => {
-    const counts = await BilliardTable.aggregate([
-        { $match: { club_id: new mongoose.Types.ObjectId(club_id) } },
-        { $group: { _id: "$status", count: { $sum: 1 } } }
-    ]);
+    const clubObjId = new mongoose.Types.ObjectId(club_id);
 
-    // Khởi tạo object đếm mặc định
+    // Lấy tất cả bàn của club
+    const allTables = await BilliardTable.find({ club_id: clubObjId }).lean();
+    const tableIds = allTables.map(t => t._id);
+
+    // Lấy tất cả booking đang hoạt động
+    const activeBookings = await Booking.find({
+        table_id: { $in: tableIds },
+        status: { $in: ["Playing", "Booked", "Pending"] }
+    }).lean();
+
+    // Map booking theo table_id (ưu tiên Playing > Booked > Pending)
+    const bookingMap = {};
+    const priority = { Playing: 3, Booked: 2, Pending: 1 };
+    for (const b of activeBookings) {
+        const tid = b.table_id.toString();
+        if (!bookingMap[tid] || (priority[b.status] || 0) > (priority[bookingMap[tid].status] || 0)) {
+            bookingMap[tid] = b;
+        }
+    }
+
     const result = {
-        total: 0,
+        total: allTables.length,
         available: 0,
-        inUse: 0,
+        inUse: 0,  // Playing
+        booked: 0, // Booked (đã đặt, chưa check-in)
+        holding: 0, // Holding/Pending
         maintenance: 0
     };
 
-    counts.forEach(item => {
-        if (item._id === "Available") result.available = item.count;
-        if (item._id === "In Use") result.inUse = item.count;
-        if (item._id === "Maintenance") result.maintenance = item.count;
-        result.total += item.count;
-    });
+    for (const table of allTables) {
+        const tid = table._id.toString();
+        const booking = bookingMap[tid];
+
+        if (table.status === "Maintenance") {
+            result.maintenance++;
+        } else if (booking) {
+            if (booking.status === "Playing") result.inUse++;
+            else if (booking.status === "Booked") result.booked++;
+            else result.holding++; // Pending
+        } else if (table.status === "Holding") {
+            result.holding++;
+        } else {
+            result.available++;
+        }
+    }
 
     return result;
 };

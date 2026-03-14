@@ -262,8 +262,125 @@ const getMyBookings = async (req, res) => {
   }
 };
 
+// Nhân viên check-in booking bằng mã code_number
+const checkInBooking = async (req, res) => {
+  try {
+    const { code_number } = req.body;
+    const accountId = req.user.accountId; // ID của STAFF_CLUB
+    const clubId = req.user.club_id; // ID quán của nhân viên
+
+    if (!code_number) {
+      return res.status(400).json({ success: false, message: "Vui lòng nhập mã code_number" });
+    }
+
+    // Tìm booking
+    const booking = await Booking.findOne({ code_number })
+      .populate("table_id");
+
+    if (!booking) {
+      return res.status(404).json({ success: false, message: "Không tìm thấy đơn đặt bàn với mã này" });
+    }
+
+    // Chỉ cho phép check in trong quán của nhân viên đó
+    if (booking.table_id.club_id.toString() !== clubId.toString()) {
+      return res.status(403).json({ success: false, message: "Đơn đặt bàn này không thuộc quán của bạn" });
+    }
+
+    // Kiểm tra trạng thái booking
+    if (booking.status !== "Booked" && booking.status !== "Pending") {
+      return res.status(400).json({ success: false, message: `Không thể check-in đơn đang ở trạng thái: ${booking.status}` });
+    }
+
+    // Cập nhật trạng thái
+    booking.status = "Playing";
+    await booking.save();
+
+    res.status(200).json({
+      success: true,
+      message: "Check-in thành công. Trạng thái đã chuyển sang Playing.",
+      data: booking
+    });
+  } catch (error) {
+    console.error("Lỗi checkInBooking:", error);
+    res.status(500).json({ success: false, message: "Lỗi server" });
+  }
+};
+
+// Lấy danh sách bookings của club (dành cho staff / owner)
+const getClubBookings = async (req, res) => {
+  try {
+    const clubId = req.user.club_id;
+    if (!clubId) {
+      return res.status(400).json({ success: false, message: "Không xác định được club" });
+    }
+
+    const { status, date, search } = req.query;
+
+    // Tìm tất cả bàn thuộc club
+    const clubTables = await BilliardTable.find({ club_id: clubId }).select("_id").lean();
+    const tableIds = clubTables.map(t => t._id);
+
+    if (tableIds.length === 0) {
+      return res.status(200).json({ success: true, data: [], statusCounts: { total: 0, Pending: 0, Booked: 0, Playing: 0, Completed: 0, Cancelled: 0 } });
+    }
+
+    // Build query
+    const query = { table_id: { $in: tableIds } };
+
+    if (status && status !== "all") {
+      query.status = status;
+    }
+
+    if (date) {
+      const targetDate = new Date(date);
+      targetDate.setHours(0, 0, 0, 0);
+      const nextDay = new Date(targetDate);
+      nextDay.setDate(nextDay.getDate() + 1);
+      query.play_date = { $gte: targetDate, $lt: nextDay };
+    }
+
+    // Fetch bookings
+    let bookings = await Booking.find(query)
+      .populate({ path: "account_id", select: "fullname phone" })
+      .populate({ path: "table_id", select: "table_number table_type_id", populate: { path: "table_type_id", select: "name" } })
+      .sort({ created_at: -1 })
+      .lean();
+
+    // Search filter (client-side vì populate)
+    if (search && search.trim()) {
+      const s = search.trim().toLowerCase();
+      bookings = bookings.filter(b =>
+        (b.account_id?.fullname || "").toLowerCase().includes(s) ||
+        (b.account_id?.phone || "").includes(s) ||
+        (b.code_number || "").toLowerCase().includes(s)
+      );
+    }
+
+    // Đếm status counts (trên toàn bộ bookings của club, không filter)
+    const allBookingsForCounts = date
+      ? await Booking.find({ table_id: { $in: tableIds }, play_date: query.play_date }).lean()
+      : await Booking.find({ table_id: { $in: tableIds } }).lean();
+
+    const statusCounts = {
+      total: allBookingsForCounts.length,
+      Pending: allBookingsForCounts.filter(b => b.status === "Pending").length,
+      Booked: allBookingsForCounts.filter(b => b.status === "Booked").length,
+      Playing: allBookingsForCounts.filter(b => b.status === "Playing").length,
+      Completed: allBookingsForCounts.filter(b => b.status === "Completed").length,
+      Cancelled: allBookingsForCounts.filter(b => b.status === "Cancelled").length,
+    };
+
+    res.status(200).json({ success: true, data: bookings, statusCounts });
+  } catch (error) {
+    console.error("Lỗi getClubBookings:", error);
+    res.status(500).json({ success: false, message: "Lỗi server" });
+  }
+};
+
 module.exports = {
   createBooking,
   cancelHold,
-  getMyBookings
+  getMyBookings,
+  checkInBooking,
+  getClubBookings
 };

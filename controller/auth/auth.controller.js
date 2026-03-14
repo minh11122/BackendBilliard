@@ -254,6 +254,7 @@ const login = async (req, res) => {
         accountId: account._id,
         roleId: account.role_id._id,
         role: roleName,
+        ...(account.club_id && { club_id: account.club_id }),
       },
       process.env.JWT_SECRET,
       { expiresIn: "7d" },
