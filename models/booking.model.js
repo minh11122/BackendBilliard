@@ -14,7 +14,7 @@ const bookingSchema = new mongoose.Schema(
     note: { type: String },
     status: {
       type: String,
-      enum: ["Pending", "Booked", "Playing", "Cancelled", "Completed"],
+      enum: ["Pending","Payment Pending", "Booked", "Playing", "Cancelled", "Completed"],
       required: true
     },
     created_at: { type: Date, default: Date.now, required: true }
