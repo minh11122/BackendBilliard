@@ -374,6 +374,9 @@ const getClubBookings = async (req, res) => {
   } catch (error) {
     console.error("Lỗi getClubBookings:", error);
     res.status(500).json({ success: false, message: "Lỗi server" });
+  }
+};
+
 // Đánh dấu booking là Payment Pending sau khi khách đã chuyển khoản, chờ chủ quán xác nhận
 const markPaymentPending = async (req, res) => {
   try {
@@ -415,6 +418,6 @@ module.exports = {
   cancelHold,
   getMyBookings,
   checkInBooking,
-  getClubBookings
+  getClubBookings,
   markPaymentPending
 };
