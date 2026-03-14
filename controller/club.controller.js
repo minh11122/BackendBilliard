@@ -66,9 +66,16 @@ const getAllClubs = async (req, res) => {
           }
         }
 
-        // Lấy ảnh bìa
-        const images = await Image.find({ club_id: club._id, image_type: "Banner" }).lean();
-        club.avatar = images.length > 0 ? images[0].image_url : null;
+        // Lấy ảnh bìa (Ưu tiên Avatar, sau đó đến Banner)
+        const clubImages = await Image.find({ 
+          club_id: club._id, 
+          image_type: { $in: ["Avatar", "Banner"] } 
+        }).lean();
+        
+        const mainImage = clubImages.find(img => img.image_type === "Avatar") || 
+                          clubImages.find(img => img.image_type === "Banner");
+                          
+        club.avatar = mainImage ? mainImage.image_url : null;
 
         // Lấy danh sách loại bàn
         const tables = await BilliardTable.find({ club_id: club._id }).populate("table_type_id").lean();
@@ -111,10 +118,19 @@ const getAllClubs = async (req, res) => {
   }
 };
 
+// Helper to compare times "HH:mm"
+const timeToMinutes = (timeStr) => {
+  if (!timeStr) return 0;
+  const [h, m] = timeStr.split(":").map(Number);
+  return h * 60 + m;
+};
+
 // Lấy chi tiết câu lạc bộ
 const getClubById = async (req, res) => {
   try {
     const { id } = req.params;
+    const { play_date, startTime, duration } = req.query;
+    
     const club = await Club.findById(id).lean();
 
     if (!club) {
@@ -135,7 +151,7 @@ const getClubById = async (req, res) => {
       club.district_name = districtDoc ? (districtDoc.name_with_type || districtDoc.name) : null;
     }
 
-    // Tự động trả lại bàn Holding đã hết hạn giữ chỗ
+    // Tự động trả lại bàn Holding đã hết hạn giữ chỗ (Cleanup chung)
     await BilliardTable.updateMany(
       {
         club_id: id,
@@ -147,8 +163,85 @@ const getClubById = async (req, res) => {
       }
     );
 
-    // Lấy danh sách bàn (sau khi đã cleanup)
+    // Lấy danh sách bàn
     const tables = await BilliardTable.find({ club_id: id }).populate("table_type_id").lean();
+    
+    // Nếu có query thời gian, tính toán trạng thái khả dụng thực tế
+    if (play_date && startTime) {
+      const Booking = require("../models/booking.model");
+      
+      const openMin = timeToMinutes(club.opening_time || "08:00");
+      const is24h = club.opening_time === "00:00" && club.closing_time === "00:00";
+      
+      const reqStartMin = timeToMinutes(startTime);
+      const reqDuration = parseInt(duration) || 2;
+      const reqEndMin = reqStartMin + reqDuration * 60;
+      
+      const targetDate = new Date(play_date);
+      targetDate.setHours(0, 0, 0, 0);
+
+      const prevDay = new Date(targetDate);
+      prevDay.setDate(prevDay.getDate() - 1);
+
+      const nextDay = new Date(targetDate);
+      nextDay.setDate(nextDay.getDate() + 1);
+
+      for (const table of tables) {
+        if (table.status === "Maintenance") continue;
+
+        // Fetch bookings from target date AND previous day (spill-over check)
+        const bookings = await Booking.find({
+          table_id: table._id,
+          play_date: { $gte: prevDay, $lt: nextDay },
+          status: { $in: ["Pending", "Booked", "Playing"] }
+        }).lean();
+
+        let isOccupied = false;
+        let isHolding = false;
+
+        for (const b of bookings) {
+          const bDate = new Date(b.play_date);
+          bDate.setHours(0, 0, 0, 0);
+          
+          let bStart = timeToMinutes(b.start_time);
+          let bEnd = timeToMinutes(b.end_time);
+
+          // Normalize times relative to targetDate
+          if (bDate < targetDate) {
+             // If booking started yesterday, shift its times by -1440 minutes relative to today's midnight?
+             // Actually, it's easier to think: does yesterday's booking end after 24:00?
+             // If yesterday's end < yesterday's start, it cross midnight.
+             if (bEnd <= bStart) {
+                // It ends today at bEnd minutes past midnight.
+                // Current query time is [reqStartMin, reqEndMin] relative to today's midnight.
+                // Overlap if: reqStartMin < bEnd
+                if (reqStartMin < bEnd) {
+                   if (b.status === "Booked" || b.status === "Playing") isOccupied = true;
+                   else isHolding = true;
+                }
+             }
+             continue; // Done with yesterday's booking
+          }
+
+          // Case: Booking is today
+          // Does today's booking cross midnight into tomorrow?
+          if (bEnd <= bStart) bEnd += 24 * 60;
+
+          // Standard overlap check today
+          if (bStart < reqEndMin && bEnd > reqStartMin) {
+            if (b.status === "Booked" || b.status === "Playing") isOccupied = true;
+            else isHolding = true;
+          }
+          
+          if (isOccupied) break;
+        }
+
+        if (isOccupied) table.status = "Holding";
+        else if (isHolding) table.status = "Holding";
+        else table.status = "Available";
+      }
+    }
+
     club.tables = tables;
 
     // Giá thấp nhất (Price từ)
@@ -158,7 +251,7 @@ const getClubById = async (req, res) => {
       club.priceFrom = 0;
     }
     
-    // Lấy rating thực tế cho detail (tuỳ chọn gộp aggregation)
+    // Lấy rating thực tế cho detail
     const feedbacks = await Feedback.find({ club_id: id }).populate("account_id").sort({ created_at: -1 }).lean();
     
     if (feedbacks.length > 0) {
@@ -225,7 +318,22 @@ const getClubsByAccount = async (req, res) => {
 //4/3/2026
 const registerClub = async (req, res) => {
   try {
-    const { name, address, phone, tax_code, description, legalDocuments, opening_time, closing_time } = req.body;
+    const { 
+      name, 
+      address, 
+      phone, 
+      tax_code, 
+      description, 
+      legalDocuments, 
+      opening_time, 
+      closing_time,
+      lat: frontendLat,
+      lng: frontendLng,
+      province_code,
+      district_code,
+      province_name,
+      district_name
+    } = req.body;
 
     if (!req.user || !req.user.accountId) {
       return res.status(401).json({ success: false, message: "Không xác thực được người dùng" });
@@ -246,27 +354,35 @@ const registerClub = async (req, res) => {
       });
     }
 
-    // Thử geocode địa chỉ ngay khi đăng ký
-    let lat = 0;
-    let lng = 0;
+    // Determine final coordinates and district name
+    let lat = frontendLat || 0;
+    let lng = frontendLng || 0;
     let districtNameField = "";
-    try {
-      const province = await Province.findOne({ code: req.body.province_code }).lean();
-      const districtDoc = await District.findOne({ code: req.body.district_code }).lean();
 
-      const geoData = await geocodeAddress(
-        address, 
-        province ? province.name : "", 
-        districtDoc ? (districtDoc.name_with_type || districtDoc.name) : ""
-      );
+    // Only geocode if coordinates are missing
+    if (!lat || !lng) {
+      try {
+        const province = await Province.findOne({ code: province_code }).lean();
+        const districtDoc = await District.findOne({ code: district_code }).lean();
 
-      if (geoData) {
-        lat = geoData.lat;
-        lng = geoData.lng;
-        districtNameField = geoData.district;
+        const geoData = await geocodeAddress(
+          address, 
+          province ? province.name : "", 
+          districtDoc ? (districtDoc.name_with_type || districtDoc.name) : ""
+        );
+
+        if (geoData) {
+          lat = geoData.lat;
+          lng = geoData.lng;
+          districtNameField = geoData.district;
+        }
+      } catch (err) {
+        console.warn("Lỗi geocode khi đăng ký:", err.message);
       }
-    } catch (err) {
-      console.warn("Lỗi geocode khi đăng ký:", err.message);
+    } else {
+        // If we have coordinates but no district text, try to get it for backward compatibility
+        const districtDoc = await District.findOne({ code: district_code }).lean();
+        districtNameField = districtDoc ? (districtDoc.name_with_type || districtDoc.name) : "";
     }
 
     const club = await Club.create({
@@ -277,9 +393,11 @@ const registerClub = async (req, res) => {
       tax_code,
       lat,
       lng,
-      district: districtNameField, // Old logic: what Mapbox thinks the district is
-      province_code: req.body.province_code,
-      district_code: req.body.district_code,
+      district: districtNameField,
+      province_code,
+      district_code,
+      province_name,
+      district_name,
       description: description || "",
       opening_time: opening_time || "08:00",
       closing_time: closing_time || "23:30",
@@ -312,9 +430,93 @@ const registerClub = async (req, res) => {
     return res.status(500).json({ success: false, message: "Lỗi Server" });
   }
 };
+// Cập nhật thông tin câu lạc bộ
+const updateClub = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const account_id = req.user.accountId;
+    const {
+      name,
+      address,
+      phone,
+      description,
+      opening_time,
+      closing_time,
+      lat,
+      lng,
+      province_code,
+      district_code,
+      province_name,
+      district_name,
+      avatar, // Single URL
+      backgrounds // Array of URLs
+    } = req.body;
+
+    const club = await Club.findOne({ _id: id, account_id });
+    if (!club) {
+      return res.status(404).json({ success: false, message: "Không tìm thấy câu lạc bộ hoặc bạn không có quyền sửa" });
+    }
+
+    // Cập nhật các trường cơ bản
+    if (name) club.name = name;
+    if (address) club.address = address;
+    if (phone) club.phone = phone;
+    if (description) club.description = description;
+    if (opening_time) club.opening_time = opening_time;
+    if (closing_time) club.closing_time = closing_time;
+    if (lat !== undefined) club.lat = lat;
+    if (lng !== undefined) club.lng = lng;
+    if (province_code) club.province_code = province_code;
+    if (district_code) club.district_code = district_code;
+    if (province_name) club.province_name = province_name;
+    if (district_name) club.district_name = district_name;
+
+    // Map district name for backward compatibility if codes change
+    if (province_code || district_code) {
+      const districtDoc = await District.findOne({ code: district_code }).lean();
+      if (districtDoc) {
+        club.district = districtDoc.name_with_type || districtDoc.name;
+      }
+    }
+
+    await club.save();
+
+    // Xử lý ảnh Avatar (Chỉ giữ 1 cái mới nhất)
+    if (avatar) {
+      await Image.deleteMany({ club_id: id, image_type: "Avatar" });
+      await Image.create({
+        club_id: id,
+        image_url: avatar,
+        image_type: "Avatar"
+      });
+    }
+
+    // Xử lý ảnh Background (Nhiều ảnh)
+    if (Array.isArray(backgrounds)) {
+      // Ở đây ta đơn giản là ghi đè toàn bộ list background cũ bằng list mới
+      // Nếu muốn phức tạp hơn (xóa từng cái) thì cần logic khác, nhưng ghi đè là an toàn nhất từ frontend truyền xuống
+      await Image.deleteMany({ club_id: id, image_type: "Background" });
+      if (backgrounds.length > 0) {
+        const bgImages = backgrounds.map(url => ({
+          club_id: id,
+          image_url: url,
+          image_type: "Background"
+        }));
+        await Image.insertMany(bgImages);
+      }
+    }
+
+    res.status(200).json({ success: true, message: "Cập nhật thông tin thành công", data: club });
+  } catch (error) {
+    console.error("Lỗi khi cập nhật CLB:", error);
+    res.status(500).json({ success: false, message: "Lỗi Server" });
+  }
+};
+
 module.exports = {
   registerClub,
   getAllClubs,
   getClubById,
   getClubsByAccount,
+  updateClub
 };

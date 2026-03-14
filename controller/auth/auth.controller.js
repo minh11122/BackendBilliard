@@ -393,6 +393,51 @@ const getInforById = async (req, res) => {
     });
   }
 };
+const updateProfile = async (req, res) => {
+  try {
+    const accountId = req.user.accountId;
+
+    const { fullname, phone, avatar_url } = req.body;
+
+    // validate phone (VN)
+    const phoneRegex = /^(0|\+84)[0-9]{9}$/;
+
+    if (phone && !phoneRegex.test(phone)) {
+      return res.status(400).json({
+        message: "Số điện thoại không hợp lệ",
+      });
+    }
+
+    const account = await Account.findById(accountId);
+
+    if (!account) {
+      return res.status(404).json({
+        message: "Account not found",
+      });
+    }
+
+    // update field
+    if (fullname !== undefined) account.fullname = fullname;
+    if (phone !== undefined) account.phone = phone;
+    if (avatar_url !== undefined) account.avatar_url = avatar_url;
+
+    await account.save();
+
+    const result = await Account.findById(accountId)
+      .populate("role_id", "name")
+      .select("-password_hash");
+
+    res.json({
+      message: "Cập nhật profile thành công",
+      data: result,
+    });
+  } catch (error) {
+    res.status(500).json({
+      message: "Server error",
+      error: error.message,
+    });
+  }
+};
 
 module.exports = {
   getRoleNameById,
@@ -404,5 +449,6 @@ module.exports = {
   loginGoogle,
   resendOtp,
   googleAuth,
-  getInforById
+  getInforById,
+  updateProfile
 };
