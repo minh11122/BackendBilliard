@@ -44,9 +44,15 @@ const accountSchema = new mongoose.Schema(
       required: [true, "Role is required"],
     },
 
+    club_id: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Club",
+      default: null,
+    },
+
     status: {
       type: String,
-      enum: ["PENDING", "ACTIVE", "INACTIVE", "BANNED"],
+      enum: ["PENDING", "ACTIVE", "INACTIVE", "BANNED","DELETED"],
       default: "PENDING",
     },
   },
