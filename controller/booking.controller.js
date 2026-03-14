@@ -138,8 +138,8 @@ const createBooking = async (req, res) => {
       held_until: heldUntil
     });
 
-    // Lấy thông tin club (đã query ở trên)
-    // const club = await Club.findById(club_id).lean();
+    // Lấy thông tin club
+    const club = club_id ? await Club.findById(club_id).lean() : null;
 
     res.status(201).json({
       success: true,
