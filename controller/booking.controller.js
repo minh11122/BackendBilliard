@@ -395,21 +395,60 @@ const markPaymentPending = async (req, res) => {
     if (booking.status !== "Pending") {
       return res.status(400).json({
         success: false,
-        message: "Chỉ có thể chuyển trạng thái từ Pending sang Payment Pending"
+        message: "Đơn đặt bàn hiện không ở trạng thái Chờ thanh toán"
       });
     }
 
-    booking.status = "Payment Pending";
+    booking.status = "Pending";
     await booking.save();
 
     return res.status(200).json({
       success: true,
-      message: "Cập nhật trạng thái đơn đặt bàn thành Payment Pending",
+      message: "Cập nhật trạng thái đơn đặt bàn thành Chờ thanh toán",
       data: booking
     });
   } catch (error) {
     console.error("Lỗi markPaymentPending:", error);
     return res.status(500).json({ success: false, message: "Lỗi server" });
+  }
+};
+
+// Xác nhận thanh toán đặt bàn (chuyển từ Pending -> Booked)
+const confirmPayment = async (req, res) => {
+  try {
+    const { id } = req.params;
+    
+    const booking = await Booking.findById(id);
+    if (!booking) {
+      return res.status(404).json({ success: false, message: "Không tìm thấy đơn đặt bàn" });
+    }
+
+    if (booking.status !== "Pending") {
+      return res.status(400).json({ 
+        success: false, 
+        message: `Không thể xác nhận thanh toán đơn đang ở trạng thái: ${booking.status}` 
+      });
+    }
+
+    // Cập nhật trạng thái booking
+    booking.status = "Booked";
+    await booking.save();
+
+    // Cập nhật trạng thái bàn về Available (giải phóng Holding)
+    await BilliardTable.findByIdAndUpdate(booking.table_id, {
+      status: "Available",
+      held_by: null,
+      held_until: null
+    });
+
+    res.status(200).json({
+      success: true,
+      message: "Xác nhận thanh toán thành công",
+      data: booking
+    });
+  } catch (error) {
+    console.error("Lỗi confirmPayment:", error);
+    res.status(500).json({ success: false, message: "Lỗi server" });
   }
 };
 
@@ -419,5 +458,6 @@ module.exports = {
   getMyBookings,
   checkInBooking,
   getClubBookings,
-  markPaymentPending
+  markPaymentPending,
+  confirmPayment
 };
