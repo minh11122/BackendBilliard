@@ -438,6 +438,59 @@ const updateProfile = async (req, res) => {
     });
   }
 };
+const updatePassword = async (req, res) => {
+  try {
+    const accountId = req.user.accountId;
+    const { oldPassword, newPassword, confirmPassword } = req.body;
+
+    if (!oldPassword || !newPassword || !confirmPassword) {
+      return res.status(400).json({
+        message: "Vui lòng nhập đầy đủ thông tin",
+      });
+    }
+
+    if (newPassword !== confirmPassword) {
+      return res.status(400).json({
+        message: "Mật khẩu xác nhận không khớp",
+      });
+    }
+
+    const account = await Account.findById(accountId).select("+password_hash");
+
+    if (!account) {
+      return res.status(404).json({
+        message: "Account không tồn tại",
+      });
+    }
+
+    if (account.provider !== "local") {
+      return res.status(400).json({
+        message: "Tài khoản Google không có mật khẩu",
+      });
+    }
+
+    const isMatch = await bcrypt.compare(oldPassword, account.password_hash);
+
+    if (!isMatch) {
+      return res.status(400).json({
+        message: "Mật khẩu cũ không đúng",
+      });
+    }
+
+    const hashedPassword = await bcrypt.hash(newPassword, 10);
+
+    account.password_hash = hashedPassword;
+    await account.save();
+
+    res.json({
+      message: "Đổi mật khẩu thành công",
+    });
+  } catch (error) {
+    res.status(500).json({
+      message: error.message,
+    });
+  }
+};
 
 module.exports = {
   getRoleNameById,
@@ -450,5 +503,6 @@ module.exports = {
   resendOtp,
   googleAuth,
   getInforById,
-  updateProfile
+  updateProfile,
+  updatePassword
 };
