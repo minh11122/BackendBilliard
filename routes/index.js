@@ -6,11 +6,13 @@ const staffRoutes = require('./staff.routes');
 const subscriptionRoutes = require('./subscription.routes')
 const bookingRoutes = require('./booking.routes');
 const tableRoutes = require('./billiardTable.routes');
+const staffClubRoutes = require('./staff_club.routes');
 
 router.use(authRoutes);
 router.use("/services", require("./service.routes"));
 router.use("/clubs", clubRoutes);
 router.use("/staff", staffRoutes);
+router.use("/staff-club", staffClubRoutes);
 router.use("/bookings", bookingRoutes);
 
 router.use("/subscriptions", subscriptionRoutes);
