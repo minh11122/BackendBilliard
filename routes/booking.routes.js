@@ -14,9 +14,25 @@ router.post("/:id/cancel-hold", authenticate, bookingController.cancelHold);
 
 // Lấy danh sách booking của club (staff / owner)
 const authorizeRole = require("../middleware/authorizeRole.middleware");
-router.get("/club", authenticate, authorizeRole("OWNER", "STAFF_CLUB"), bookingController.getClubBookings);
+router.get(
+  "/club",
+  authenticate,
+  authorizeRole("OWNER", "STAFF_CLUB"),
+  bookingController.getClubBookings,
+);
 
 // Nhân viên check-in booking bằng code_number
-router.post("/checkin", authenticate, authorizeRole("OWNER", "STAFF_CLUB"), bookingController.checkInBooking);
+router.post(
+  "/checkin",
+  authenticate,
+  authorizeRole("OWNER", "STAFF_CLUB"),
+  bookingController.checkInBooking,
+);
+// Đánh dấu booking là Payment Pending sau khi khách đã chuyển khoản
+router.post(
+  "/:id/payment-pending",
+  authenticate,
+  bookingController.markPaymentPending,
+);
 
 module.exports = router;

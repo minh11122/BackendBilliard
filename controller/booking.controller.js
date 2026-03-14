@@ -374,6 +374,39 @@ const getClubBookings = async (req, res) => {
   } catch (error) {
     console.error("Lỗi getClubBookings:", error);
     res.status(500).json({ success: false, message: "Lỗi server" });
+// Đánh dấu booking là Payment Pending sau khi khách đã chuyển khoản, chờ chủ quán xác nhận
+const markPaymentPending = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const accountId = req.user?.accountId;
+
+    const booking = await Booking.findById(id);
+    if (!booking) {
+      return res.status(404).json({ success: false, message: "Không tìm thấy đơn đặt bàn" });
+    }
+
+    if (!accountId || String(booking.account_id) !== String(accountId)) {
+      return res.status(403).json({ success: false, message: "Bạn không có quyền cập nhật đơn đặt bàn này" });
+    }
+
+    if (booking.status !== "Pending") {
+      return res.status(400).json({
+        success: false,
+        message: "Chỉ có thể chuyển trạng thái từ Pending sang Payment Pending"
+      });
+    }
+
+    booking.status = "Payment Pending";
+    await booking.save();
+
+    return res.status(200).json({
+      success: true,
+      message: "Cập nhật trạng thái đơn đặt bàn thành Payment Pending",
+      data: booking
+    });
+  } catch (error) {
+    console.error("Lỗi markPaymentPending:", error);
+    return res.status(500).json({ success: false, message: "Lỗi server" });
   }
 };
 
@@ -383,4 +416,5 @@ module.exports = {
   getMyBookings,
   checkInBooking,
   getClubBookings
+  markPaymentPending
 };
