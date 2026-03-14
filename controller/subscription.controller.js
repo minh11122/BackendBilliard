@@ -48,19 +48,32 @@ const purchaseSubscription = async (req, res) => {
       subscription.price -
       (subscription.price * (subscription.discount_percent || 0)) / 100;
 
-    const newSubscription = await SubscriptionAccount.create({
-      subscription_id,
-      account_id: accountId,
-      purchase_date: purchaseDate,
-      expire_date: expireDate,
-      purchase_price: purchasePrice,
-      status: "Active"
+    let accountSubscription = await SubscriptionAccount.findOne({
+      account_id: accountId
     });
+
+    if (accountSubscription) {
+      accountSubscription.subscription_id = subscription_id;
+      accountSubscription.purchase_date = purchaseDate;
+      accountSubscription.expire_date = expireDate;
+      accountSubscription.purchase_price = purchasePrice;
+      accountSubscription.status = "Active";
+      await accountSubscription.save();
+    } else {
+      accountSubscription = await SubscriptionAccount.create({
+        subscription_id,
+        account_id: accountId,
+        purchase_date: purchaseDate,
+        expire_date: expireDate,
+        purchase_price: purchasePrice,
+        status: "Active"
+      });
+    }
 
     return res.status(201).json({
       success: true,
       message: "Đăng ký gói thành công",
-      data: newSubscription
+      data: accountSubscription
     });
   } catch (error) {
     console.error("Lỗi mua subscription:", error);

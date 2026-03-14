@@ -2,8 +2,8 @@ const mongoose = require("mongoose");
 
 const subscriptionAccountSchema = new mongoose.Schema(
   {
-    subscription_id: mongoose.Schema.Types.ObjectId,
-    account_id: mongoose.Schema.Types.ObjectId,
+    subscription_id: { type: mongoose.Schema.Types.ObjectId, ref: "Subscription" },
+    account_id: { type: mongoose.Schema.Types.ObjectId, ref: "Account", required: true },
     purchase_date: Date,
     expire_date: Date,
     purchase_price: Number,

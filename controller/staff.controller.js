@@ -4,6 +4,8 @@ const Booking = require("../models/booking.model");
 const Feedback = require("../models/feedback.model");
 const Post = require("../models/post.model");
 const Account = require("../models/account.model");
+const Role = require("../models/role.model");
+const { sendClubApprovalEmail, sendClubRejectionEmail } = require("../services/mail.service");
 
 // ==================== GET DASHBOARD ====================
 const getDashboard = async (req, res) => {
@@ -116,6 +118,23 @@ const approveClub = async (req, res) => {
             { new: true }
         );
         if (!club) return res.status(404).json({ success: false, message: "Không tìm thấy CLB" });
+
+        // Lấy thông tin tài khoản trực tiếp để đảm bảo có email
+        const account = await Account.findById(club.account_id);
+
+        if (account) {
+            // Nâng cấp role người dùng sang OWNER với ID cứng (từ Customer "65d1a1111111111111111112")
+            const ownerRoleId = "65d1a1111111111111111111";
+            await Account.findByIdAndUpdate(account._id, { role_id: ownerRoleId });
+            console.log(`Đã chuyển role_id của tài khoản ${account.email} sang ${ownerRoleId} (OWNER)`);
+
+            // Gửi email thông báo được duyệt
+            if (account.email) {
+                console.log("Sending APPROVE email to:", account.email);
+                await sendClubApprovalEmail(account.email).catch(e => console.error("Lỗi gửi email approve:", e));
+            }
+        }
+
         res.status(200).json({ success: true, message: "Đã duyệt CLB", data: club });
     } catch (error) {
         console.error("Lỗi approveClub:", error);
@@ -127,12 +146,26 @@ const approveClub = async (req, res) => {
 const rejectClub = async (req, res) => {
     try {
         const { reason } = req.body;
+        console.log("Rejecting club ID:", req.params.id, "Reason:", reason);
+
         const club = await Club.findByIdAndUpdate(
             req.params.id,
             { status: "Rejected" },
             { new: true }
         );
         if (!club) return res.status(404).json({ success: false, message: "Không tìm thấy CLB" });
+
+        // Lấy thông tin tài khoản trực tiếp để lấy email
+        const account = await Account.findById(club.account_id);
+
+        // Gửi email thông báo từ chối kèm lý do
+        if (account && account.email) {
+            console.log("Sending REJECT email to:", account.email, "With reason:", reason);
+            await sendClubRejectionEmail(account.email, reason).catch(e => console.error("Lỗi gửi email reject:", e));
+        } else {
+            console.warn("Không tìm thấy email của tài khoản đăng ký CLB");
+        }
+
         res.status(200).json({ success: true, message: "Đã từ chối CLB", data: club });
     } catch (error) {
         console.error("Lỗi rejectClub:", error);

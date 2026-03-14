@@ -1,29 +1,28 @@
-const axios = require("axios");
+const nodemailer = require("nodemailer");
 require("dotenv").config(); // load biến môi trường từ .env
 
-const BREVO_API_KEY = process.env.BREVO_API_KEY; // lấy từ .env
+const transporter = nodemailer.createTransport({
+  host: process.env.SMTP_HOST || "smtp.gmail.com",
+  port: process.env.SMTP_PORT || 587,
+  secure: false, // true for 465, false for other ports
+  auth: {
+    user: process.env.EMAIL_USERNAME,
+    pass: process.env.EMAIL_PASSWORD,
+  },
+});
 
 const sendMail = async ({ to, subject, html }) => {
   try {
-    const res = await axios.post(
-      "https://api.brevo.com/v3/smtp/email",
-      {
-        sender: { name: "Billard", email: "lem29140@gmail.com" },
-        to: [{ email: to }],
-        subject,
-        htmlContent: html,
-      },
-      {
-        headers: {
-          "api-key": BREVO_API_KEY,
-          "Content-Type": "application/json",
-        },
-      }
-    );
-    console.log("✅ Email sent via Brevo API", res.data);
-    return { success: true, data: res.data };
+    const info = await transporter.sendMail({
+      from: `"Billiard System" <${process.env.EMAIL_USERNAME}>`, // sender address
+      to, // list of receivers (can be comma separated string or array)
+      subject, // Subject line
+      html, // html body
+    });
+    console.log("✅ Email sent: ", info.messageId);
+    return { success: true, data: info };
   } catch (error) {
-    console.error("❌ Send mail via API failed", error.response?.data || error.message);
+    console.error("❌ Send mail failed", error.message);
     return { success: false, error: error.message };
   }
 };
