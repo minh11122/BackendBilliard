@@ -352,7 +352,8 @@ const getClubBookings = async (req, res) => {
       bookings = bookings.filter(b =>
         (b.account_id?.fullname || "").toLowerCase().includes(s) ||
         (b.account_id?.phone || "").includes(s) ||
-        (b.code_number || "").toLowerCase().includes(s)
+        (b.code_number || "").toLowerCase().includes(s) ||
+        (b.guest_name || "").toLowerCase().includes(s)
       );
     }
 
@@ -452,6 +453,83 @@ const confirmPayment = async (req, res) => {
   }
 };
 
+// Nhân viên tạo đặt bàn trực tiếp (walk-in) cho khách đến quán
+const createWalkInBooking = async (req, res) => {
+  try {
+    const { guest_name, table_number, play_date, start_time } = req.body;
+    const staffId = req.user.accountId;
+    const clubId = req.user.club_id;
+
+    if (!guest_name || !table_number || !play_date || !start_time) {
+      return res.status(400).json({ success: false, message: "Vui lòng nhập đầy đủ: tên khách, số bàn, ngày chơi, giờ bắt đầu" });
+    }
+
+    if (!clubId) {
+      return res.status(400).json({ success: false, message: "Không xác định được quán của nhân viên" });
+    }
+
+    // Tìm bàn theo table_number trong club
+    const table = await BilliardTable.findOne({ club_id: clubId, table_number: table_number.trim() });
+    if (!table) {
+      return res.status(404).json({ success: false, message: `Không tìm thấy bàn số "${table_number}" trong quán` });
+    }
+
+    if (table.status === "Maintenance") {
+      return res.status(400).json({ success: false, message: "Bàn đang bảo trì, không thể nhận khách" });
+    }
+
+    // Kiểm tra xem bàn có đang được đặt trong khung giờ này không
+    const targetDate = new Date(play_date);
+    targetDate.setHours(0, 0, 0, 0);
+    const nextDay = new Date(targetDate);
+    nextDay.setDate(nextDay.getDate() + 1);
+
+    const conflictBooking = await Booking.findOne({
+      table_id: table._id,
+      play_date: { $gte: targetDate, $lt: nextDay },
+      status: { $in: ["Booked", "Playing"] }
+    });
+
+    if (conflictBooking) {
+      return res.status(409).json({
+        success: false,
+        message: `Bàn số ${table_number} đã có lịch chơi trong ngày này`
+      });
+    }
+
+    // Tạo mã đơn đặt
+    const codeNumber = "WI" + Date.now().toString().slice(-8);
+
+    // Tạo booking với trạng thái Playing ngay lập tức
+    const booking = await Booking.create({
+      account_id: staffId,   // Nhân viên tạo booking
+      guest_name: guest_name.trim(),
+      table_id: table._id,
+      play_date: new Date(play_date),
+      start_time,
+      end_time: start_time,  // Chưa biết giờ kết thúc, để bằng giờ bắt đầu
+      code_number: codeNumber,
+      deposit: 0,
+      hour_price: table.price || 0,
+      total_bill: 0,
+      note: "Walk-in - Khách đến trực tiếp",
+      status: "Playing"
+    });
+
+    res.status(201).json({
+      success: true,
+      message: `Tạo đặt bàn thành công! Bàn ${table_number} đang chơi.`,
+      data: {
+        ...booking.toObject(),
+        table_number: table.table_number
+      }
+    });
+  } catch (error) {
+    console.error("Lỗi createWalkInBooking:", error);
+    res.status(500).json({ success: false, message: "Lỗi server" });
+  }
+};
+
 module.exports = {
   createBooking,
   cancelHold,
@@ -459,5 +537,6 @@ module.exports = {
   checkInBooking,
   getClubBookings,
   markPaymentPending,
-  confirmPayment
+  confirmPayment,
+  createWalkInBooking
 };

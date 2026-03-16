@@ -2,7 +2,8 @@ const mongoose = require("mongoose");
 
 const bookingSchema = new mongoose.Schema(
   {
-    account_id: { type: mongoose.Schema.Types.ObjectId, ref: "Account", required: true },
+    account_id: { type: mongoose.Schema.Types.ObjectId, ref: "Account" },
+    guest_name: { type: String }, // Tên khách walk-in (không có tài khoản)
     table_id: { type: mongoose.Schema.Types.ObjectId, ref: "BilliardTable", required: true },
     play_date: { type: Date, required: true },
     start_time: { type: String, required: true },

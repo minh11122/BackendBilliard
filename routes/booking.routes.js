@@ -28,6 +28,13 @@ router.post(
   authorizeRole("OWNER", "STAFF_CLUB"),
   bookingController.checkInBooking,
 );
+// Nhân viên tạo đặt bàn trực tiếp cho khách walk-in
+router.post(
+  "/walk-in",
+  authenticate,
+  authorizeRole("OWNER", "STAFF_CLUB"),
+  bookingController.createWalkInBooking,
+);
 // Đánh dấu booking là Payment Pending sau khi khách đã chuyển khoản
 router.post(
   "/:id/payment-pending",
