@@ -28,11 +28,11 @@ router.post(
   authorizeRole("OWNER", "STAFF_CLUB"),
   bookingController.checkInBooking,
 );
-// Đánh dấu booking là Payment Pending sau khi khách đã chuyển khoản
+// Create PayOS payment link for booking deposit
 router.post(
-  "/:id/payment-pending",
+  "/:id/payos/create-payment",
   authenticate,
-  bookingController.markPaymentPending,
+  bookingController.createBookingPayOSPayment,
 );
 
 // Chủ quán / Nhân viên xác nhận thanh toán (chuyển Pending -> Booked)
@@ -41,6 +41,16 @@ router.post(
   authenticate,
   authorizeRole("OWNER", "STAFF_CLUB"),
   bookingController.confirmPayment,
+);
+
+// PayOS webhook (no auth, signature verified in controller)
+router.post("/payos/webhook", bookingController.payosWebhook);
+
+// Frontend verify PayOS payment when returning from PayOS (by orderCode)
+router.post(
+  "/payos/verify",
+  authenticate,
+  bookingController.verifyBookingPayOSPayment,
 );
 
 module.exports = router;
