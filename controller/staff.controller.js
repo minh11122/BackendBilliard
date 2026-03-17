@@ -5,6 +5,7 @@ const Feedback = require("../models/feedback.model");
 const Post = require("../models/post.model");
 const Account = require("../models/account.model");
 const Role = require("../models/role.model");
+const Image = require("../models/image.model");
 const { sendClubApprovalEmail, sendClubRejectionEmail } = require("../services/mail.service");
 
 // ==================== GET DASHBOARD ====================
@@ -182,7 +183,25 @@ const getClubs = async (req, res) => {
             .populate("account_id", "fullname email phone")
             .sort({ created_at: -1 })
             .lean();
-        res.status(200).json({ success: true, data: clubs });
+
+        // Fetch legal documents images for clubs
+        const clubIds = clubs.map(c => c._id);
+        const images = await Image.find({
+            club_id: { $in: clubIds },
+            image_type: "legal documents"
+        }).lean();
+
+        const imageMap = images.reduce((acc, img) => {
+            acc[img.club_id] = img.image_url;
+            return acc;
+        }, {});
+
+        const clubsWithImage = clubs.map(c => ({
+            ...c,
+            legal_document_image: imageMap[c._id] || null
+        }));
+
+        res.status(200).json({ success: true, data: clubsWithImage });
     } catch (error) {
         console.error("Lỗi getClubs:", error);
         res.status(500).json({ success: false, message: "Lỗi server" });
