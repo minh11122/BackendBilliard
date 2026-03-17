@@ -413,6 +413,11 @@ const getClubBookings = async (req, res) => {
       const nextDay = new Date(targetDate);
       nextDay.setDate(nextDay.getDate() + 1);
       query.play_date = { $gte: targetDate, $lt: nextDay };
+    } else if (req.query.startDate && req.query.endDate) {
+      query.play_date = { 
+        $gte: new Date(req.query.startDate), 
+        $lte: new Date(req.query.endDate) 
+      };
     }
 
     // Fetch bookings
@@ -438,13 +443,12 @@ const getClubBookings = async (req, res) => {
       );
     }
 
-    // Đếm status counts (trên toàn bộ bookings của club, không filter)
-    const allBookingsForCounts = date
-      ? await Booking.find({
-          table_id: { $in: tableIds },
-          play_date: query.play_date,
-        }).lean()
-      : await Booking.find({ table_id: { $in: tableIds } }).lean();
+    // Đếm status counts (trên toàn bộ bookings của club, không filter statuss)
+    let countQuery = { table_id: { $in: tableIds } };
+    if (query.play_date) {
+        countQuery.play_date = query.play_date;
+    }
+    const allBookingsForCounts = await Booking.find(countQuery).lean();
 
     const statusCounts = {
       total: allBookingsForCounts.length,
@@ -910,11 +914,67 @@ const verifyBookingPayOSPayment = async (req, res) => {
   }
 };
 
+// Nhân viên / Chủ quán thanh toán đơn đặt bàn ("Playing" -> "Completed")
+const checkOutBooking = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const clubId = req.user.club_id;
+
+    if (!clubId) {
+      return res
+        .status(400)
+        .json({ success: false, message: "Không xác định được quán của nhân viên" });
+    }
+
+    const booking = await Booking.findById(id).populate("table_id");
+    if (!booking) {
+      return res
+        .status(404)
+        .json({ success: false, message: "Không tìm thấy đơn đặt bàn" });
+    }
+
+    // Kiểm tra bàn thuộc club của nhân viên
+    if (booking.table_id.club_id.toString() !== clubId.toString()) {
+      return res
+        .status(403)
+        .json({ success: false, message: "Đơn này không thuộc quán của bạn" });
+    }
+
+    if (booking.status !== "Playing") {
+      return res.status(400).json({
+        success: false,
+        message: `Không thể thanh toán đơn đang ở trạng thái: ${booking.status}`,
+      });
+    }
+
+    // Cập nhật trạng thái booking
+    booking.status = "Completed";
+    await booking.save();
+
+    // Cập nhật trạng thái bàn về Available
+    await BilliardTable.findByIdAndUpdate(booking.table_id._id, {
+      status: "Available",
+      held_by: null,
+      held_until: null,
+    });
+
+    res.status(200).json({
+      success: true,
+      message: "Thanh toán thành công. Bàn đã chuyển về trạng thái hoạt động.",
+      data: booking,
+    });
+  } catch (error) {
+    console.error("Lỗi checkOutBooking:", error);
+    res.status(500).json({ success: false, message: "Lỗi server" });
+  }
+};
+
 module.exports = {
   createBooking,
   cancelHold,
   getMyBookings,
   checkInBooking,
+  checkOutBooking,
   getClubBookings,
   createWalkInBooking,
   confirmPayment,

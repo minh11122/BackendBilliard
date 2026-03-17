@@ -9,6 +9,10 @@ router.post("/register-owner-account", authenticate, clubController.registerClub
 router.get("/", clubController.getAllClubs);
 router.get("/owner/clubs", authenticate, clubController.getClubsByAccount);
 router.put("/:id", authenticate, clubController.updateClub);
+
+const authorizeRole = require("../middleware/authorizeRole.middleware");
+router.get("/staff/statistics", authenticate, authorizeRole("OWNER", "STAFF_CLUB"), clubController.getClubStatistics);
+
 router.get("/:id", clubController.getClubById);
 
 // Thông tin tài khoản ngân hàng của CLB

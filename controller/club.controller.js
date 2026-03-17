@@ -5,6 +5,8 @@ const Feedback = require("../models/feedback.model");
 const TableType = require("../models/table_type.model");
 const Province = require("../models/province.model");
 const District = require("../models/district.model");
+const Booking = require("../models/booking.model");
+const Tournament = require("../models/tournament.model");
 const { geocodeAddress } = require("../utils/geocoding");
 
 
@@ -513,10 +515,104 @@ const updateClub = async (req, res) => {
   }
 };
 
+// Lấy thống kê cho câu lạc bộ
+const getClubStatistics = async (req, res) => {
+  try {
+    const { month, year } = req.query;
+    
+    // Lấy club_id quản lý của staff/owner
+    let club_id;
+    if (req.user.role === "STAFF_CLUB") {
+       club_id = req.user.club_id;
+    } else if (req.user.role === "OWNER") {
+       // Tạm thời lấy club đầu tiên của Owner nếu họ gọi API chung. (Tuỳ logic)
+       const club = await Club.findOne({ account_id: req.user.accountId }).lean();
+       if (!club) {
+         return res.status(404).json({ success: false, message: "Chủ quán chưa có câu lạc bộ" });
+       }
+       club_id = club._id;
+    } else {
+       return res.status(403).json({ success: false, message: "Không có quyền truy cập" });
+    }
+
+    const currentClub = await Club.findById(club_id).lean();
+    if (!currentClub) {
+        return res.status(404).json({ success: false, message: "Không tìm thấy câu lạc bộ" });
+    }
+
+    // Prepare date range if month and year are provided
+    let dateFilter = {};
+    if (month && year) {
+       const startDate = new Date(year, month - 1, 1);
+       const endDate = new Date(year, month, 0, 23, 59, 59, 999); // last day of month
+       dateFilter = { $gte: startDate, $lte: endDate };
+    }
+
+    // 1. Lấy danh sách bàn thuộc club
+    const tables = await BilliardTable.find({ club_id: club_id }).lean();
+    const tableIds = tables.map(t => t._id);
+
+    // 2. Booking Stats
+    const bookingQuery = { table_id: { $in: tableIds } };
+    if (dateFilter.$gte) bookingQuery.created_at = dateFilter;
+    
+    const bookings = await Booking.find(bookingQuery).lean();
+    
+    const totalBookings = bookings.length;
+    // Doanh thu chỉ tính các booking Completed
+    const completedBookings = bookings.filter(b => b.status === "Completed");
+    const totalRevenue = completedBookings.reduce((sum, b) => sum + (b.total_bill || 0), 0);
+
+    // 3. Review Stats
+    const feedbackQuery = { club_id: club_id };
+    if (dateFilter.$gte) feedbackQuery.created_at = dateFilter;
+    
+    const feedbacks = await Feedback.find(feedbackQuery)
+        .populate("account_id", "fullname username avatar")
+        .sort({ created_at: -1 })
+        .lean();
+
+    // 4. Tournament Stats (Ongoing or in requested month)
+    const tourQuery = { club_id: club_id };
+    if (dateFilter.$gte) tourQuery.start_time = dateFilter; // Simplify logic just check if starts in that month.
+    const tournaments = await Tournament.find(tourQuery).lean();
+
+    res.status(200).json({
+      success: true,
+      data: {
+          clubName: currentClub.name,
+          totalBookings,
+          totalRevenue,
+          feedbacks: feedbacks.map(f => ({
+             id: f._id,
+             rating: f.rating,
+             comment: f.comment,
+             reply: f.reply_content,
+             created_at: f.created_at,
+             user: f.account_id ? { name: f.account_id.fullname || f.account_id.username, avatar: f.account_id.avatar } : { name: "Ẩn danh" }
+          })),
+          tournaments: tournaments.map(t => ({
+             id: t._id,
+             name: t.name,
+             start_time: t.start_time,
+             status: t.status,
+             fee: t.fee,
+             max_players: t.max_players
+          }))
+      }
+    });
+
+  } catch (error) {
+    console.error("Lỗi lấy thống kê CLB:", error);
+    res.status(500).json({ success: false, message: "Lỗi Server" });
+  }
+};
+
 module.exports = {
   registerClub,
   getAllClubs,
   getClubById,
   getClubsByAccount,
-  updateClub
+  updateClub,
+  getClubStatistics
 };

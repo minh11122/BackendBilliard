@@ -35,6 +35,14 @@ router.post(
   authorizeRole("OWNER", "STAFF_CLUB"),
   bookingController.createWalkInBooking,
 );
+
+// Nhân viên / Chủ quán nhấn nút thanh toán đơn đặt bàn đang chơi
+router.post(
+  "/:id/checkout",
+  authenticate,
+  authorizeRole("OWNER", "STAFF_CLUB"),
+  bookingController.checkOutBooking,
+);
 // Đánh dấu booking là Payment Pending sau khi khách đã chuyển khoản
 // Create PayOS payment link for booking deposit
 router.post(
