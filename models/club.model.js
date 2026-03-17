@@ -17,6 +17,7 @@ const clubSchema = new mongoose.Schema(
     district_code: { type: String },
     province_name: { type: String },
     district_name: { type: String },
+    amenities: { type: [String], default: [] },
     status: {
       type: String,
       enum: ["Pending", "Approved", "Rejected", "Locked"],

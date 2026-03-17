@@ -332,7 +332,8 @@ const registerClub = async (req, res) => {
       province_code,
       district_code,
       province_name,
-      district_name
+      district_name,
+      amenities
     } = req.body;
 
     if (!req.user || !req.user.accountId) {
@@ -401,6 +402,7 @@ const registerClub = async (req, res) => {
       description: description || "",
       opening_time: opening_time || "08:00",
       closing_time: closing_time || "23:30",
+      amenities: amenities || [],
       status: "Pending"
     });
 
@@ -449,7 +451,8 @@ const updateClub = async (req, res) => {
       province_name,
       district_name,
       avatar, // Single URL
-      backgrounds // Array of URLs
+      backgrounds, // Array of URLs
+      amenities
     } = req.body;
 
     const club = await Club.findOne({ _id: id, account_id });
@@ -470,6 +473,9 @@ const updateClub = async (req, res) => {
     if (district_code) club.district_code = district_code;
     if (province_name) club.province_name = province_name;
     if (district_name) club.district_name = district_name;
+    if (amenities !== undefined) {
+      club.amenities = Array.isArray(amenities) ? amenities : [amenities];
+    }
 
     // Map district name for backward compatibility if codes change
     if (province_code || district_code) {

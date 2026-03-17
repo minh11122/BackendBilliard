@@ -5,7 +5,8 @@ const Parameter = require("../models/parameter.model");
 const ClubBank = require("../models/club_bank.model");
 const payosService = require("../services/payos.service");
 
-const HOLD_MINUTES = 10;
+// Cấu hình thời gian giữ chỗ (phút) - Bạn có thể chỉnh ở đây để test nhanh
+const HOLD_MINUTES_OVERRIDE = 2; 
 const PAYOS_EXPIRE_MINUTES = 5;
 
 // Helper to compare times "HH:mm"
@@ -96,15 +97,16 @@ const createBooking = async (req, res) => {
       }
     }
 
-    // Lấy tỷ lệ cọc từ Parameter (mặc định 30%)
+    // Lấy cấu hình từ Parameter
     let depositPercent = 30;
     try {
       const param = await Parameter.findOne();
-      if (param && param.booking_percent) {
-        depositPercent = param.booking_percent;
+      if (param) {
+        if (param.booking_percent) depositPercent = param.booking_percent;
+        if (param.hold_minutes) HOLD_MINUTES = param.hold_minutes;
       }
     } catch (e) {
-      console.warn("Không lấy được booking_percent, dùng mặc định 30%");
+      console.warn("Không lấy được Parameter, dùng mặc định");
     }
 
     const hourPrice = table.price;
@@ -133,8 +135,20 @@ const createBooking = async (req, res) => {
       status: "Pending"
     });
 
-    // Cập nhật trạng thái bàn sang Holding
-    const heldUntil = new Date(Date.now() + HOLD_MINUTES * 60 * 1000);
+    // Tính toán thời gian giữ chỗ
+    let finalHoldMinutes = HOLD_MINUTES_OVERRIDE || 5; 
+    
+    // Nếu không có override ở code, mới lấy từ DB
+    if (!HOLD_MINUTES_OVERRIDE) {
+      try {
+        const param = await Parameter.findOne();
+        if (param && param.hold_minutes) finalHoldMinutes = param.hold_minutes;
+      } catch (e) {
+        console.warn("Không lấy được Parameter, dùng mặc định 5 phút");
+      }
+    }
+
+    const heldUntil = new Date(Date.now() + finalHoldMinutes * 60 * 1000);
     await BilliardTable.findByIdAndUpdate(table_id, {
       status: "Holding",
       held_by: accountId,
@@ -165,7 +179,7 @@ const createBooking = async (req, res) => {
           name: club.name,
           address: club.address
         } : null,
-        holdMinutes: HOLD_MINUTES,
+        holdMinutes: finalHoldMinutes,
         heldUntil
       }
     });

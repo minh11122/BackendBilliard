@@ -3,6 +3,7 @@ const mongoose = require("mongoose");
 const parameterSchema = new mongoose.Schema(
     {
         booking_percent: { type: Number, required: true },
+        hold_minutes: { type: Number, default: 0.5 },
         account_id: { type: mongoose.Schema.Types.ObjectId, ref: "Account", required: true }
     },
     {
