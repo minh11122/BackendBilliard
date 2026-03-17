@@ -454,7 +454,8 @@ const updateClub = async (req, res) => {
       district_name,
       avatar, // Single URL
       backgrounds, // Array of URLs
-      amenities
+      amenities,
+      legalDocuments // Array of URLs for resubmitting
     } = req.body;
 
     const club = await Club.findOne({ _id: id, account_id });
@@ -487,6 +488,12 @@ const updateClub = async (req, res) => {
       }
     }
 
+    // Logic xử lý khi resubmit: nếu trạng thái đang Rejected thì cập nhật lại thành Pending và xóa lý do từ chối
+    if (club.status === "Rejected") {
+      club.status = "Pending";
+      club.reject_reason = null;
+    }
+
     await club.save();
 
     // Xử lý ảnh Avatar (Chỉ giữ 1 cái mới nhất)
@@ -511,6 +518,24 @@ const updateClub = async (req, res) => {
           image_type: "Background"
         }));
         await Image.insertMany(bgImages);
+      }
+    }
+
+    // Xử lý ảnh Giấy phép kinh doanh (legal documents)
+    if (Array.isArray(legalDocuments)) {
+      await Image.deleteMany({ club_id: id, image_type: "legal documents" });
+      if (legalDocuments.length > 0) {
+        const legalImages = legalDocuments
+          .filter((url) => !!url)
+          .map((url) => ({
+            club_id: id,
+            image_url: url,
+            image_type: "legal documents"
+          }));
+        
+        if (legalImages.length > 0) {
+          await Image.insertMany(legalImages);
+        }
       }
     }
 
