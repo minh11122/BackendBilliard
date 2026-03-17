@@ -7,18 +7,6 @@ const clubBankSchema = new mongoose.Schema(
       ref: "Club",
       required: true
     },
-    bank_name: {
-      type: String,
-      required: true
-    },
-    account_number: {
-      type: String,
-      required: true
-    },
-    account_name: {
-      type: String,
-      required: true
-    },
     // PayOS keys are configured per club (sensitive data).
     payos_client_id: {
       type: String,
