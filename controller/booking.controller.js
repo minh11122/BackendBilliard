@@ -5,7 +5,8 @@ const Parameter = require("../models/parameter.model");
 const ClubBank = require("../models/club_bank.model");
 const payosService = require("../services/payos.service");
 
-const HOLD_MINUTES = 10;
+// Cấu hình thời gian giữ chỗ (phút) - Bạn có thể chỉnh ở đây để test nhanh
+const HOLD_MINUTES_OVERRIDE = 2;
 const PAYOS_EXPIRE_MINUTES = 5;
 
 // Helper to compare times "HH:mm"
@@ -103,28 +104,27 @@ const createBooking = async (req, res) => {
           ) {
             // Chỉ chặn nếu người đang giữ KHÔNG phải là user hiện tại
             if (String(b.account_id) !== String(accountId)) {
-              return res
-                .status(409)
-                .json({
-                  success: false,
-                  message:
-                    "Bàn đang được giữ chỗ bởi người khác trong khung giờ này",
-                });
+              return res.status(409).json({
+                success: false,
+                message:
+                  "Bàn đang được giữ chỗ bởi người khác trong khung giờ này",
+              });
             }
           }
         }
       }
     }
 
-    // Lấy tỷ lệ cọc từ Parameter (mặc định 30%)
+    // Lấy cấu hình từ Parameter
     let depositPercent = 30;
     try {
       const param = await Parameter.findOne();
-      if (param && param.booking_percent) {
-        depositPercent = param.booking_percent;
+      if (param) {
+        if (param.booking_percent) depositPercent = param.booking_percent;
+        if (param.hold_minutes) HOLD_MINUTES = param.hold_minutes;
       }
     } catch (e) {
-      console.warn("Không lấy được booking_percent, dùng mặc định 30%");
+      console.warn("Không lấy được Parameter, dùng mặc định");
     }
 
     const hourPrice = table.price;
@@ -154,8 +154,20 @@ const createBooking = async (req, res) => {
       status: "Pending",
     });
 
-    // Cập nhật trạng thái bàn sang Holding
-    const heldUntil = new Date(Date.now() + HOLD_MINUTES * 60 * 1000);
+    // Tính toán thời gian giữ chỗ
+    let finalHoldMinutes = HOLD_MINUTES_OVERRIDE || 5;
+
+    // Nếu không có override ở code, mới lấy từ DB
+    if (!HOLD_MINUTES_OVERRIDE) {
+      try {
+        const param = await Parameter.findOne();
+        if (param && param.hold_minutes) finalHoldMinutes = param.hold_minutes;
+      } catch (e) {
+        console.warn("Không lấy được Parameter, dùng mặc định 5 phút");
+      }
+    }
+
+    const heldUntil = new Date(Date.now() + finalHoldMinutes * 60 * 1000);
     await BilliardTable.findByIdAndUpdate(table_id, {
       status: "Holding",
       held_by: accountId,
@@ -188,7 +200,7 @@ const createBooking = async (req, res) => {
               address: club.address,
             }
           : null,
-        holdMinutes: HOLD_MINUTES,
+        holdMinutes: finalHoldMinutes,
         heldUntil,
       },
     });
@@ -322,32 +334,26 @@ const checkInBooking = async (req, res) => {
     const booking = await Booking.findOne({ code_number }).populate("table_id");
 
     if (!booking) {
-      return res
-        .status(404)
-        .json({
-          success: false,
-          message: "Không tìm thấy đơn đặt bàn với mã này",
-        });
+      return res.status(404).json({
+        success: false,
+        message: "Không tìm thấy đơn đặt bàn với mã này",
+      });
     }
 
     // Chỉ cho phép check in trong quán của nhân viên đó
     if (booking.table_id.club_id.toString() !== clubId.toString()) {
-      return res
-        .status(403)
-        .json({
-          success: false,
-          message: "Đơn đặt bàn này không thuộc quán của bạn",
-        });
+      return res.status(403).json({
+        success: false,
+        message: "Đơn đặt bàn này không thuộc quán của bạn",
+      });
     }
 
     // Kiểm tra trạng thái booking
     if (booking.status !== "Booked" && booking.status !== "Pending") {
-      return res
-        .status(400)
-        .json({
-          success: false,
-          message: `Không thể check-in đơn đang ở trạng thái: ${booking.status}`,
-        });
+      return res.status(400).json({
+        success: false,
+        message: `Không thể check-in đơn đang ở trạng thái: ${booking.status}`,
+      });
     }
 
     // Cập nhật trạng thái
@@ -384,20 +390,18 @@ const getClubBookings = async (req, res) => {
     const tableIds = clubTables.map((t) => t._id);
 
     if (tableIds.length === 0) {
-      return res
-        .status(200)
-        .json({
-          success: true,
-          data: [],
-          statusCounts: {
-            total: 0,
-            Pending: 0,
-            Booked: 0,
-            Playing: 0,
-            Completed: 0,
-            Cancelled: 0,
-          },
-        });
+      return res.status(200).json({
+        success: true,
+        data: [],
+        statusCounts: {
+          total: 0,
+          Pending: 0,
+          Booked: 0,
+          Playing: 0,
+          Completed: 0,
+          Cancelled: 0,
+        },
+      });
     }
 
     // Build query
@@ -414,9 +418,9 @@ const getClubBookings = async (req, res) => {
       nextDay.setDate(nextDay.getDate() + 1);
       query.play_date = { $gte: targetDate, $lt: nextDay };
     } else if (req.query.startDate && req.query.endDate) {
-      query.play_date = { 
-        $gte: new Date(req.query.startDate), 
-        $lte: new Date(req.query.endDate) 
+      query.play_date = {
+        $gte: new Date(req.query.startDate),
+        $lte: new Date(req.query.endDate),
       };
     }
 
@@ -446,7 +450,7 @@ const getClubBookings = async (req, res) => {
     // Đếm status counts (trên toàn bộ bookings của club, không filter statuss)
     let countQuery = { table_id: { $in: tableIds } };
     if (query.play_date) {
-        countQuery.play_date = query.play_date;
+      countQuery.play_date = query.play_date;
     }
     const allBookingsForCounts = await Booking.find(countQuery).lean();
 
@@ -519,22 +523,18 @@ const createWalkInBooking = async (req, res) => {
     const clubId = req.user.club_id;
 
     if (!guest_name || !table_number || !play_date || !start_time) {
-      return res
-        .status(400)
-        .json({
-          success: false,
-          message:
-            "Vui lòng nhập đầy đủ: tên khách, số bàn, ngày chơi, giờ bắt đầu",
-        });
+      return res.status(400).json({
+        success: false,
+        message:
+          "Vui lòng nhập đầy đủ: tên khách, số bàn, ngày chơi, giờ bắt đầu",
+      });
     }
 
     if (!clubId) {
-      return res
-        .status(400)
-        .json({
-          success: false,
-          message: "Không xác định được quán của nhân viên",
-        });
+      return res.status(400).json({
+        success: false,
+        message: "Không xác định được quán của nhân viên",
+      });
     }
 
     // Tìm bàn theo table_number trong club
@@ -543,21 +543,17 @@ const createWalkInBooking = async (req, res) => {
       table_number: table_number.trim(),
     });
     if (!table) {
-      return res
-        .status(404)
-        .json({
-          success: false,
-          message: `Không tìm thấy bàn số "${table_number}" trong quán`,
-        });
+      return res.status(404).json({
+        success: false,
+        message: `Không tìm thấy bàn số "${table_number}" trong quán`,
+      });
     }
 
     if (table.status === "Maintenance") {
-      return res
-        .status(400)
-        .json({
-          success: false,
-          message: "Bàn đang bảo trì, không thể nhận khách",
-        });
+      return res.status(400).json({
+        success: false,
+        message: "Bàn đang bảo trì, không thể nhận khách",
+      });
     }
 
     // Kiểm tra xem bàn có đang được đặt trong khung giờ này không
@@ -625,21 +621,17 @@ const createBookingPayOSPayment = async (req, res) => {
     }
 
     if (!accountId || String(booking.account_id) !== String(accountId)) {
-      return res
-        .status(403)
-        .json({
-          success: false,
-          message: "Bạn không có quyền thanh toán đơn này",
-        });
+      return res.status(403).json({
+        success: false,
+        message: "Bạn không có quyền thanh toán đơn này",
+      });
     }
 
     if (booking.status !== "Pending") {
-      return res
-        .status(400)
-        .json({
-          success: false,
-          message: `Đơn đang ở trạng thái: ${booking.status}`,
-        });
+      return res.status(400).json({
+        success: false,
+        message: `Đơn đang ở trạng thái: ${booking.status}`,
+      });
     }
 
     const table = booking.table_id;
@@ -731,12 +723,10 @@ const payosWebhook = async (req, res) => {
       order_code: orderCode,
     }).lean();
     if (!tx || !tx.booking_id) {
-      return res
-        .status(404)
-        .json({
-          success: false,
-          message: "Không tìm thấy booking theo orderCode",
-        });
+      return res.status(404).json({
+        success: false,
+        message: "Không tìm thấy booking theo orderCode",
+      });
     }
 
     const booking = await Booking.findById(tx.booking_id).populate("table_id");
@@ -838,12 +828,10 @@ const verifyBookingPayOSPayment = async (req, res) => {
       order_code: orderCode,
     }).lean();
     if (!tx || !tx.booking_id) {
-      return res
-        .status(404)
-        .json({
-          success: false,
-          message: "Không tìm thấy đơn đặt bàn với orderCode này",
-        });
+      return res.status(404).json({
+        success: false,
+        message: "Không tìm thấy đơn đặt bàn với orderCode này",
+      });
     }
 
     const booking = await Booking.findById(tx.booking_id).populate("table_id");
@@ -854,13 +842,11 @@ const verifyBookingPayOSPayment = async (req, res) => {
     }
 
     if (booking.status === "Booked") {
-      return res
-        .status(200)
-        .json({
-          success: true,
-          message: "Đơn đã được xác nhận trước đó",
-          data: booking,
-        });
+      return res.status(200).json({
+        success: true,
+        message: "Đơn đã được xác nhận trước đó",
+        data: booking,
+      });
     }
 
     const table = booking.table_id;
@@ -923,7 +909,10 @@ const checkOutBooking = async (req, res) => {
     if (!clubId) {
       return res
         .status(400)
-        .json({ success: false, message: "Không xác định được quán của nhân viên" });
+        .json({
+          success: false,
+          message: "Không xác định được quán của nhân viên",
+        });
     }
 
     const booking = await Booking.findById(id).populate("table_id");
