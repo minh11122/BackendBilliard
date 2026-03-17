@@ -7,8 +7,10 @@ const subscriptionRoutes = require('./subscription.routes')
 const bookingRoutes = require('./booking.routes');
 const tableRoutes = require('./billiardTable.routes');
 const staffClubRoutes = require('./staff_club.routes');
+const adminRoutes = require('./admin.routes');
 
 router.use(authRoutes);
+router.use(adminRoutes);
 router.use("/services", require("./service.routes"));
 router.use("/clubs", clubRoutes);
 router.use("/staff", staffRoutes);
