@@ -23,6 +23,7 @@ const clubSchema = new mongoose.Schema(
       enum: ["Pending", "Approved", "Rejected", "Locked"],
       required: true
     },
+    reject_reason: { type: String, default: null },
     created_at: { type: Date, default: Date.now, required: true }
   },
   {
