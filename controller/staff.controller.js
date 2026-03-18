@@ -6,6 +6,7 @@ const Post = require("../models/post.model");
 const Account = require("../models/account.model");
 const Role = require("../models/role.model");
 const Image = require("../models/image.model");
+const Notification = require("../models/notification.model");
 const { sendClubApprovalEmail, sendClubRejectionEmail } = require("../services/mail.service");
 
 // ==================== GET DASHBOARD ====================
@@ -273,6 +274,63 @@ const rejectPost = async (req, res) => {
     }
 };
 
+// ==================== GET NOTIFICATIONS ====================
+const getNotifications = async (req, res) => {
+    try {
+        const account_id = req.user.accountId;
+        if (!account_id) return res.status(401).json({ success: false, message: "Unauthorized" });
+
+        const notifications = await Notification.find({ account_id })
+            .sort({ created_at: -1 })
+            .lean();
+            
+        res.status(200).json({ success: true, data: notifications });
+    } catch (error) {
+        console.error("Lỗi getNotifications:", error);
+        res.status(500).json({ success: false, message: "Lỗi server" });
+    }
+};
+
+// ==================== MARK ALL READ ====================
+const markAllNotificationsRead = async (req, res) => {
+    try {
+        const account_id = req.user.accountId;
+        if (!account_id) return res.status(401).json({ success: false, message: "Unauthorized" });
+
+        await Notification.updateMany(
+            { account_id, is_read: false },
+            { $set: { is_read: true } }
+        );
+            
+        res.status(200).json({ success: true, message: "Đã đánh dấu tất cả là đã đọc" });
+    } catch (error) {
+        console.error("Lỗi markAllNotificationsRead:", error);
+        res.status(500).json({ success: false, message: "Lỗi server" });
+    }
+};
+
+// ==================== MARK ONE READ ====================
+const markNotificationRead = async (req, res) => {
+    try {
+        const { id } = req.params;
+        const account_id = req.user.accountId;
+        if (!account_id) return res.status(401).json({ success: false, message: "Unauthorized" });
+
+        const notif = await Notification.findOneAndUpdate(
+            { _id: id, account_id },
+            { $set: { is_read: true } },
+            { new: true }
+        );
+        
+        if (!notif) return res.status(404).json({ success: false, message: "Không tìm thấy thông báo" });
+            
+        res.status(200).json({ success: true, data: notif });
+    } catch (error) {
+        console.error("Lỗi markNotificationRead:", error);
+        res.status(500).json({ success: false, message: "Lỗi server" });
+    }
+};
+
 module.exports = {
     getDashboard,
     getClubs,
@@ -281,5 +339,8 @@ module.exports = {
     lockClub,
     unlockClub,
     approvePost,
-    rejectPost
+    rejectPost,
+    getNotifications,
+    markAllNotificationsRead,
+    markNotificationRead
 };
