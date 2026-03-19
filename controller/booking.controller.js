@@ -3,6 +3,8 @@ const BilliardTable = require("../models/billiard_table.model");
 const Club = require("../models/club.model");
 const Parameter = require("../models/parameter.model");
 const ClubBank = require("../models/club_bank.model");
+const BookingService = require("../models/booking_service.model");
+const Service = require("../models/service.model");
 const payosService = require("../services/payos.service");
 
 // Cấu hình thời gian giữ chỗ (phút) - Bạn có thể chỉnh ở đây để test nhanh
@@ -958,6 +960,116 @@ const checkOutBooking = async (req, res) => {
   }
 };
 
+// Thêm dịch vụ vào đơn đặt bàn (STAFF_CLUB)
+const addBookingService = async (req, res) => {
+  try {
+    const { id } = req.params; // booking_id
+    const { service_id, quantity } = req.body;
+    const clubId = req.user.club_id;
+
+    if (!service_id || !quantity || quantity <= 0) {
+      return res.status(400).json({ success: false, message: "Thông tin dịch vụ không hợp lệ" });
+    }
+
+    const booking = await Booking.findById(id).populate("table_id");
+    if (!booking) return res.status(404).json({ success: false, message: "Không tìm thấy đơn đặt bàn" });
+
+    // Kiểm tra quyền hạn
+    if (booking.table_id.club_id.toString() !== clubId.toString()) {
+      return res.status(403).json({ success: false, message: "Đơn này không thuộc quán của bạn" });
+    }
+
+    const service = await Service.findOne({ _id: service_id, club_id: clubId });
+    if (!service) return res.status(404).json({ success: false, message: "Dịch vụ không tồn tại trong quán" });
+
+    // Tạo record booking_service
+    const newBS = await BookingService.create({
+      booking_id: id,
+      service_id,
+      quantity,
+      unit_price: service.price
+    });
+
+    // Cập nhật tổng tiền đơn đặt (thêm tiền dịch vụ)
+    const serviceTotal = service.price * quantity;
+    booking.total_bill = (booking.total_bill || 0) + serviceTotal;
+    await booking.save();
+
+    res.status(201).json({ success: true, message: "Thêm dịch vụ thành công", data: newBS });
+  } catch (error) {
+    console.error("Lỗi addBookingService:", error);
+    res.status(500).json({ success: false, message: "Lỗi server" });
+  }
+};
+
+// Lấy danh sách dịch vụ của một booking
+const getBookingServices = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const services = await BookingService.find({ booking_id: id }).populate("service_id");
+    res.status(200).json({ success: true, data: services });
+  } catch (error) {
+    res.status(500).json({ success: false, message: "Lỗi server" });
+  }
+};
+
+// Gia hạn thêm thời gian cho đơn đang chơi
+const extendBooking = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { minutes } = req.body; // Số phút muốn cộng thêm
+    const clubId = req.user.club_id;
+
+    if (!minutes || minutes <= 0) {
+      return res.status(400).json({ success: false, message: "Số phút gia hạn không hợp lệ" });
+    }
+
+    const booking = await Booking.findById(id).populate("table_id");
+    if (!booking) {
+      return res.status(404).json({ success: false, message: "Không tìm thấy đơn đặt bàn" });
+    }
+
+    // Kiểm tra quyền hạn
+    if (booking.table_id.club_id.toString() !== clubId.toString()) {
+      return res.status(403).json({ success: false, message: "Đơn này không thuộc quán của bạn" });
+    }
+
+    if (booking.status !== "Playing") {
+      return res.status(400).json({ success: false, message: "Chỉ có thể gia hạn cho đơn đang chơi" });
+    }
+
+    // Tính toán end_time mới
+    const [h, m] = booking.end_time.split(":").map(Number);
+    let totalMinutes = h * 60 + m + parseInt(minutes);
+    
+    // Format lại HH:mm (xử lý qua ngày nếu cần, nhưng booking model lưu String HH:mm)
+    const newH = Math.floor(totalMinutes / 60) % 24;
+    const newM = totalMinutes % 60;
+    const newEndTime = `${String(newH).padStart(2, "0")}:${String(newM).padStart(2, "0")}`;
+
+    // Cập nhật tổng tiền (tính thêm tiền cho phần gia hạn)
+    const extraHours = minutes / 60;
+    const extraCost = Math.round(extraHours * booking.hour_price);
+    
+    booking.end_time = newEndTime;
+    booking.total_bill = (booking.total_bill || 0) + extraCost;
+    
+    await booking.save();
+
+    res.status(200).json({
+      success: true,
+      message: `Gia hạn thành công thêm ${minutes} phút`,
+      data: {
+        end_time: booking.end_time,
+        total_bill: booking.total_bill
+      }
+    });
+  } catch (error) {
+    console.error("Lỗi extendBooking:", error);
+    res.status(500).json({ success: false, message: "Lỗi server" });
+  }
+};
+
 module.exports = {
   createBooking,
   cancelHold,
@@ -970,4 +1082,7 @@ module.exports = {
   createBookingPayOSPayment,
   payosWebhook,
   verifyBookingPayOSPayment,
+  addBookingService,
+  getBookingServices,
+  extendBooking
 };
