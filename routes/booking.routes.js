@@ -62,11 +62,25 @@ router.post(
 // PayOS webhook (no auth, signature verified in controller)
 router.post("/payos/webhook", bookingController.payosWebhook);
 
-// Frontend verify PayOS payment when returning from PayOS (by orderCode)
-router.post(
-  "/payos/verify",
+// Quản lý dịch vụ thêm vào khi đang chơi
+router.get(
+  "/:id/services",
   authenticate,
-  bookingController.verifyBookingPayOSPayment,
+  authorizeRole("OWNER", "STAFF_CLUB"),
+  bookingController.getBookingServices
+);
+router.post(
+  "/:id/services",
+  authenticate,
+  authorizeRole("OWNER", "STAFF_CLUB"),
+  bookingController.addBookingService
+);
+
+router.post(
+  "/:id/extend",
+  authenticate,
+  authorizeRole("OWNER", "STAFF_CLUB"),
+  bookingController.extendBooking
 );
 
 module.exports = router;

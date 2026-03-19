@@ -12,4 +12,9 @@ router.patch("/clubs/:id/unlock", authenticate, staff.unlockClub);
 router.patch("/posts/:id/approve", authenticate, staff.approvePost);
 router.patch("/posts/:id/reject", authenticate, staff.rejectPost);
 
+// Notifications
+router.get("/notifications", authenticate, staff.getNotifications);
+router.patch("/notifications/read-all", authenticate, staff.markAllNotificationsRead);
+router.patch("/notifications/:id/read", authenticate, staff.markNotificationRead);
+
 module.exports = router;

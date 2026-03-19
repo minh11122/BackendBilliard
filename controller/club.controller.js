@@ -7,6 +7,8 @@ const Province = require("../models/province.model");
 const District = require("../models/district.model");
 const Booking = require("../models/booking.model");
 const Tournament = require("../models/tournament.model");
+const Notification = require("../models/notification.model");
+const Account = require("../models/account.model");
 const { geocodeAddress } = require("../utils/geocoding");
 
 
@@ -423,6 +425,18 @@ const registerClub = async (req, res) => {
     }
 
     const createdClub = await Club.findById(club._id).lean();
+
+    // Create notifications for STAFF_SYSTEM
+    const staffAccounts = await Account.find({ role: "STAFF_SYSTEM" }).lean();
+    if (staffAccounts && staffAccounts.length > 0) {
+      const notifications = staffAccounts.map(staff => ({
+        account_id: staff._id,
+        title: "CLB mới chờ duyệt!",
+        message: `Câu lạc bộ ${createdClub.name || "mới"} vừa đăng ký và đang chờ bạn phê duyệt.`,
+        is_read: false
+      }));
+      await Notification.insertMany(notifications);
+    }
 
     return res.status(201).json({
       success: true,

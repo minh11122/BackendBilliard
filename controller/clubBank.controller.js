@@ -8,7 +8,7 @@ const maskSecret = (value, keepStart = 2, keepEnd = 2) => {
   return `${s.slice(0, keepStart)}${"*".repeat(Math.max(4, s.length - keepStart - keepEnd))}${s.slice(-keepEnd)}`;
 };
 
-// Lấy thông tin tài khoản ngân hàng theo club_id
+// Lấy cấu hình PayOS theo club_id
 const getBankByClub = async (req, res) => {
   try {
     const { id } = req.params;
@@ -37,9 +37,6 @@ const getBankByClub = async (req, res) => {
     const safe = {
       _id: bank._id,
       club_id: bank.club_id,
-      bank_name: bank.bank_name,
-      account_number: bank.account_number,
-      account_name: bank.account_name,
       payos_client_id: bank.payos_client_id || "",
       has_payos_keys: !!(bank.payos_client_id && bank.payos_api_key && bank.payos_checksum_key),
       // For non-owner callers: show masked values (optional, helpful UI) but never leak full secrets
@@ -58,12 +55,12 @@ const getBankByClub = async (req, res) => {
   }
 };
 
-// Tạo / cập nhật thông tin tài khoản ngân hàng cho club (chỉ chủ quán được phép)
+// Tạo / cập nhật cấu hình PayOS cho club (chỉ chủ quán được phép)
 const upsertBankByClub = async (req, res) => {
   try {
     const { id } = req.params;
     const accountId = req.user?.accountId;
-    const { bank_name, account_number, account_name, payos_client_id, payos_api_key, payos_checksum_key } = req.body;
+    const { payos_client_id, payos_api_key, payos_checksum_key } = req.body;
 
     if (!id) {
       return res.status(400).json({ success: false, message: "Thiếu club_id" });
@@ -73,16 +70,7 @@ const upsertBankByClub = async (req, res) => {
       return res.status(401).json({ success: false, message: "Không xác thực được người dùng" });
     }
 
-    if (!bank_name || !account_number || !account_name) {
-      return res.status(400).json({
-        success: false,
-        message: "Vui lòng nhập đủ tên ngân hàng, số tài khoản và chủ tài khoản"
-      });
-    }
-
-    // If any PayOS field is provided, require all 3.
-    const anyPayOSProvided = !!(payos_client_id || payos_api_key || payos_checksum_key);
-    if (anyPayOSProvided && !(payos_client_id && payos_api_key && payos_checksum_key)) {
+    if (!(payos_client_id && payos_api_key && payos_checksum_key)) {
       return res.status(400).json({
         success: false,
         message: "Vui lòng nhập đủ PayOS Client ID, API Key và Checksum Key"
@@ -100,30 +88,22 @@ const upsertBankByClub = async (req, res) => {
 
     let bank = await ClubBank.findOne({ club_id: id });
     if (bank) {
-      bank.bank_name = bank_name;
-      bank.account_number = account_number;
-      bank.account_name = account_name;
-      if (anyPayOSProvided) {
-        bank.payos_client_id = payos_client_id;
-        bank.payos_api_key = payos_api_key;
-        bank.payos_checksum_key = payos_checksum_key;
-      }
+      bank.payos_client_id = payos_client_id;
+      bank.payos_api_key = payos_api_key;
+      bank.payos_checksum_key = payos_checksum_key;
       await bank.save();
     } else {
       bank = await ClubBank.create({
         club_id: id,
-        bank_name,
-        account_number,
-        account_name,
-        payos_client_id: payos_client_id || "",
-        payos_api_key: payos_api_key || "",
-        payos_checksum_key: payos_checksum_key || ""
+        payos_client_id,
+        payos_api_key,
+        payos_checksum_key
       });
     }
 
     return res.status(200).json({
       success: true,
-      message: "Cập nhật thông tin ngân hàng thành công",
+      message: "Cập nhật cấu hình PayOS thành công",
       data: bank
     });
   } catch (error) {
