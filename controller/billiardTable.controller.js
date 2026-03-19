@@ -1,5 +1,6 @@
 const tableService = require("../services/billiardTable.service");
 const BilliardTable = require("../models/billiard_table.model");
+const cloudinary = require("../configs/cloudinary.config");
 
 const getBilliardTables = async (req, res) => {
     try {
@@ -94,10 +95,8 @@ const createBilliardTable = async (req, res) => {
             });
         }
 
-        let image_url = "";
-        if (req.file) {
-            image_url = req.file.path;
-        }
+        // Lấy URL ảnh từ Cloudinary (multer đã upload nhiều ảnh)
+        const images = req.files ? req.files.map(f => f.path) : [];
 
         const tableStatus = isActive === "false" ? "Maintenance" : "Available";
 
@@ -105,11 +104,11 @@ const createBilliardTable = async (req, res) => {
             club_id,
             table_type_id,
             table_number,
-            area: area || "Khu vực chung", // Đảm bảo có dữ liệu nếu UI bị gỡ bỏ input
+            area: area || "Khu vực chung",
             price: Number(price),
             brand: brand || "",
             description,
-            image_url,
+            images,
             status: tableStatus
         };
 
@@ -167,11 +166,32 @@ const updateBilliardTable = async (req, res) => {
             });
         }
 
-        let image_url = req.body.image_url; // Lấy URL ảnh cũ (nếu có gửi lên)
-        // Nếu có upload file ảnh mới thì ghi đè
-        if (req.file) {
-            image_url = req.file.path;
+        // Lấy bàn hiện tại để xử lý ảnh
+        const existing = await tableService.getTableById(id);
+        let currentImages = existing.images || [];
+
+        // Xử lý danh sách ảnh bị xóa
+        let removedList = [];
+        const removedImages = req.body.removedImages;
+        if (removedImages) {
+            removedList = Array.isArray(removedImages) ? removedImages : [removedImages];
         }
+
+        // Xóa ảnh cũ khỏi Cloudinary
+        for (const url of removedList) {
+            try {
+                const publicId = url.split("/").slice(-2).join("/").replace(/\.[^/.]+$/, "");
+                await cloudinary.uploader.destroy(publicId);
+            } catch (e) {
+                console.error("Lỗi xóa ảnh Cloudinary:", e);
+            }
+        }
+
+        // Ảnh còn lại = ảnh cũ trừ ảnh bị xóa
+        const remainingImages = currentImages.filter(img => !removedList.includes(img));
+
+        // Ảnh mới upload
+        const newImages = req.files ? req.files.map(f => f.path) : [];
 
         // Ưu tiên status gửi trực tiếp, fallback sang isActive
         const tableStatus = status || (isActive === "false" ? "Maintenance" : "Available");
@@ -184,12 +204,9 @@ const updateBilliardTable = async (req, res) => {
             price: Number(price),
             brand: brand || "",
             description,
-            status: tableStatus
+            status: tableStatus,
+            images: [...remainingImages, ...newImages]
         };
-        
-        if (image_url) {
-             updateData.image_url = image_url;
-        }
 
         const updatedTable = await tableService.updateTable(id, updateData);
 
@@ -225,6 +242,19 @@ const deleteBilliardTable = async (req, res) => {
 
         if (!id) {
             return res.status(400).json({ success: false, message: "Thiếu ID bàn" });
+        }
+
+        // Xóa ảnh Cloudinary trước khi xóa bàn
+        try {
+            const table = await tableService.getTableById(id);
+            if (table.images && table.images.length > 0) {
+                for (const url of table.images) {
+                    const publicId = url.split("/").slice(-2).join("/").replace(/\.[^/.]+$/, "");
+                    await cloudinary.uploader.destroy(publicId);
+                }
+            }
+        } catch (e) {
+            console.error("Lỗi xóa ảnh khi delete bàn:", e);
         }
 
         await tableService.deleteTable(id);
