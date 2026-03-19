@@ -75,6 +75,18 @@ router.post(
   authorizeRole("OWNER", "STAFF_CLUB"),
   bookingController.addBookingService
 );
+router.put(
+  "/:id/services/:bookingServiceId",
+  authenticate,
+  authorizeRole("OWNER", "STAFF_CLUB"),
+  bookingController.updateBookingServiceQuantity
+);
+router.delete(
+  "/:id/services/:bookingServiceId",
+  authenticate,
+  authorizeRole("OWNER", "STAFF_CLUB"),
+  bookingController.deleteBookingService
+);
 
 router.post(
   "/:id/extend",
