@@ -1,4 +1,5 @@
 const serviceService = require("../services/service.service");
+const cloudinary = require("../configs/cloudinary.config");
 
 const getServices = async (req, res) => {
     try {
@@ -44,14 +45,13 @@ const getServiceById = async (req, res) => {
 
 const createService = async (req, res) => {
     try {
-        const { name, price, discount_percent, description } = req.body;
+        const { name, price, description } = req.body;
         const club_id = req.user?.club_id || req.user?.id || req.accountId || req.body.club_id;
 
         if (!club_id) {
             return res.status(400).json({ success: false, message: "Không xác định được ID Quán." });
         }
 
-        // Validate chặt chẽ
         if (!name || !name.trim()) {
             return res.status(400).json({ success: false, message: "Tên dịch vụ không được để trống!" });
         }
@@ -64,21 +64,18 @@ const createService = async (req, res) => {
         if (Number(price) <= 0) {
             return res.status(400).json({ success: false, message: "Giá dịch vụ phải lớn hơn 0!" });
         }
-        if (discount_percent !== undefined && discount_percent !== null && discount_percent !== "") {
-            const disc = Number(discount_percent);
-            if (isNaN(disc) || disc < 0 || disc > 100) {
-                return res.status(400).json({ success: false, message: "Giảm giá phải từ 0 đến 100%!" });
-            }
-        }
         if (description && description.length > 500) {
             return res.status(400).json({ success: false, message: "Mô tả tối đa 500 ký tự!" });
         }
+
+        // Lấy URL ảnh từ Cloudinary (multer đã upload)
+        const images = req.files ? req.files.map(f => f.path) : [];
 
         const serviceData = {
             club_id,
             name: name.trim(),
             price: Number(price),
-            discount_percent: Number(discount_percent) || 0,
+            images,
             description: description || "",
             created_by: req.user?.id || req.accountId || null
         };
@@ -100,14 +97,13 @@ const createService = async (req, res) => {
 const updateService = async (req, res) => {
     try {
         const { id } = req.params;
-        const { name, price, discount_percent, description } = req.body;
+        const { name, price, description, removedImages } = req.body;
         const club_id = req.user?.club_id || req.user?.id || req.accountId || req.body.club_id;
 
         if (!club_id) {
             return res.status(400).json({ success: false, message: "Không xác định được ID Quán." });
         }
 
-        // Validate chặt chẽ
         if (!name || !name.trim()) {
             return res.status(400).json({ success: false, message: "Tên dịch vụ không được để trống!" });
         }
@@ -120,21 +116,41 @@ const updateService = async (req, res) => {
         if (Number(price) <= 0) {
             return res.status(400).json({ success: false, message: "Giá dịch vụ phải lớn hơn 0!" });
         }
-        if (discount_percent !== undefined && discount_percent !== null && discount_percent !== "") {
-            const disc = Number(discount_percent);
-            if (isNaN(disc) || disc < 0 || disc > 100) {
-                return res.status(400).json({ success: false, message: "Giảm giá phải từ 0 đến 100%!" });
-            }
-        }
         if (description && description.length > 500) {
             return res.status(400).json({ success: false, message: "Mô tả tối đa 500 ký tự!" });
         }
+
+        // Lấy dịch vụ hiện tại để xử lý ảnh
+        const existing = await serviceService.getServiceById(id);
+        let currentImages = existing.images || [];
+
+        // Xử lý danh sách ảnh bị xóa
+        let removedList = [];
+        if (removedImages) {
+            removedList = Array.isArray(removedImages) ? removedImages : [removedImages];
+        }
+
+        // Xóa ảnh cũ khỏi Cloudinary
+        for (const url of removedList) {
+            try {
+                const publicId = url.split("/").slice(-2).join("/").replace(/\.[^/.]+$/, "");
+                await cloudinary.uploader.destroy(publicId);
+            } catch (e) {
+                console.error("Lỗi xóa ảnh Cloudinary:", e);
+            }
+        }
+
+        // Ảnh còn lại = ảnh cũ trừ ảnh bị xóa
+        const remainingImages = currentImages.filter(img => !removedList.includes(img));
+
+        // Ảnh mới upload
+        const newImages = req.files ? req.files.map(f => f.path) : [];
 
         const updateData = {
             club_id,
             name: name.trim(),
             price: Number(price),
-            discount_percent: Number(discount_percent) || 0,
+            images: [...remainingImages, ...newImages],
             description: description || ""
         };
 
@@ -189,6 +205,20 @@ const reactivateService = async (req, res) => {
 const deleteServicePermanently = async (req, res) => {
     try {
         const { id } = req.params;
+
+        // Xóa ảnh Cloudinary trước khi xóa service
+        try {
+            const service = await serviceService.getServiceById(id);
+            if (service.images && service.images.length > 0) {
+                for (const url of service.images) {
+                    const publicId = url.split("/").slice(-2).join("/").replace(/\.[^/.]+$/, "");
+                    await cloudinary.uploader.destroy(publicId);
+                }
+            }
+        } catch (e) {
+            console.error("Lỗi xóa ảnh khi delete service:", e);
+        }
+
         await serviceService.deleteServicePermanently(id);
         return res.status(200).json({
             success: true,

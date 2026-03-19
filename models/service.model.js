@@ -18,11 +18,9 @@ const serviceSchema = new mongoose.Schema(
       required: [true, "Giá dịch vụ là bắt buộc"],
       min: [0, "Giá không được âm"]
     },
-    discount_percent: {
-      type: Number,
-      default: 0,
-      min: [0, "Giảm giá không được âm"],
-      max: [100, "Giảm giá tối đa 100%"]
+    images: {
+      type: [String],
+      default: []
     },
     description: {
       type: String,
