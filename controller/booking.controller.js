@@ -939,6 +939,29 @@ const checkOutBooking = async (req, res) => {
     }
 
     // Cập nhật trạng thái booking
+    const now = new Date();
+    const endH = now.getHours();
+    const endM = now.getMinutes();
+    const endTimeStr = `${String(endH).padStart(2, "0")}:${String(endM).padStart(2, "0")}`;
+
+    // Tính toán lại tổng tiền dựa trên thời gian chơi thực tế
+    const startMin = timeToMinutes(booking.start_time);
+    let endMin = endH * 60 + endM;
+
+    // Xử lý chơi qua đêm (nếu endMin < startMin)
+    if (endMin <= startMin) {
+      endMin += 24 * 60;
+    }
+
+    const durationHours = (endMin - startMin) / 60;
+    const playCost = Math.round(durationHours * (booking.hour_price || 0));
+
+    // Lấy tiền dịch vụ
+    const bookingServices = await BookingService.find({ booking_id: id });
+    const serviceTotal = bookingServices.reduce((sum, s) => sum + (s.unit_price * s.quantity), 0);
+
+    booking.end_time = endTimeStr;
+    booking.total_bill = playCost + serviceTotal;
     booking.status = "Completed";
     await booking.save();
 
@@ -952,7 +975,14 @@ const checkOutBooking = async (req, res) => {
     res.status(200).json({
       success: true,
       message: "Thanh toán thành công. Bàn đã chuyển về trạng thái hoạt động.",
-      data: booking,
+      data: {
+        _id: booking._id,
+        status: booking.status,
+        end_time: booking.end_time,
+        total_bill: booking.total_bill,
+        play_cost: playCost,
+        service_total: serviceTotal
+      },
     });
   } catch (error) {
     console.error("Lỗi checkOutBooking:", error);
