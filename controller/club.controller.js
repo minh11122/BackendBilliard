@@ -653,11 +653,39 @@ const getClubStatistics = async (req, res) => {
   }
 };
 
+// Hoàn tất onboarding quán mới
+const completeOnboarding = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { plan_type } = req.body;
+    const accountId = req.user?.accountId;
+
+    const club = await Club.findOne({ _id: id, account_id: accountId });
+    if (!club) {
+      return res.status(404).json({ success: false, message: "Không tìm thấy quán hoặc bạn không có quyền" });
+    }
+
+    club.onboarding_completed = true;
+    club.plan_type = plan_type || "free";
+    await club.save();
+
+    return res.status(200).json({
+      success: true,
+      message: "Hoàn tất thiết lập quán thành công",
+      data: { onboarding_completed: club.onboarding_completed, plan_type: club.plan_type }
+    });
+  } catch (error) {
+    console.error("Lỗi completeOnboarding:", error);
+    return res.status(500).json({ success: false, message: "Lỗi Server" });
+  }
+};
+
 module.exports = {
   registerClub,
   getAllClubs,
   getClubById,
   getClubsByAccount,
   updateClub,
-  getClubStatistics
+  getClubStatistics,
+  completeOnboarding
 };

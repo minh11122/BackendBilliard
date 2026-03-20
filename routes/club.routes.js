@@ -14,6 +14,7 @@ const authorizeRole = require("../middleware/authorizeRole.middleware");
 router.get("/staff/statistics", authenticate, authorizeRole("OWNER", "STAFF_CLUB"), clubController.getClubStatistics);
 
 router.get("/:id", clubController.getClubById);
+router.patch("/:id/complete-onboarding", authenticate, clubController.completeOnboarding);
 
 // Thông tin tài khoản ngân hàng của CLB
 router.get("/:id/bank", authenticate, clubBankController.getBankByClub);

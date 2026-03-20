@@ -24,6 +24,8 @@ const clubSchema = new mongoose.Schema(
       required: true
     },
     reject_reason: { type: String, default: null },
+    onboarding_completed: { type: Boolean, default: false },
+    plan_type: { type: String, enum: ["free", "basic", "pro"], default: "free" },
     created_at: { type: Date, default: Date.now, required: true }
   },
   {
