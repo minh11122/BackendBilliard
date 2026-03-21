@@ -8,29 +8,11 @@ const tournamentSchema = new mongoose.Schema(
     start_time: Date,
     end_time: Date,
     registration_deadline: Date,
+    registered_player: Number,
     max_players: Number,
     fee: Number,
     rules: String,
     status: String,
-    rounds: [
-      {
-        round_number: Number,
-        matches: [
-          {
-            player1_id: mongoose.Schema.Types.ObjectId,
-            player2_id: mongoose.Schema.Types.ObjectId,
-            winner_id: mongoose.Schema.Types.ObjectId,
-            result: String,
-            status: String
-          }
-        ]
-      }
-    ],
-    prizes: {
-      first: Number,
-      second: Number,
-      third: Number
-    },
     created_at: Date,
     created_by: mongoose.Schema.Types.ObjectId
   },

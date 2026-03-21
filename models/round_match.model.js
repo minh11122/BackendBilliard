@@ -3,9 +3,9 @@ const mongoose = require("mongoose");
 const roundMatchSchema = new mongoose.Schema(
     {
         round_id: { type: mongoose.Schema.Types.ObjectId, ref: "TournamentRound", required: true },
-        account1_id: { type: mongoose.Schema.Types.ObjectId, ref: "Account", required: true },
-        account2_id: { type: mongoose.Schema.Types.ObjectId, ref: "Account", required: true },
-        winner_id: { type: mongoose.Schema.Types.ObjectId, ref: "Account" },
+        player1_id: { type: mongoose.Schema.Types.ObjectId, ref: "Player", required: true },
+        player2_id: { type: mongoose.Schema.Types.ObjectId, ref: "Player", required: true },
+        winner_id: { type: mongoose.Schema.Types.ObjectId, ref: "Player" },
         match_name: { type: String, required: true },
         result: { type: String },
         status: {
