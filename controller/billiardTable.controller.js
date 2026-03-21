@@ -4,8 +4,8 @@ const cloudinary = require("../configs/cloudinary.config");
 
 const getBilliardTables = async (req, res) => {
     try {
-        // Lấy club_id từ Token đã được middleware giải mã (bảo mật nhất) hoặc fallback từ query
-        const club_id = req.user?.club_id || req.user?.id || req.accountId || req.query.club_id;
+        // Lấy club_id từ query hoặc req.user.club_id
+        const club_id = req.query.club_id || req.user?.club_id || req.body?.club_id;
         const { page = 1, limit = 5, search, table_type_id, status } = req.query;
 
         if (!club_id) {
@@ -76,9 +76,8 @@ const createBilliardTable = async (req, res) => {
         // Lấy thông tin bàn từ form
         const { table_type_id, table_number, area, price, brand, description, isActive } = req.body;
 
-        // ƯU TIÊN 1: Lấy club_id từ Token đã được middleware giải mã (bảo mật nhất)
-        // ƯU TIÊN 2: Fallback lấy từ req.body do Frontend gửi lên (dùng để test nếu chưa có auth)
-        const club_id = req.user?.club_id || req.user?.id || req.accountId || req.body.club_id;
+        // Lấy club_id
+        const club_id = req.body.club_id || req.query.club_id || req.user?.club_id;
 
         if (!club_id) {
             return res.status(400).json({
@@ -127,7 +126,7 @@ const createBilliardTable = async (req, res) => {
         if (error.code === 11000) {
             return res.status(409).json({
                 success: false,
-                message: `Tên bàn "${table_number}" đã tồn tại trong quán. Vui lòng chọn tên khác!`
+                message: `Tên bàn "${req.body.table_number}" đã tồn tại trong quán. Vui lòng chọn tên khác!`
             });
         }
 
@@ -148,8 +147,8 @@ const updateBilliardTable = async (req, res) => {
             return res.status(400).json({ success: false, message: "Thiếu ID bàn" });
         }
 
-        // Lấy club_id từ Token hoặc Fallback
-        const club_id = req.user?.club_id || req.user?.id || req.accountId || req.body.club_id;
+        // Lấy club_id
+        const club_id = req.body.club_id || req.query.club_id || req.user?.club_id;
         
         if (!club_id) {
             return res.status(400).json({
