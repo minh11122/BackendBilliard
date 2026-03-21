@@ -69,7 +69,7 @@ const getCurrentSubscription = async (req, res) => {
 const createSubscriptionPayment = async (req, res) => {
   try {
 
-    const { subscription_id, club_id } = req.body;
+    const { subscription_id, club_id, returnUrl, cancelUrl } = req.body;
 
     const accountId = req.user.accountId;
 
@@ -97,7 +97,9 @@ const createSubscriptionPayment = async (req, res) => {
       accountId,
       amount: price,
       description: "Subscription payment",
-      type: "SUBSCRIPTION"
+      type: "SUBSCRIPTION",
+      returnUrl,
+      cancelUrl
     });
 
     return res.json({

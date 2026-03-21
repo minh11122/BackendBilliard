@@ -3,7 +3,7 @@ const cloudinary = require("../configs/cloudinary.config");
 
 const getServices = async (req, res) => {
     try {
-        const club_id = req.user?.club_id || req.user?.id || req.accountId || req.query.club_id;
+        const club_id = req.query.club_id || req.user?.club_id || req.body?.club_id;
         const { page = 1, limit = 10, search, status = "Active" } = req.query;
 
         if (!club_id) {
@@ -46,7 +46,7 @@ const getServiceById = async (req, res) => {
 const createService = async (req, res) => {
     try {
         const { name, price, description } = req.body;
-        const club_id = req.user?.club_id || req.user?.id || req.accountId || req.body.club_id;
+        const club_id = req.body.club_id || req.query.club_id || req.user?.club_id;
 
         if (!club_id) {
             return res.status(400).json({ success: false, message: "Không xác định được ID Quán." });
@@ -98,7 +98,7 @@ const updateService = async (req, res) => {
     try {
         const { id } = req.params;
         const { name, price, description, removedImages } = req.body;
-        const club_id = req.user?.club_id || req.user?.id || req.accountId || req.body.club_id;
+        const club_id = req.body.club_id || req.query.club_id || req.user?.club_id;
 
         if (!club_id) {
             return res.status(400).json({ success: false, message: "Không xác định được ID Quán." });
