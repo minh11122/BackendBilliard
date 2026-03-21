@@ -942,11 +942,20 @@ const checkOutBooking = async (req, res) => {
     const now = new Date();
     const endH = now.getHours();
     const endM = now.getMinutes();
-    const endTimeStr = `${String(endH).padStart(2, "0")}:${String(endM).padStart(2, "0")}`;
+    const realEndTimeStr = `${String(endH).padStart(2, "0")}:${String(endM).padStart(2, "0")}`;
 
-    // Tính toán lại tổng tiền dựa trên thời gian chơi thực tế
+    let finalEndTimeStr;
+    let endMin;
     const startMin = timeToMinutes(booking.start_time);
-    let endMin = endH * 60 + endM;
+
+    // Kiểm tra loại khách: walk-in (có guest_name) hay đặt trước (không có guest_name, có account_id)
+    if (booking.guest_name) {
+      finalEndTimeStr = realEndTimeStr;
+      endMin = endH * 60 + endM;
+    } else {
+      finalEndTimeStr = booking.end_time;
+      endMin = timeToMinutes(booking.end_time);
+    }
 
     // Xử lý chơi qua đêm (nếu endMin < startMin)
     if (endMin <= startMin) {
@@ -960,7 +969,7 @@ const checkOutBooking = async (req, res) => {
     const bookingServices = await BookingService.find({ booking_id: id });
     const serviceTotal = bookingServices.reduce((sum, s) => sum + (s.unit_price * s.quantity), 0);
 
-    booking.end_time = endTimeStr;
+    booking.end_time = finalEndTimeStr;
     booking.total_bill = playCost + serviceTotal;
     booking.status = "Completed";
     await booking.save();
