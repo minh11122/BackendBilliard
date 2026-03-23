@@ -38,7 +38,8 @@ const createTournament = async (req, res) => {
       registration_deadline: registration_deadline ? new Date(registration_deadline) : null,
       play_date: play_date ? new Date(play_date) : null,
       auto_bracket: auto_bracket !== undefined ? auto_bracket : true,
-      banner: banner || "",
+      // If image was uploaded via multer/cloudinary, use req.file.path; else fallback to body field
+      banner: req.file ? req.file.path : (banner || ""),
       status: "Draft",
       created_by: req.account?._id || null,
       created_at: new Date()
@@ -97,7 +98,7 @@ const getPublicTournaments = async (req, res) => {
 const getTournamentById = async (req, res) => {
   try {
     const { id } = req.params;
-    const tournament = await Tournament.findById(id).lean();
+    const tournament = await Tournament.findById(id).populate("club_id", "name address").lean();
     if (!tournament) {
       return res.status(404).json({ success: false, message: "Không tìm thấy giải đấu" });
     }
@@ -119,6 +120,11 @@ const updateTournament = async (req, res) => {
     dateFields.forEach(field => {
       if (updates[field]) updates[field] = new Date(updates[field]);
     });
+
+    // If a new banner was uploaded, override
+    if (req.file) {
+      updates.banner = req.file.path;
+    }
 
     const tournament = await Tournament.findByIdAndUpdate(id, updates, { new: true });
     if (!tournament) {
