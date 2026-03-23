@@ -175,10 +175,61 @@ const getAllSubscriptions = async (req, res) => {
     });
   }
 };
+// BAN account
+const toggleBanAccount = async (req, res) => {
+  try {
+    const { id } = req.params;
 
+    const account = await Account.findById(id);
+
+    if (!account) {
+      return res.status(404).json({ message: "Không tìm thấy account" });
+    }
+
+    account.status =
+      account.status === "BANNED" ? "ACTIVE" : "BANNED";
+
+    await account.save();
+
+    res.json({
+      message:
+        account.status === "BANNED"
+          ? "Đã ban account"
+          : "Đã bỏ ban account",
+      data: account,
+    });
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+};
+
+// DELETE (soft delete)
+const deleteAccount = async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    const account = await Account.findByIdAndUpdate(
+      id,
+      { status: "DELETED" },
+      { new: true }
+    );
+
+    if (!account) {
+      return res.status(404).json({ message: "Không tìm thấy account" });
+    }
+
+    res.json({
+      message: "Đã xóa account",
+    });
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+};
 
 module.exports = {
   getAllAccountsForAdmin,
   getAllClubs,
   getAllSubscriptions,
+  deleteAccount,
+  toggleBanAccount
 };
