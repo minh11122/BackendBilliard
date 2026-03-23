@@ -43,26 +43,6 @@ router.post(
   authorizeRole("OWNER", "STAFF_CLUB"),
   bookingController.checkOutBooking,
 );
-
-// Xác thực thanh toán PayOS cho booking (Pending -> Booked)
-// Frontend đang gọi: POST /bookings/payos/verify
-router.post("/payos/verify", authenticate, bookingController.verifyBookingPayOSPayment);
-
-// Tạo PayOS payment link cho thanh toán kết thúc (Playing -> Completed)
-router.post(
-  "/:id/checkout/payos/create-payment",
-  authenticate,
-  authorizeRole("OWNER", "STAFF_CLUB"),
-  bookingController.createBookingPayOSCheckoutPayment,
-);
-
-// Xác thực PayOS cho thanh toán kết thúc (dùng khi redirect về frontend)
-router.post(
-  "/payos/checkout/verify",
-  authenticate,
-  authorizeRole("OWNER", "STAFF_CLUB"),
-  bookingController.verifyBookingPayOSCheckoutPayment,
-);
 // Đánh dấu booking là Payment Pending sau khi khách đã chuyển khoản
 // Create PayOS payment link for booking deposit
 router.post(
