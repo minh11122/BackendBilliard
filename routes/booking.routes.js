@@ -95,4 +95,11 @@ router.post(
   bookingController.extendBooking
 );
 
+router.post(
+  "/:id/change-table",
+  authenticate,
+  authorizeRole("OWNER", "STAFF_CLUB"),
+  bookingController.changeTable
+);
+
 module.exports = router;

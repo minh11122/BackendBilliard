@@ -11,6 +11,26 @@ const payosService = require("../services/payos.service");
 const HOLD_MINUTES_OVERRIDE = 2;
 const PAYOS_EXPIRE_MINUTES = 5;
 
+// Helper to push notifications to all specific club staff
+const notifyStaff = async (club_id, title, message) => {
+  try {
+    const StaffClub = require("../models/staff_club.model");
+    const Notification = require("../models/notification.model");
+    const staffs = await StaffClub.find({ club_id, status: "Active" });
+    if (staffs.length > 0) {
+      const notifs = staffs.map(s => ({
+        account_id: s.account_id,
+        title,
+        message,
+        is_read: false
+      }));
+      await Notification.insertMany(notifs);
+    }
+  } catch (err) {
+    console.error("Notify error:", err);
+  }
+};
+
 // Helper to compare times "HH:mm"
 const timeToMinutes = (timeStr) => {
   if (!timeStr) return 0;
@@ -580,6 +600,11 @@ const createWalkInBooking = async (req, res) => {
     // Tạo mã đơn đặt
     const codeNumber = "WI" + Date.now().toString().slice(-8);
 
+    // Tính toán thời gian kết thúc dự kiến (giữ bàn tối thiểu 1 tiếng cho walk-in để tránh Web booking đè lên ngay lập tức)
+    const [h, m] = start_time.split(':').map(Number);
+    const computedEndH = (h + 1) % 24;
+    const computedEndTime = `${String(computedEndH).padStart(2, '0')}:${String(m).padStart(2, '0')}`;
+
     // Tạo booking với trạng thái Playing ngay lập tức
     const booking = await Booking.create({
       account_id: staffId, // Nhân viên tạo booking
@@ -587,7 +612,7 @@ const createWalkInBooking = async (req, res) => {
       table_id: table._id,
       play_date: new Date(play_date),
       start_time,
-      end_time: start_time, // Chưa biết giờ kết thúc, để bằng giờ bắt đầu
+      end_time: computedEndTime, // Giữ chỗ tối thiểu 1 tiếng qua computed EndTime
       code_number: codeNumber,
       deposit: 0,
       hour_price: table.price || 0,
@@ -595,6 +620,8 @@ const createWalkInBooking = async (req, res) => {
       note: "Walk-in - Khách đến trực tiếp",
       status: "Playing",
     });
+
+    notifyStaff(clubId, "Khách mới", `Bàn ${table_number} vừa được mở cho khách ${guest_name}`);
 
     res.status(201).json({
       success: true,
@@ -942,11 +969,20 @@ const checkOutBooking = async (req, res) => {
     const now = new Date();
     const endH = now.getHours();
     const endM = now.getMinutes();
-    const endTimeStr = `${String(endH).padStart(2, "0")}:${String(endM).padStart(2, "0")}`;
+    const realEndTimeStr = `${String(endH).padStart(2, "0")}:${String(endM).padStart(2, "0")}`;
 
-    // Tính toán lại tổng tiền dựa trên thời gian chơi thực tế
+    let finalEndTimeStr;
+    let endMin;
     const startMin = timeToMinutes(booking.start_time);
-    let endMin = endH * 60 + endM;
+
+    // Kiểm tra loại khách: walk-in (có guest_name) hay đặt trước (không có guest_name, có account_id)
+    if (booking.guest_name) {
+      finalEndTimeStr = realEndTimeStr;
+      endMin = endH * 60 + endM;
+    } else {
+      finalEndTimeStr = booking.end_time;
+      endMin = timeToMinutes(booking.end_time);
+    }
 
     // Xử lý chơi qua đêm (nếu endMin < startMin)
     if (endMin <= startMin) {
@@ -960,7 +996,7 @@ const checkOutBooking = async (req, res) => {
     const bookingServices = await BookingService.find({ booking_id: id });
     const serviceTotal = bookingServices.reduce((sum, s) => sum + (s.unit_price * s.quantity), 0);
 
-    booking.end_time = endTimeStr;
+    booking.end_time = finalEndTimeStr;
     booking.total_bill = playCost + serviceTotal;
     booking.status = "Completed";
     await booking.save();
@@ -971,6 +1007,8 @@ const checkOutBooking = async (req, res) => {
       held_by: null,
       held_until: null,
     });
+
+    notifyStaff(clubId, "Thanh toán", `Bàn ${booking.table_id.table_number} đã được thanh toán xong`);
 
     res.status(200).json({
       success: true,
@@ -1033,6 +1071,8 @@ const addBookingService = async (req, res) => {
     const serviceTotal = service.price * quantity;
     booking.total_bill = (booking.total_bill || 0) + serviceTotal;
     await booking.save();
+
+    notifyStaff(clubId, "Gọi dịch vụ", `Bàn ${booking.table_id.table_number} vừa gọi ${quantity} ${service.name}`);
 
     res.status(201).json({ success: true, message: "Thêm dịch vụ thành công", data: bs });
   } catch (error) {
@@ -1169,6 +1209,8 @@ const extendBooking = async (req, res) => {
     
     await booking.save();
 
+    notifyStaff(clubId, "Gia hạn bàn", `Bàn ${booking.table_id.table_number} đã gia hạn thêm ${minutes} phút`);
+
     res.status(200).json({
       success: true,
       message: `Gia hạn thành công thêm ${minutes} phút`,
@@ -1179,6 +1221,96 @@ const extendBooking = async (req, res) => {
     });
   } catch (error) {
     console.error("Lỗi extendBooking:", error);
+    res.status(500).json({ success: false, message: "Lỗi server" });
+  }
+};
+
+// Đổi bàn cho đơn đặt bàn đang chơi (Walk-in hoặc khách đặt)
+const changeTable = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { new_table_id } = req.body;
+    const clubId = req.user.club_id;
+    const staffId = req.user.accountId;
+
+    if (!new_table_id) {
+      return res.status(400).json({ success: false, message: "Vui lòng chọn bàn mới" });
+    }
+
+    const oldBooking = await Booking.findById(id).populate("table_id");
+    if (!oldBooking) return res.status(404).json({ success: false, message: "Không tìm thấy đơn" });
+
+    if (oldBooking.table_id.club_id.toString() !== clubId.toString()) {
+      return res.status(403).json({ success: false, message: "Đơn này không thuộc quán của bạn" });
+    }
+
+    if (oldBooking.status !== "Playing") {
+      return res.status(400).json({ success: false, message: "Chỉ có thể đổi bàn khi đang chơi" });
+    }
+
+    const newTable = await BilliardTable.findById(new_table_id);
+    if (!newTable || newTable.club_id.toString() !== clubId.toString()) {
+      return res.status(404).json({ success: false, message: "Bàn mới không khả dụng" });
+    }
+    if (newTable.status !== "Available") {
+      return res.status(400).json({ success: false, message: "Bàn mới đang không trống" });
+    }
+
+    // 1. Chốt đơn bàn cũ
+    const now = new Date();
+    const endH = now.getHours();
+    const endM = now.getMinutes();
+    const realEndTimeStr = `${String(endH).padStart(2, "0")}:${String(endM).padStart(2, "0")}`;
+
+    const startMin = timeToMinutes(oldBooking.start_time);
+    let endMin = endH * 60 + endM;
+    if (endMin <= startMin) endMin += 24 * 60;
+
+    const durationHours = (endMin - startMin) / 60;
+    const playCost = Math.round(durationHours * (oldBooking.hour_price || 0));
+
+    // Tính tổng dịch vụ
+    const BookingService = require("../models/booking_service.model");
+    const oldServices = await BookingService.find({ booking_id: oldBooking._id });
+    const serviceTotal = oldServices.reduce((sum, s) => sum + (s.unit_price * s.quantity), 0);
+
+    oldBooking.end_time = realEndTimeStr;
+    oldBooking.total_bill = playCost + serviceTotal;
+    oldBooking.status = "Completed";
+    oldBooking.note = (oldBooking.note || "") + ` [Đã chuyển sang bàn ${newTable.table_number}]`;
+    await oldBooking.save();
+
+    await BilliardTable.findByIdAndUpdate(oldBooking.table_id._id, { status: "Available" });
+
+    // 2. Tạo đơn bàn mới
+    const codeNumber = "WI" + Date.now().toString().slice(-8);
+    const computedEndH = (endH + 1) % 24;
+    const computedEndTime = `${String(computedEndH).padStart(2, '0')}:${String(endM).padStart(2, '0')}`;
+
+    const newBooking = await Booking.create({
+      account_id: oldBooking.account_id,
+      guest_name: oldBooking.guest_name,
+      table_id: newTable._id,
+      play_date: now,
+      start_time: realEndTimeStr,
+      end_time: computedEndTime,
+      code_number: codeNumber,
+      deposit: 0,
+      hour_price: newTable.price || 0,
+      total_bill: 0,
+      note: `Đổi đến từ bàn ${oldBooking.table_id.table_number}`,
+      status: "Playing",
+    });
+
+    notifyStaff(clubId, "Đổi bàn", `Bàn ${oldBooking.table_id.table_number} đã chuyển sang Bàn ${newTable.table_number}`);
+
+    res.status(200).json({
+      success: true,
+      message: "Đổi bàn thành công",
+      data: newBooking
+    });
+  } catch (error) {
+    console.error("Lỗi changeTable:", error);
     res.status(500).json({ success: false, message: "Lỗi server" });
   }
 };
@@ -1199,5 +1331,6 @@ module.exports = {
   getBookingServices,
   updateBookingServiceQuantity,
   deleteBookingService,
-  extendBooking
+  extendBooking,
+  changeTable
 };

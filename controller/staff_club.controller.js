@@ -65,7 +65,12 @@ const createStaffClub = async (req, res) => {
             return res.status(400).json({ message: "Vui lòng nhập đầy đủ thông tin" });
         }
 
-        const existingAccount = await Account.findOne({ $or: [{ email }, { phone }] });
+        const orConditions = [{ email }];
+        if (phone && phone.trim() !== "") {
+            orConditions.push({ phone: phone.trim() });
+        }
+
+        const existingAccount = await Account.findOne({ $or: orConditions });
         if (existingAccount) {
             return res.status(400).json({ message: "Email hoặc Số điện thoại đã được sử dụng" });
         }

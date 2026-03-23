@@ -20,4 +20,5 @@ router.use("/bookings", bookingRoutes);
 router.use("/subscriptions", subscriptionRoutes);
 router.use("/tables", tableRoutes);
 router.use("/locations", require("./location.routes"));
+router.use("/tournaments", require("./tournament.routes"));
 module.exports = router;

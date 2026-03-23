@@ -9,6 +9,7 @@ const Booking = require("../models/booking.model");
 const Tournament = require("../models/tournament.model");
 const Notification = require("../models/notification.model");
 const Account = require("../models/account.model");
+const SubscriptionAccount = require("../models/subcription_account.model");
 const { geocodeAddress } = require("../utils/geocoding");
 
 
@@ -296,11 +297,25 @@ const getClubsByAccount = async (req, res) => {
 
     const clubs = await Club.find({ account_id }).lean();
 
-    // Lấy thêm ảnh bìa nếu cần thiết
     const result = await Promise.all(
       clubs.map(async (club) => {
         const images = await Image.find({ club_id: club._id, image_type: "Banner" }).lean();
         club.avatar = images.length > 0 ? images[0].image_url : null;
+
+        // Tự động chữa lỗi đồng bộ plan_type nếu quán đã có gói khác free đang Active
+        let realPlanType = "free";
+        const activeSub = await SubscriptionAccount.findOne({ club_id: club._id, status: "Active" }).populate("subscription_id");
+        if (activeSub && activeSub.subscription_id) {
+           const subName = activeSub.subscription_id.name.toLowerCase();
+           if (subName.includes("basic")) realPlanType = "basic";
+           if (subName.includes("pro")) realPlanType = "pro";
+        }
+
+        if (club.plan_type !== realPlanType) {
+           await Club.updateOne({ _id: club._id }, { $set: { plan_type: realPlanType } });
+           club.plan_type = realPlanType;
+        }
+
         return club;
       })
     );
@@ -653,11 +668,9 @@ const getClubStatistics = async (req, res) => {
   }
 };
 
-// Hoàn tất onboarding quán mới
 const completeOnboarding = async (req, res) => {
   try {
     const { id } = req.params;
-    const { plan_type } = req.body;
     const accountId = req.user?.accountId;
 
     const club = await Club.findOne({ _id: id, account_id: accountId });
@@ -665,8 +678,19 @@ const completeOnboarding = async (req, res) => {
       return res.status(404).json({ success: false, message: "Không tìm thấy quán hoặc bạn không có quyền" });
     }
 
+    let realPlanType = "free";
+    const activeSub = await SubscriptionAccount.findOne({ club_id: id, status: "Active" })
+      .populate("subscription_id")
+      .sort({ purchase_date: -1 });
+
+    if (activeSub && activeSub.subscription_id) {
+       const subName = activeSub.subscription_id.name.toLowerCase();
+       if (subName.includes("basic")) realPlanType = "basic";
+       if (subName.includes("pro")) realPlanType = "pro";
+    }
+
     club.onboarding_completed = true;
-    club.plan_type = plan_type || "free";
+    club.plan_type = realPlanType;
     await club.save();
 
     return res.status(200).json({

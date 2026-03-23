@@ -5,7 +5,9 @@ const createPayment = async ({
   accountId,
   amount,
   description,
-  type
+  type,
+  returnUrl = "http://localhost:5173/owner/payment-success",
+  cancelUrl = "http://localhost:5173/owner/settings"
 }) => {
 
   console.log("CREATE PAYMENT CALLED");
@@ -30,8 +32,8 @@ const createPayment = async ({
     orderCode,
     amount,
     description,
-    returnUrl: "http://localhost:5173/owner/payment-success",
-    cancelUrl: "http://localhost:5173/owner/settings"
+    returnUrl,
+    cancelUrl
   };
 
   const paymentLink = await payosService.createPaymentLink(paymentData);
