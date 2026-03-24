@@ -540,15 +540,15 @@ const confirmPayment = async (req, res) => {
 // Nhân viên tạo đặt bàn trực tiếp (walk-in) cho khách đến quán
 const createWalkInBooking = async (req, res) => {
   try {
-    const { guest_name, table_number, play_date, start_time } = req.body;
+    const { guest_name, table_number, play_date, start_time, end_time } = req.body;
     const staffId = req.user.accountId;
     const clubId = req.user.club_id;
 
-    if (!guest_name || !table_number || !play_date || !start_time) {
+    if (!guest_name || !table_number || !play_date || !start_time || !end_time) {
       return res.status(400).json({
         success: false,
         message:
-          "Vui lòng nhập đầy đủ: tên khách, số bàn, ngày chơi, giờ bắt đầu",
+          "Vui lòng nhập đầy đủ: tên khách, số bàn, ngày chơi, giờ bắt đầu, giờ kết thúc",
       });
     }
 
@@ -600,11 +600,6 @@ const createWalkInBooking = async (req, res) => {
     // Tạo mã đơn đặt
     const codeNumber = "WI" + Date.now().toString().slice(-8);
 
-    // Tính toán thời gian kết thúc dự kiến (giữ bàn tối thiểu 1 tiếng cho walk-in để tránh Web booking đè lên ngay lập tức)
-    const [h, m] = start_time.split(':').map(Number);
-    const computedEndH = (h + 1) % 24;
-    const computedEndTime = `${String(computedEndH).padStart(2, '0')}:${String(m).padStart(2, '0')}`;
-
     // Tạo booking với trạng thái Playing ngay lập tức
     const booking = await Booking.create({
       account_id: staffId, // Nhân viên tạo booking
@@ -612,7 +607,7 @@ const createWalkInBooking = async (req, res) => {
       table_id: table._id,
       play_date: new Date(play_date),
       start_time,
-      end_time: computedEndTime, // Giữ chỗ tối thiểu 1 tiếng qua computed EndTime
+      end_time, 
       code_number: codeNumber,
       deposit: 0,
       hour_price: table.price || 0,
@@ -966,23 +961,9 @@ const checkOutBooking = async (req, res) => {
     }
 
     // Cập nhật trạng thái booking
-    const now = new Date();
-    const endH = now.getHours();
-    const endM = now.getMinutes();
-    const realEndTimeStr = `${String(endH).padStart(2, "0")}:${String(endM).padStart(2, "0")}`;
-
-    let finalEndTimeStr;
-    let endMin;
+    let finalEndTimeStr = booking.end_time;
+    let endMin = timeToMinutes(booking.end_time);
     const startMin = timeToMinutes(booking.start_time);
-
-    // Kiểm tra loại khách: walk-in (có guest_name) hay đặt trước (không có guest_name, có account_id)
-    if (booking.guest_name) {
-      finalEndTimeStr = realEndTimeStr;
-      endMin = endH * 60 + endM;
-    } else {
-      finalEndTimeStr = booking.end_time;
-      endMin = timeToMinutes(booking.end_time);
-    }
 
     // Xử lý chơi qua đêm (nếu endMin < startMin)
     if (endMin <= startMin) {
