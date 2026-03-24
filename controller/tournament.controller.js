@@ -157,6 +157,29 @@ const getTournamentById = async (req, res) => {
   }
 };
 
+// Get approved tournament ids that current user joined
+const getMyRegisteredTournamentIds = async (req, res) => {
+  try {
+    const accountId = req.user?.accountId;
+    if (!accountId) {
+      return res.status(401).json({ success: false, message: "Bạn chưa đăng nhập" });
+    }
+
+    const rows = await TournamentPlayer.find({
+      account_id: accountId,
+      status: "Approved"
+    })
+      .select("tournament_id")
+      .lean();
+
+    const tournamentIds = rows.map((row) => String(row.tournament_id));
+    return res.status(200).json({ success: true, data: tournamentIds });
+  } catch (error) {
+    console.error("Error getMyRegisteredTournamentIds:", error);
+    return res.status(500).json({ success: false, message: "Lỗi server", error: error.message });
+  }
+};
+
 // Update a tournament
 const updateTournament = async (req, res) => {
   try {
@@ -418,6 +441,7 @@ module.exports = {
   getTournamentsByClub,
   getPublicTournaments,
   getTournamentById,
+  getMyRegisteredTournamentIds,
   updateTournament,
   deleteTournament,
   createTournamentPayOSPayment,

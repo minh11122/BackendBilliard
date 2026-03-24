@@ -5,6 +5,7 @@ const {
   getTournamentsByClub,
   getPublicTournaments,
   getTournamentById,
+  getMyRegisteredTournamentIds,
   updateTournament,
   deleteTournament,
   createTournamentPayOSPayment,
@@ -19,6 +20,7 @@ router.get("/", getTournamentsByClub);
 
 // GET /tournaments/public — get public tournaments
 router.get("/public", getPublicTournaments);
+router.get("/my/registered-ids", authenticate, getMyRegisteredTournamentIds);
 
 // GET /tournaments/:id — get single tournament details
 router.get("/:id", getTournamentById);
