@@ -1185,8 +1185,10 @@ const extendBooking = async (req, res) => {
     const extraHours = minutes / 60;
     const extraCost = Math.round(extraHours * booking.hour_price);
     
+    const nowStr = new Date().toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit', hour12: false });
     booking.end_time = newEndTime;
     booking.total_bill = (booking.total_bill || 0) + extraCost;
+    booking.note = (booking.note || "") + ` [Gia hạn +${minutes}ph lúc ${nowStr}]`;
     
     await booking.save();
 
