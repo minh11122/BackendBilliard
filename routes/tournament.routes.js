@@ -6,6 +6,7 @@ const {
   getPublicTournaments,
   getTournamentById,
   getMyRegisteredTournamentIds,
+  getTournamentPlayers,
   updateTournament,
   deleteTournament,
   createTournamentPayOSPayment,
@@ -24,6 +25,7 @@ router.get("/my/registered-ids", authenticate, getMyRegisteredTournamentIds);
 
 // GET /tournaments/:id — get single tournament details
 router.get("/:id", getTournamentById);
+router.get("/:id/players", getTournamentPlayers);
 
 // Tournament registration via PayOS
 router.post("/:id/payos/create-payment", authenticate, createTournamentPayOSPayment);

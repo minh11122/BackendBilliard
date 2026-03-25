@@ -31,6 +31,49 @@ const notifyStaff = async (club_id, title, message) => {
   }
 };
 
+// Create invoice (idempotent) when a booking is finalized
+const ensureInvoiceForBooking = async ({
+  booking,
+  bookingServices = [],
+  tableCost,
+  totalService,
+  paymentMethod
+}) => {
+  const Invoice = require("../models/invoice.model");
+  const InvoiceDetail = require("../models/invoice_detail.model");
+
+  if (!booking?._id) return null;
+
+  const existing = await Invoice.findOne({ booking_id: booking._id }).lean();
+  if (existing) return existing;
+
+  const invoice_number = `INV-${String(booking._id).slice(-6)}-${Date.now()}`;
+  const invoice_date = new Date();
+
+  const invoice = await Invoice.create({
+    booking_id: booking._id,
+    table_cost: Number(tableCost || 0),
+    total_service: Number(totalService || 0),
+    invoice_number,
+    invoice_date,
+    payment_method: paymentMethod, // "payOS" | "Cash"
+    status: "Paid",
+    note: ""
+  });
+
+  if (Array.isArray(bookingServices) && bookingServices.length > 0) {
+    const details = bookingServices.map((bs) => ({
+      invoice_id: invoice._id,
+      booking_service_id: bs._id,
+      unit_price: Number(bs.unit_price || 0),
+      quantity: Number(bs.quantity || 0)
+    }));
+    await InvoiceDetail.insertMany(details);
+  }
+
+  return invoice;
+};
+
 // Helper to compare times "HH:mm"
 const timeToMinutes = (timeStr) => {
   if (!timeStr) return 0;
@@ -806,31 +849,94 @@ const payosWebhook = async (req, res) => {
         .json({ success: true, message: "Webhook received (not paid)" });
     }
 
-    if (booking.status === "Booked") {
-      return res.status(200).json({ success: true, message: "Already booked" });
+    const txType = tx.transaction_type;
+
+    // Deposit flow: Pending -> Booked
+    if (txType !== "BOOKING_FINAL_PAYMENT_TRANSFER") {
+      if (booking.status === "Booked") {
+        return res.status(200).json({
+          success: true,
+          message: "Already booked"
+        });
+      }
+
+      booking.status = "Booked";
+      await booking.save();
+
+      await TransactionHistory.findOneAndUpdate(
+        { order_code: orderCode },
+        { status: "SUCCESS" }
+      );
+
+      // Release holding
+      await BilliardTable.findByIdAndUpdate(
+        booking.table_id._id || booking.table_id,
+        {
+          status: "Available",
+          held_by: null,
+          held_until: null
+        }
+      );
+
+      return res.status(200).json({
+        success: true,
+        message: "Updated booking to Booked"
+      });
     }
 
-    booking.status = "Booked";
+    // Final checkout flow: Playing -> Completed
+    if (booking.status === "Completed") {
+      await TransactionHistory.findOneAndUpdate(
+        { order_code: orderCode },
+        { status: "SUCCESS" }
+      );
+      return res.status(200).json({
+        success: true,
+        message: "Already completed"
+      });
+    }
+
+    const bookingServices = await BookingService.find({ booking_id: booking._id });
+    const serviceTotal = bookingServices.reduce((sum, s) => sum + (s.unit_price * s.quantity), 0);
+
+    let endMin = timeToMinutes(booking.end_time);
+    const startMin = timeToMinutes(booking.start_time);
+    if (endMin <= startMin) endMin += 24 * 60;
+
+    const durationHours = (endMin - startMin) / 60;
+    const playCost = Math.round(durationHours * (booking.hour_price || 0));
+    const totalBill = playCost + serviceTotal;
+
+    booking.total_bill = totalBill;
+    booking.status = "Completed";
     await booking.save();
 
     await TransactionHistory.findOneAndUpdate(
       { order_code: orderCode },
-      { status: "SUCCESS" },
+      { status: "SUCCESS" }
     );
 
-    // Release holding
-    await BilliardTable.findByIdAndUpdate(
-      booking.table_id._id || booking.table_id,
-      {
-        status: "Available",
-        held_by: null,
-        held_until: null,
-      },
-    );
+    // Release table
+    await BilliardTable.findByIdAndUpdate(booking.table_id._id || booking.table_id, {
+      status: "Available",
+      held_by: null,
+      held_until: null
+    });
 
-    return res
-      .status(200)
-      .json({ success: true, message: "Updated booking to Booked" });
+    notifyStaff(clubId, "Thanh toán", `Bàn ${booking.table_id.table_number} đã được thanh toán xong`);
+
+    await ensureInvoiceForBooking({
+      booking,
+      bookingServices,
+      tableCost: playCost,
+      totalService: serviceTotal,
+      paymentMethod: "payOS"
+    });
+
+    return res.status(200).json({
+      success: true,
+      message: "Updated booking to Completed"
+    });
   } catch (error) {
     console.error("Lỗi payosWebhook:", error);
     return res.status(500).json({ success: false, message: "Lỗi server" });
@@ -982,6 +1088,37 @@ const checkOutBooking = async (req, res) => {
     booking.status = "Completed";
     await booking.save();
 
+    // Store final payment cash transaction
+    const TransactionHistory = require("../models/transiction_history.model");
+    if (!booking.account_id) {
+      return res.status(400).json({
+        success: false,
+        message: "Booking thiếu account_id, không thể lưu transaction_history"
+      });
+    }
+
+    const deposit = Number(booking.deposit || 0);
+    const dueAmount = Math.max(0, Number(booking.total_bill || 0) - deposit);
+
+    await TransactionHistory.create({
+      account_id: booking.account_id,
+      booking_id: booking._id,
+      order_code: `CASH-${Date.now()}`,
+      amount: dueAmount,
+      description: `BookingFinalPaymentCash:${booking._id}`,
+      transaction_type: "BOOKING_FINAL_PAYMENT_CASH",
+      transaction_time: new Date(),
+      status: "SUCCESS"
+    });
+
+    await ensureInvoiceForBooking({
+      booking,
+      bookingServices,
+      tableCost: playCost,
+      totalService: serviceTotal,
+      paymentMethod: "Cash"
+    });
+
     // Cập nhật trạng thái bàn về Available
     await BilliardTable.findByIdAndUpdate(booking.table_id._id, {
       status: "Available",
@@ -1000,12 +1137,364 @@ const checkOutBooking = async (req, res) => {
         end_time: booking.end_time,
         total_bill: booking.total_bill,
         play_cost: playCost,
-        service_total: serviceTotal
+        service_total: serviceTotal,
+        deposit,
+        due_amount: dueAmount
       },
     });
   } catch (error) {
     console.error("Lỗi checkOutBooking:", error);
     res.status(500).json({ success: false, message: "Lỗi server" });
+  }
+};
+
+// Lấy booking theo id (dành cho STAFF/OWNER của cùng club)
+const getBookingById = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const clubId = req.user?.club_id;
+
+    if (!clubId) {
+      return res.status(400).json({
+        success: false,
+        message: "Không xác định được quán của nhân viên"
+      });
+    }
+
+    const booking = await Booking.findById(id).populate("table_id");
+    if (!booking) {
+      return res.status(404).json({
+        success: false,
+        message: "Không tìm thấy đơn đặt bàn"
+      });
+    }
+
+    if (booking.table_id?.club_id?.toString() !== clubId.toString()) {
+      return res.status(403).json({
+        success: false,
+        message: "Đơn này không thuộc quán của bạn"
+      });
+    }
+
+    return res.status(200).json({ success: true, data: booking });
+  } catch (error) {
+    console.error("Error getBookingById:", error);
+    return res.status(500).json({ success: false, message: "Lỗi server" });
+  }
+};
+
+// Chuyển khoản thanh toán nốt (Playing -> Completed) qua PayOS
+const createBookingCheckoutPayOSPayment = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const clubId = req.user?.club_id;
+    if (!clubId) {
+      return res.status(400).json({
+        success: false,
+        message: "Không xác định được quán của nhân viên"
+      });
+    }
+
+    const booking = await Booking.findById(id).populate("table_id");
+    if (!booking) {
+      return res.status(404).json({
+        success: false,
+        message: "Không tìm thấy đơn đặt bàn"
+      });
+    }
+
+    if (booking.table_id?.club_id?.toString() !== clubId.toString()) {
+      return res.status(403).json({
+        success: false,
+        message: "Đơn này không thuộc quán của bạn"
+      });
+    }
+
+    if (booking.status !== "Playing") {
+      return res.status(400).json({
+        success: false,
+        message: `Không thể thanh toán khi đơn đang ở trạng thái: ${booking.status}`
+      });
+    }
+
+    const bookingServices = await BookingService.find({ booking_id: id });
+    const serviceTotal = bookingServices.reduce((sum, s) => {
+      const unitPrice = Number(s.unit_price || 0);
+      const qty = Number(s.quantity || 0);
+      const line = unitPrice * qty;
+      return sum + (Number.isFinite(line) ? line : 0);
+    }, 0);
+
+    // Calculate play cost (time-based)
+    let endMin = timeToMinutes(booking.end_time);
+    const startMin = timeToMinutes(booking.start_time);
+    if (endMin <= startMin) endMin += 24 * 60;
+
+    const durationHours = (endMin - startMin) / 60;
+    const playCost = Math.round(durationHours * (booking.hour_price || 0));
+
+    const totalBill = Number(playCost || 0) + Number(serviceTotal || 0);
+    const deposit = Number(booking.deposit || 0);
+    const dueAmount = Math.max(0, Math.round(totalBill - deposit));
+
+    if (!booking.account_id) {
+      return res.status(400).json({
+        success: false,
+        message: "Booking thiếu account_id, không thể lưu transaction_history"
+      });
+    }
+
+    const TransactionHistory = require("../models/transiction_history.model");
+
+    const orderCode = Date.now();
+    const expiredAt = Math.floor(
+      (Date.now() + PAYOS_EXPIRE_MINUTES * 60 * 1000) / 1000
+    );
+
+    // Create transaction record as PENDING before redirecting to PayOS
+    await TransactionHistory.create({
+      account_id: booking.account_id,
+      booking_id: booking._id,
+      order_code: orderCode,
+      amount: dueAmount,
+      description: `BookingFinalPayment:${booking._id}`,
+      transaction_type: "BOOKING_FINAL_PAYMENT_TRANSFER",
+      transaction_time: new Date(),
+      status: "PENDING"
+    });
+
+    // No remaining amount -> finalize immediately
+    if (dueAmount <= 0) {
+      booking.total_bill = totalBill;
+      booking.status = "Completed";
+      await booking.save();
+
+      await BilliardTable.findByIdAndUpdate(booking.table_id._id, {
+        status: "Available",
+        held_by: null,
+        held_until: null
+      });
+
+      notifyStaff(clubId, "Thanh toán", `Bàn ${booking.table_id.table_number} đã được thanh toán xong`);
+
+      await TransactionHistory.findOneAndUpdate(
+        { order_code: orderCode },
+        { status: "SUCCESS", transaction_time: new Date() }
+      );
+
+      await ensureInvoiceForBooking({
+        booking,
+        bookingServices,
+        tableCost: playCost,
+        totalService: serviceTotal,
+        paymentMethod: "payOS"
+      });
+
+      return res.status(200).json({
+        success: true,
+        message: "Hoàn tất thanh toán (0đ còn lại)",
+        data: {
+          orderCode,
+          checkoutUrl: null,
+          qrCode: null,
+          expiredAt,
+          invoice: {
+            playCost,
+            serviceTotal,
+            totalBill,
+            deposit,
+            dueAmount
+          }
+        }
+      });
+    }
+
+    const bank = await ClubBank.findOne({ club_id: clubId }).lean();
+    if (
+      !bank ||
+      !bank.payos_client_id ||
+      !bank.payos_api_key ||
+      !bank.payos_checksum_key
+    ) {
+      return res.status(400).json({
+        success: false,
+        message:
+          "CLB chưa thiết lập PayOS (Client ID / API Key / Checksum Key)"
+      });
+    }
+
+    const rawDescription = `Thanh toán ${booking.code_number || ""}`.trim();
+    const safeDescription = String(rawDescription).slice(0, 25);
+
+    const paymentLink = await payosService.createPaymentLink(
+      {
+        orderCode,
+        amount: dueAmount,
+        description: safeDescription || "Thanh toán",
+        returnUrl: `http://localhost:5173/staff/tables/checkout/${booking._id}?orderCode=${orderCode}`,
+        cancelUrl: `http://localhost:5173/staff/tables/checkout/${booking._id}?orderCode=${orderCode}`,
+        expiredAt
+      },
+      {
+        clientId: bank.payos_client_id,
+        apiKey: bank.payos_api_key,
+        checksumKey: bank.payos_checksum_key
+      }
+    );
+
+    return res.status(200).json({
+      success: true,
+      message: "Tạo mã PayOS thành công",
+      data: {
+        orderCode,
+        checkoutUrl: paymentLink.checkoutUrl,
+        qrCode: paymentLink.qrCode || null,
+        expiredAt: paymentLink.expiredAt || expiredAt,
+        invoice: {
+          playCost,
+          serviceTotal,
+          totalBill,
+          deposit,
+          dueAmount
+        }
+      }
+    });
+  } catch (error) {
+    console.error("Error createBookingCheckoutPayOSPayment:", error);
+    return res.status(500).json({
+      success: false,
+      message: error?.response?.data?.message || error?.message || "Lỗi server"
+    });
+  }
+};
+
+// Xác thực thanh toán PayOS (Playing -> Completed)
+const verifyBookingCheckoutPayOSPayment = async (req, res) => {
+  try {
+    const { orderCode } = req.body;
+    if (!orderCode) {
+      return res.status(400).json({ success: false, message: "Thiếu orderCode" });
+    }
+
+    const TransactionHistory = require("../models/transiction_history.model");
+    const tx = await TransactionHistory.findOne({ order_code: orderCode }).lean();
+    if (!tx || !tx.booking_id) {
+      return res.status(404).json({
+        success: false,
+        message: "Không tìm thấy giao dịch thanh toán checkout"
+      });
+    }
+
+    if (tx.transaction_type !== "BOOKING_FINAL_PAYMENT_TRANSFER") {
+      return res.status(400).json({
+        success: false,
+        message: "orderCode không thuộc loại checkout PayOS"
+      });
+    }
+
+    const booking = await Booking.findById(tx.booking_id).populate("table_id");
+    if (!booking) {
+      return res.status(404).json({
+        success: false,
+        message: "Không tìm thấy booking"
+      });
+    }
+
+    const clubId = req.user?.club_id;
+    if (!clubId) {
+      return res.status(400).json({
+        success: false,
+        message: "Không xác định được quán của nhân viên"
+      });
+    }
+
+    if (booking.table_id?.club_id?.toString() !== clubId.toString()) {
+      return res.status(403).json({
+        success: false,
+        message: "Đơn này không thuộc quán của bạn"
+      });
+    }
+
+    if (tx.status === "SUCCESS" || booking.status === "Completed") {
+      await TransactionHistory.findOneAndUpdate(
+        { order_code: orderCode },
+        { status: "SUCCESS" }
+      );
+      return res.status(200).json({
+        success: true,
+        message: "Đã được hoàn tất trước đó"
+      });
+    }
+
+    const bank = await ClubBank.findOne({ club_id: clubId }).lean();
+    if (
+      !bank ||
+      !bank.payos_client_id ||
+      !bank.payos_api_key ||
+      !bank.payos_checksum_key
+    ) {
+      return res.status(400).json({ success: false, message: "CLB chưa cấu hình PayOS" });
+    }
+
+    const paymentInfo = await payosService.getPaymentInfo(orderCode, {
+      clientId: bank.payos_client_id,
+      apiKey: bank.payos_api_key,
+      checksumKey: bank.payos_checksum_key
+    });
+
+    if (paymentInfo.status !== "PAID") {
+      return res.status(400).json({ success: false, message: "Thanh toán chưa hoàn tất" });
+    }
+
+    // Finalize booking
+    const bookingServices = await BookingService.find({ booking_id: booking._id });
+    const serviceTotal = bookingServices.reduce((sum, s) => {
+      const unitPrice = Number(s.unit_price || 0);
+      const qty = Number(s.quantity || 0);
+      const line = unitPrice * qty;
+      return sum + (Number.isFinite(line) ? line : 0);
+    }, 0);
+
+    let endMin = timeToMinutes(booking.end_time);
+    const startMin = timeToMinutes(booking.start_time);
+    if (endMin <= startMin) endMin += 24 * 60;
+
+    const durationHours = (endMin - startMin) / 60;
+    const playCost = Math.round(durationHours * (booking.hour_price || 0));
+    const totalBill = Number(playCost || 0) + Number(serviceTotal || 0);
+
+    booking.total_bill = totalBill;
+    booking.status = "Completed";
+    await booking.save();
+
+    await BilliardTable.findByIdAndUpdate(booking.table_id._id, {
+      status: "Available",
+      held_by: null,
+      held_until: null
+    });
+
+    notifyStaff(clubId, "Thanh toán", `Bàn ${booking.table_id.table_number} đã được thanh toán xong`);
+
+    await ensureInvoiceForBooking({
+      booking,
+      bookingServices,
+      tableCost: playCost,
+      totalService: serviceTotal,
+      paymentMethod: "payOS"
+    });
+
+    await TransactionHistory.findOneAndUpdate(
+      { order_code: orderCode },
+      { status: "SUCCESS", transaction_time: new Date() }
+    );
+
+    return res.status(200).json({ success: true, message: "Thanh toán checkout thành công" });
+  } catch (error) {
+    console.error("Error verifyBookingCheckoutPayOSPayment:", error);
+    return res.status(500).json({
+      success: false,
+      message: error?.response?.data?.message || error?.message || "Lỗi server"
+    });
   }
 };
 
@@ -1304,12 +1793,15 @@ module.exports = {
   getMyBookings,
   checkInBooking,
   checkOutBooking,
+  getBookingById,
   getClubBookings,
   createWalkInBooking,
   confirmPayment,
   createBookingPayOSPayment,
   payosWebhook,
   verifyBookingPayOSPayment,
+  createBookingCheckoutPayOSPayment,
+  verifyBookingCheckoutPayOSPayment,
   addBookingService,
   getBookingServices,
   updateBookingServiceQuantity,
