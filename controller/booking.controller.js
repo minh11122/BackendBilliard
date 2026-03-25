@@ -31,6 +31,49 @@ const notifyStaff = async (club_id, title, message) => {
   }
 };
 
+// Create invoice (idempotent) when a booking is finalized
+const ensureInvoiceForBooking = async ({
+  booking,
+  bookingServices = [],
+  tableCost,
+  totalService,
+  paymentMethod
+}) => {
+  const Invoice = require("../models/invoice.model");
+  const InvoiceDetail = require("../models/invoice_detail.model");
+
+  if (!booking?._id) return null;
+
+  const existing = await Invoice.findOne({ booking_id: booking._id }).lean();
+  if (existing) return existing;
+
+  const invoice_number = `INV-${String(booking._id).slice(-6)}-${Date.now()}`;
+  const invoice_date = new Date();
+
+  const invoice = await Invoice.create({
+    booking_id: booking._id,
+    table_cost: Number(tableCost || 0),
+    total_service: Number(totalService || 0),
+    invoice_number,
+    invoice_date,
+    payment_method: paymentMethod, // "payOS" | "Cash"
+    status: "Paid",
+    note: ""
+  });
+
+  if (Array.isArray(bookingServices) && bookingServices.length > 0) {
+    const details = bookingServices.map((bs) => ({
+      invoice_id: invoice._id,
+      booking_service_id: bs._id,
+      unit_price: Number(bs.unit_price || 0),
+      quantity: Number(bs.quantity || 0)
+    }));
+    await InvoiceDetail.insertMany(details);
+  }
+
+  return invoice;
+};
+
 // Helper to compare times "HH:mm"
 const timeToMinutes = (timeStr) => {
   if (!timeStr) return 0;
@@ -882,6 +925,14 @@ const payosWebhook = async (req, res) => {
 
     notifyStaff(clubId, "Thanh toán", `Bàn ${booking.table_id.table_number} đã được thanh toán xong`);
 
+    await ensureInvoiceForBooking({
+      booking,
+      bookingServices,
+      tableCost: playCost,
+      totalService: serviceTotal,
+      paymentMethod: "payOS"
+    });
+
     return res.status(200).json({
       success: true,
       message: "Updated booking to Completed"
@@ -1060,6 +1111,14 @@ const checkOutBooking = async (req, res) => {
       status: "SUCCESS"
     });
 
+    await ensureInvoiceForBooking({
+      booking,
+      bookingServices,
+      tableCost: playCost,
+      totalService: serviceTotal,
+      paymentMethod: "Cash"
+    });
+
     // Cập nhật trạng thái bàn về Available
     await BilliardTable.findByIdAndUpdate(booking.table_id._id, {
       status: "Available",
@@ -1159,10 +1218,12 @@ const createBookingCheckoutPayOSPayment = async (req, res) => {
     }
 
     const bookingServices = await BookingService.find({ booking_id: id });
-    const serviceTotal = bookingServices.reduce(
-      (sum, s) => sum + s.unit_price * s.quantity,
-      0
-    );
+    const serviceTotal = bookingServices.reduce((sum, s) => {
+      const unitPrice = Number(s.unit_price || 0);
+      const qty = Number(s.quantity || 0);
+      const line = unitPrice * qty;
+      return sum + (Number.isFinite(line) ? line : 0);
+    }, 0);
 
     // Calculate play cost (time-based)
     let endMin = timeToMinutes(booking.end_time);
@@ -1172,9 +1233,9 @@ const createBookingCheckoutPayOSPayment = async (req, res) => {
     const durationHours = (endMin - startMin) / 60;
     const playCost = Math.round(durationHours * (booking.hour_price || 0));
 
-    const totalBill = playCost + serviceTotal;
+    const totalBill = Number(playCost || 0) + Number(serviceTotal || 0);
     const deposit = Number(booking.deposit || 0);
-    const dueAmount = Math.max(0, totalBill - deposit);
+    const dueAmount = Math.max(0, Math.round(totalBill - deposit));
 
     if (!booking.account_id) {
       return res.status(400).json({
@@ -1221,6 +1282,14 @@ const createBookingCheckoutPayOSPayment = async (req, res) => {
         { status: "SUCCESS", transaction_time: new Date() }
       );
 
+      await ensureInvoiceForBooking({
+        booking,
+        bookingServices,
+        tableCost: playCost,
+        totalService: serviceTotal,
+        paymentMethod: "payOS"
+      });
+
       return res.status(200).json({
         success: true,
         message: "Hoàn tất thanh toán (0đ còn lại)",
@@ -1254,11 +1323,14 @@ const createBookingCheckoutPayOSPayment = async (req, res) => {
       });
     }
 
+    const rawDescription = `Thanh toán ${booking.code_number || ""}`.trim();
+    const safeDescription = String(rawDescription).slice(0, 25);
+
     const paymentLink = await payosService.createPaymentLink(
       {
         orderCode,
         amount: dueAmount,
-        description: `Thanh toán nốt booking ${booking.code_number}`,
+        description: safeDescription || "Thanh toán",
         returnUrl: `http://localhost:5173/staff/tables/checkout/${booking._id}?orderCode=${orderCode}`,
         cancelUrl: `http://localhost:5173/staff/tables/checkout/${booking._id}?orderCode=${orderCode}`,
         expiredAt
@@ -1289,7 +1361,10 @@ const createBookingCheckoutPayOSPayment = async (req, res) => {
     });
   } catch (error) {
     console.error("Error createBookingCheckoutPayOSPayment:", error);
-    return res.status(500).json({ success: false, message: "Lỗi server" });
+    return res.status(500).json({
+      success: false,
+      message: error?.response?.data?.message || error?.message || "Lỗi server"
+    });
   }
 };
 
@@ -1373,10 +1448,12 @@ const verifyBookingCheckoutPayOSPayment = async (req, res) => {
 
     // Finalize booking
     const bookingServices = await BookingService.find({ booking_id: booking._id });
-    const serviceTotal = bookingServices.reduce(
-      (sum, s) => sum + s.unit_price * s.quantity,
-      0
-    );
+    const serviceTotal = bookingServices.reduce((sum, s) => {
+      const unitPrice = Number(s.unit_price || 0);
+      const qty = Number(s.quantity || 0);
+      const line = unitPrice * qty;
+      return sum + (Number.isFinite(line) ? line : 0);
+    }, 0);
 
     let endMin = timeToMinutes(booking.end_time);
     const startMin = timeToMinutes(booking.start_time);
@@ -1384,7 +1461,7 @@ const verifyBookingCheckoutPayOSPayment = async (req, res) => {
 
     const durationHours = (endMin - startMin) / 60;
     const playCost = Math.round(durationHours * (booking.hour_price || 0));
-    const totalBill = playCost + serviceTotal;
+    const totalBill = Number(playCost || 0) + Number(serviceTotal || 0);
 
     booking.total_bill = totalBill;
     booking.status = "Completed";
@@ -1398,6 +1475,14 @@ const verifyBookingCheckoutPayOSPayment = async (req, res) => {
 
     notifyStaff(clubId, "Thanh toán", `Bàn ${booking.table_id.table_number} đã được thanh toán xong`);
 
+    await ensureInvoiceForBooking({
+      booking,
+      bookingServices,
+      tableCost: playCost,
+      totalService: serviceTotal,
+      paymentMethod: "payOS"
+    });
+
     await TransactionHistory.findOneAndUpdate(
       { order_code: orderCode },
       { status: "SUCCESS", transaction_time: new Date() }
@@ -1406,7 +1491,10 @@ const verifyBookingCheckoutPayOSPayment = async (req, res) => {
     return res.status(200).json({ success: true, message: "Thanh toán checkout thành công" });
   } catch (error) {
     console.error("Error verifyBookingCheckoutPayOSPayment:", error);
-    return res.status(500).json({ success: false, message: "Lỗi server" });
+    return res.status(500).json({
+      success: false,
+      message: error?.response?.data?.message || error?.message || "Lỗi server"
+    });
   }
 };
 
