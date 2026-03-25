@@ -11,6 +11,7 @@ const {
 const Account = require("../../models/account.model");
 const Role = require("../../models/role.model");
 const Otp = require("../../models/otp.model");
+const Notification = require("../../models/notification.model");
 
 const client = new OAuth2Client(process.env.VITE_GOOGLE_CLIENT_ID);
 
@@ -493,6 +494,156 @@ const updatePassword = async (req, res) => {
   }
 };
 
+//  Lấy danh sách notification (có phân trang)
+const getNotifications = async (req, res) => {
+  try {
+    const accountId = req.user.accountId;
+
+    const page = parseInt(req.query.page) || 1;
+    const limit = parseInt(req.query.limit) || 10;
+
+    const skip = (page - 1) * limit;
+
+    const notifications = await Notification.find({
+      account_id: accountId,
+    })
+      .sort({ created_at: -1 })
+      .skip(skip)
+      .limit(limit);
+
+    const total = await Notification.countDocuments({
+      account_id: accountId,
+    });
+
+    res.json({
+      message: "Lấy danh sách notification thành công",
+      data: notifications,
+      pagination: {
+        total,
+        page,
+        limit,
+        totalPages: Math.ceil(total / limit),
+      },
+    });
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+};
+
+// // Tạo notification (dùng nội bộ hoặc test)
+// const createNotification = async (req, res) => {
+//   try {
+//     const { account_id, title, message } = req.body;
+
+//     const notification = await Notification.create({
+//       account_id,
+//       title,
+//       message,
+//     });
+
+//     res.status(201).json({
+//       message: "Tạo notification thành công",
+//       data: notification,
+//     });
+//   } catch (error) {
+//     res.status(500).json({ message: error.message });
+//   }
+// };
+
+// Mark 1 notification là đã đọc
+const markAsRead = async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    const notification = await Notification.findByIdAndUpdate(
+      id,
+      { is_read: true },
+      { new: true },
+    );
+
+    if (!notification) {
+      return res.status(404).json({ message: "Không tìm thấy notification" });
+    }
+
+    res.json({
+      message: "Đã đánh dấu đã đọc",
+      data: notification,
+    });
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+};
+
+// Mark tất cả là đã đọc
+const markAllAsRead = async (req, res) => {
+  try {
+    const accountId = req.user.accountId;
+
+    await Notification.updateMany(
+      { account_id: accountId, is_read: false },
+      { $set: { is_read: true } },
+    );
+
+    res.json({
+      message: "Đã đánh dấu tất cả là đã đọc",
+    });
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+};
+
+// Xóa 1 notification
+const deleteNotification = async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    const notification = await Notification.findByIdAndDelete(id);
+
+    if (!notification) {
+      return res.status(404).json({ message: "Không tìm thấy notification" });
+    }
+
+    res.json({
+      message: "Xóa notification thành công",
+    });
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+};
+
+// Xóa tất cả notification của user
+const deleteAllNotifications = async (req, res) => {
+  try {
+    const accountId = req.user.accountId;
+
+    await Notification.deleteMany({ account_id: accountId });
+
+    res.json({
+      message: "Đã xóa tất cả notification",
+    });
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+};
+
+// Đếm số chưa đọc
+const countUnread = async (req, res) => {
+  try {
+    const accountId = req.user.accountId;
+
+    const count = await Notification.countDocuments({
+      account_id: accountId,
+      is_read: false,
+    });
+
+    res.json({
+      unread: count,
+    });
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+};
+
 module.exports = {
   getRoleNameById,
   register,
@@ -505,5 +656,11 @@ module.exports = {
   googleAuth,
   getInforById,
   updateProfile,
-  updatePassword
+  updatePassword,
+  getNotifications,
+  markAsRead,
+  markAllAsRead,
+  deleteNotification,
+  deleteAllNotifications,
+  countUnread,
 };
