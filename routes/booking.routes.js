@@ -21,6 +21,14 @@ router.get(
   bookingController.getClubBookings,
 );
 
+// Lấy booking theo id (cho STAFF/OWNER của cùng club)
+router.get(
+  "/:id",
+  authenticate,
+  authorizeRole("OWNER", "STAFF_CLUB"),
+  bookingController.getBookingById
+);
+
 // Nhân viên check-in booking bằng code_number
 router.post(
   "/checkin",
@@ -42,6 +50,23 @@ router.post(
   authenticate,
   authorizeRole("OWNER", "STAFF_CLUB"),
   bookingController.checkOutBooking,
+);
+
+// Tiền mặt: dùng luôn endpoint checkout hiện tại
+// Chuyển khoản nốt (PayOS) cho Playing -> Completed
+router.post(
+  "/:id/checkout/payos/create-payment",
+  authenticate,
+  authorizeRole("OWNER", "STAFF_CLUB"),
+  bookingController.createBookingCheckoutPayOSPayment
+);
+
+// Xác thực checkout PayOS (redirect về frontend)
+router.post(
+  "/checkout/payos/verify",
+  authenticate,
+  authorizeRole("OWNER", "STAFF_CLUB"),
+  bookingController.verifyBookingCheckoutPayOSPayment
 );
 // Đánh dấu booking là Payment Pending sau khi khách đã chuyển khoản
 // Create PayOS payment link for booking deposit
