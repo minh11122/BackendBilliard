@@ -48,6 +48,28 @@ const markTransactionSuccessAndApprove = async (orderCode) => {
   return true;
 };
 
+// Get tournament players list (for OWNER/STAFF and also public viewing)
+const getTournamentPlayers = async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    const tournament = await Tournament.findById(id).select("name").lean();
+    if (!tournament) {
+      return res.status(404).json({ success: false, message: "Không tìm thấy giải đấu" });
+    }
+
+    const players = await TournamentPlayer.find({ tournament_id: id })
+      .populate("account_id", "fullname phone avatar_url")
+      .sort({ register_date: -1 })
+      .lean();
+
+    return res.status(200).json({ success: true, data: players });
+  } catch (error) {
+    console.error("Error getTournamentPlayers:", error);
+    return res.status(500).json({ success: false, message: "Lỗi server", error: error.message });
+  }
+};
+
 // Create a new tournament
 const createTournament = async (req, res) => {
   try {
@@ -442,6 +464,7 @@ module.exports = {
   getPublicTournaments,
   getTournamentById,
   getMyRegisteredTournamentIds,
+  getTournamentPlayers,
   updateTournament,
   deleteTournament,
   createTournamentPayOSPayment,
