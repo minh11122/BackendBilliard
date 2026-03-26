@@ -61,6 +61,14 @@ router.post(
   bookingController.createBookingCheckoutPayOSPayment
 );
 
+// Xác thực booking PayOS (redirect về frontend)
+router.post(
+  "/payos/verify",
+  authenticate,
+  authorizeRole("CUSTOMER"),
+  bookingController.verifyBookingPayOSPayment
+);
+
 // Xác thực checkout PayOS (redirect về frontend)
 router.post(
   "/checkout/payos/verify",
