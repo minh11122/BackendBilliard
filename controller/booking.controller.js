@@ -329,8 +329,9 @@ const getMyBookings = async (req, res) => {
       .sort({ created_at: -1 })
       .lean();
 
-    // Enrich với thông tin club + auto-cancel expired
+    // Enrich với thông tin club + auto-cancel expired + feedback status
     const Image = require("../models/image.model");
+    const Feedback = require("../models/feedback.model");
     const enriched = await Promise.all(
       bookings.map(async (b) => {
         const table = b.table_id;
@@ -371,6 +372,21 @@ const getMyBookings = async (req, res) => {
           // Truyền held_until cho frontend
           b.held_until = table.held_until || null;
         }
+
+        // Attach feedback status for Completed bookings
+        if (b.status === "Completed") {
+          const fb = await Feedback.findOne({ booking_id: b._id }).select("rating reply_content").lean();
+          if (fb) {
+            b.feedback_status = {
+              rated: true,
+              rating: fb.rating,
+              has_reply: !!fb.reply_content
+            };
+          } else {
+            b.feedback_status = { rated: false, rating: null, has_reply: false };
+          }
+        }
+
         return b;
       }),
     );

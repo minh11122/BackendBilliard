@@ -21,4 +21,6 @@ router.use("/subscriptions", subscriptionRoutes);
 router.use("/tables", tableRoutes);
 router.use("/locations", require("./location.routes"));
 router.use("/tournaments", require("./tournament.routes"));
+router.use("/feedbacks", require("./feedback.routes"));
+
 module.exports = router;
