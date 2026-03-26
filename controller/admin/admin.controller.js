@@ -352,8 +352,8 @@ const getRevenueWeb = async (req, res) => {
     // filter theo thời gian
     if (from && to) {
       match.purchase_date = {
-        $gte: new Date(from),
-        $lte: new Date(to),
+        $gte: from.includes("T") ? new Date(from) : new Date(`${from}T00:00:00.000+07:00`),
+        $lte: to.includes("T") ? new Date(to) : new Date(`${to}T23:59:59.999+07:00`),
       };
     }
 
@@ -450,8 +450,8 @@ const getRevenueWebSummary = async (req, res) => {
 
     if (from && to) {
       match.purchase_date = {
-        $gte: new Date(from),
-        $lte: new Date(to),
+        $gte: from.includes("T") ? new Date(from) : new Date(`${from}T00:00:00.000+07:00`),
+        $lte: to.includes("T") ? new Date(to) : new Date(`${to}T23:59:59.999+07:00`),
       };
     }
 

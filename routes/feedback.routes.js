@@ -6,7 +6,14 @@ const authenticate = require("../middleware/authenticate.middleware");
 // Customer creating a new feedback (Must be logged in)
 router.post("/", authenticate, feedbackController.createFeedback);
 
-// Fetching feedback by booking ID (Any authenticated user can fetch, or maybe public, but let's keep it authenticated)
+// Fetching feedback by booking ID
 router.get("/booking/:bookingId", authenticate, feedbackController.getFeedbackByBooking);
+
+// Owner/Staff fetching all feedbacks for their club
+const authorizeRole = require("../middleware/authorizeRole.middleware");
+router.get("/club/:clubId", authenticate, authorizeRole("OWNER", "STAFF_CLUB"), feedbackController.getClubFeedbacks);
+
+// Owner/Staff replying to a feedback
+router.post("/:id/reply", authenticate, authorizeRole("OWNER", "STAFF_CLUB"), feedbackController.replyFeedback);
 
 module.exports = router;

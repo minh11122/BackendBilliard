@@ -19,8 +19,8 @@ const getClubAnalytics = async (req, res) => {
     // Prepare Date Range Filter
     const dateFilter = {};
     if (startDate && endDate) {
-      dateFilter.$gte = new Date(startDate);
-      dateFilter.$lte = new Date(endDate);
+      dateFilter.$gte = startDate.includes("T") ? new Date(startDate) : new Date(`${startDate}T00:00:00.000+07:00`);
+      dateFilter.$lte = endDate.includes("T") ? new Date(endDate) : new Date(`${endDate}T23:59:59.999+07:00`);
     } else {
       // Default to last 30 days if no range provided
       const end = new Date();

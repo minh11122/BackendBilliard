@@ -103,3 +103,88 @@ exports.getFeedbackByBooking = async (req, res) => {
     res.status(500).json({ success: false, message: "Lỗi server" });
   }
 };
+
+// Lấy danh sách đánh giá của quán (dành cho OWNER / STAFF_CLUB)
+exports.getClubFeedbacks = async (req, res) => {
+  try {
+    const clubId = req.params.clubId || req.user.club_id;
+    if (!clubId) {
+      return res.status(403).json({ success: false, message: "Bạn không thuộc quán nào hoặc chưa chọn quán" });
+    }
+
+    const page = parseInt(req.query.page) || 1;
+    const limit = parseInt(req.query.limit) || 10;
+    const skip = (page - 1) * limit;
+
+    const query = { club_id: clubId };
+
+    const feedbacks = await Feedback.find(query)
+      .populate("account_id", "fullname avatar")
+      .populate({ path: "booking_id", select: "code_number play_date table_id start_time end_time" })
+      .sort({ created_at: -1 })
+      .skip(skip)
+      .limit(limit)
+      .lean();
+
+    const total = await Feedback.countDocuments(query);
+
+    return res.status(200).json({
+      success: true,
+      message: "Lấy danh sách đánh giá thành công",
+      data: feedbacks,
+      pagination: {
+        page,
+        limit,
+        total,
+        totalPages: Math.ceil(total / limit)
+      }
+    });
+  } catch (error) {
+    console.error("Lỗi getClubFeedbacks:", error);
+    return res.status(500).json({ success: false, message: "Lỗi server" });
+  }
+};
+
+// Owner / Staff trả lời đánh giá
+exports.replyFeedback = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { reply_content, clubId } = req.body;
+    const activeClubId = clubId || req.user.club_id;
+
+    if (!reply_content || reply_content.trim() === "") {
+      return res.status(400).json({ success: false, message: "Nội dung phản hồi không được để trống" });
+    }
+
+    if (!activeClubId) {
+      return res.status(403).json({ success: false, message: "Vui lòng truyền lên clubId của quán đang thao tác" });
+    }
+
+    const feedback = await Feedback.findById(id);
+    if (!feedback) {
+      return res.status(404).json({ success: false, message: "Không tìm thấy đánh giá" });
+    }
+
+    if (String(feedback.club_id) !== String(activeClubId)) {
+      return res.status(403).json({ success: false, message: "Đánh giá này không thuộc quán của bạn" });
+    }
+
+    if (feedback.reply_content) {
+       return res.status(400).json({ success: false, message: "Đánh giá này đã được trả lời" });
+    }
+
+    feedback.reply_content = reply_content.trim();
+    feedback.replied_at = new Date();
+    await feedback.save();
+
+    return res.status(200).json({
+      success: true,
+      message: "Phản hồi đánh giá thành công",
+      data: feedback
+    });
+
+  } catch (error) {
+    console.error("Lỗi replyFeedback:", error);
+    return res.status(500).json({ success: false, message: "Lỗi server" });
+  }
+};
