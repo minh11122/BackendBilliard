@@ -1,0 +1,250 @@
+const mongoose = require("mongoose");
+const Invoice = require("../models/invoice.model");
+const Booking = require("../models/booking.model");
+const BilliardTable = require("../models/billiard_table.model");
+const TableType = require("../models/table_type.model");
+const Service = require("../models/service.model");
+const BookingService = require("../models/booking_service.model");
+const Feedback = require("../models/feedback.model");
+
+const getClubAnalytics = async (req, res) => {
+  try {
+    const { id: club_id } = req.params;
+    const { startDate, endDate } = req.query;
+
+    if (!club_id) {
+      return res.status(400).json({ success: false, message: "Thiếu club_id" });
+    }
+
+    // Prepare Date Range Filter
+    const dateFilter = {};
+    if (startDate && endDate) {
+      dateFilter.$gte = new Date(startDate);
+      dateFilter.$lte = new Date(endDate);
+    } else {
+      // Default to last 30 days if no range provided
+      const end = new Date();
+      const start = new Date();
+      start.setDate(start.getDate() - 30);
+      dateFilter.$gte = start;
+      dateFilter.$lte = end;
+    }
+
+    const clubObjectId = new mongoose.Types.ObjectId(club_id);
+
+    // --- 1. REVENUE OVER TIME (Biểu đồ doanh thu theo ngày) ---
+    // Cần join Invoice -> Booking -> Table để biết club_id, hoặc lấy tất cả booking của club
+    const clubTables = await BilliardTable.find({ club_id: clubObjectId }).select("_id").lean();
+    const tableIds = clubTables.map(t => t._id);
+
+    const clubBookings = await Booking.find({ table_id: { $in: tableIds } }).select("_id").lean();
+    const bookingIds = clubBookings.map(b => b._id);
+
+    // Lọc Invoices đã thanh toán và thuộc khoảng thời gian
+    const invoices = await Invoice.find({
+      booking_id: { $in: bookingIds },
+      status: "Paid",
+      invoice_date: dateFilter
+    }).populate({
+      path: 'booking_id',
+      select: 'table_id status'
+    }).lean();
+
+    // Grouping by Date (YYYY-MM-DD)
+    const revenueByDateMap = {};
+    let totalTableRevenue = 0;
+    let totalServiceRevenue = 0;
+    
+    // Grouping Payment Methods
+    const paymentMixMap = { cash: 0, bank: 0 };
+    
+    invoices.forEach(inv => {
+      const dateStr = new Date(inv.invoice_date).toISOString().split('T')[0];
+      
+      if (!revenueByDateMap[dateStr]) {
+        revenueByDateMap[dateStr] = { date: dateStr, table: 0, service: 0 };
+      }
+      
+      const tCost = inv.table_cost || 0;
+      const sCost = inv.total_service || 0;
+      
+      revenueByDateMap[dateStr].table += tCost;
+      revenueByDateMap[dateStr].service += sCost;
+      
+      totalTableRevenue += tCost;
+      totalServiceRevenue += sCost;
+
+      // Payment method
+      if (inv.payment_method === 'Cash') {
+         paymentMixMap.cash += (tCost + sCost);
+      } else {
+         paymentMixMap.bank += (tCost + sCost);
+      }
+    });
+
+    const revenueTimeline = Object.values(revenueByDateMap).sort((a, b) => a.date.localeCompare(b.date));
+
+    // --- 2. TABLE PERFORMANCE (Bàn đắt khách) ---
+    // Analyze bookings within date range
+    const bookingsInRange = await Booking.find({
+      table_id: { $in: tableIds },
+      created_at: dateFilter,
+      status: { $in: ["Completed", "Playing"] }
+    }).populate('table_id').lean();
+
+    const tableStatsMap = {};
+    const tableTypeStatsMap = {};
+    let totalPlayMinutes = 0;
+    let totalBookingsCount = bookingsInRange.length;
+
+    bookingsInRange.forEach(b => {
+       if (!b.table_id) return;
+       const tId = b.table_id._id.toString();
+       const tName = b.table_id.table_number || "Bàn ẩn";
+       const tType = b.table_id.table_type_id?.toString() || "Khác";
+
+       if (!tableStatsMap[tId]) {
+         tableStatsMap[tId] = { id: tId, name: tName, revenue: 0, playMinutes: 0, typeId: tType };
+       }
+       if (!tableTypeStatsMap[tType]) {
+         tableTypeStatsMap[tType] = { id: tType, revenue: 0, playMinutes: 0 };
+       }
+
+       const rev = b.total_bill || 0;
+       tableStatsMap[tId].revenue += rev;
+       tableTypeStatsMap[tType].revenue += rev;
+
+       // Calculate play duration in minutes
+       if (b.start_time && b.end_time) {
+         const toMins = (timeStr) => {
+           const [h, m] = timeStr.split(':').map(Number);
+           return h * 60 + m;
+         };
+         let mins = toMins(b.end_time) - toMins(b.start_time);
+         if (mins < 0) mins += 24 * 60; // Cross midnight
+         tableStatsMap[tId].playMinutes += mins;
+         tableTypeStatsMap[tType].playMinutes += mins;
+         totalPlayMinutes += mins;
+       }
+    });
+
+    const topTables = Object.values(tableStatsMap).sort((a, b) => b.revenue - a.revenue);
+    
+    // Resolve Table Types names
+    const typeIds = Object.keys(tableTypeStatsMap);
+    const typesDocs = await TableType.find({ _id: { $in: typeIds } }).lean();
+    const typeNameMap = {};
+    typesDocs.forEach(t => typeNameMap[t._id.toString()] = t.name);
+
+    const tableTypeDistribution = Object.values(tableTypeStatsMap).map(t => ({
+       name: typeNameMap[t.id] || "Không xác định",
+       revenue: t.revenue,
+       playMinutes: t.playMinutes
+    }));
+
+    // --- 3. SERVICE PERFORMANCE (Dịch vụ bán chạy / ế) ---
+    // Lấy tất cả BookingService trong các booking
+    const bookingServices = await BookingService.find({
+       booking_id: { $in: bookingIds },
+       created_at: dateFilter
+    }).populate('service_id').lean();
+
+    const serviceStatsMap = {};
+    
+    // Khởi tạo map với tất cả service của quán để tìm rathành phần "ế"
+    const allServices = await Service.find({ club_id: clubObjectId, status: 'Active' }).lean();
+    allServices.forEach(s => {
+       serviceStatsMap[s._id.toString()] = { id: s._id, name: s.name, quantity: 0, revenue: 0 };
+    });
+
+    bookingServices.forEach(bs => {
+       if (!bs.service_id) return;
+       const sId = bs.service_id._id.toString();
+       if (!serviceStatsMap[sId]) {
+         serviceStatsMap[sId] = { id: sId, name: bs.service_id.name, quantity: 0, revenue: 0 };
+       }
+       const qty = bs.quantity || 1;
+       const price = bs.unit_price || 0;
+       serviceStatsMap[sId].quantity += qty;
+       serviceStatsMap[sId].revenue += (qty * price);
+    });
+
+    const serviceStatsArray = Object.values(serviceStatsMap).sort((a, b) => b.quantity - a.quantity);
+    
+    // Lấy top 5 bán chạy (có lượt gọi > 0)
+    const topServices = serviceStatsArray.slice(0, 5).filter(s => s.quantity > 0);
+    
+    // Lấy danh sách ế: Lọc những món không nằm trong topServices, và lượt gọi = 0 hoặc DThu < 50k
+    const topServiceIds = new Set(topServices.map(s => s.id));
+    const bottomServices = [...serviceStatsArray]
+       .reverse()
+       .filter(s => !topServiceIds.has(s.id))
+       .filter(s => s.quantity === 0 || s.revenue < 50000)
+       .slice(0, 5);
+
+    // --- 4. FEEDBACK (Đánh giá) ---
+    const feedbacks = await Feedback.find({ club_id: clubObjectId, created_at: dateFilter }).lean();
+    const feedbackDistribution = { 5: 0, 4: 0, 3: 0, 2: 0, 1: 0 };
+    let totalRating = 0;
+    
+    feedbacks.forEach(f => {
+       const star = Math.floor(f.rating || 5);
+       if (feedbackDistribution[star] !== undefined) {
+         feedbackDistribution[star]++;
+       }
+       totalRating += (f.rating || 5);
+    });
+
+    const averageRating = feedbacks.length > 0 ? (totalRating / feedbacks.length).toFixed(1) : 0;
+    const feedbackList = Object.keys(feedbackDistribution).sort((a,b) => b-a).map(k => ({
+       stars: Number(k),
+       count: feedbackDistribution[k]
+    }));
+
+    // --- 5. UNPAID / DEBT (Công nợ) ---
+    const unpaidInvoices = await Invoice.countDocuments({
+      booking_id: { $in: bookingIds },
+      status: "Unpaid"
+    });
+
+    // XONG TẤT CẢ DATA - TRẢ VỀ
+    return res.status(200).json({
+      success: true,
+      data: {
+        kpi: {
+          totalRevenue: totalTableRevenue + totalServiceRevenue,
+          totalBookings: totalBookingsCount,
+          averageOrderValue: invoices.length > 0 ? Math.round((totalTableRevenue + totalServiceRevenue) / invoices.length) : 0,
+          averagePlayMinutes: totalBookingsCount > 0 ? Math.round(totalPlayMinutes / totalBookingsCount) : 0,
+          unpaidCount: unpaidInvoices
+        },
+        revenue: {
+          timeline: revenueTimeline,
+          breakdown: { table: totalTableRevenue, service: totalServiceRevenue },
+          paymentMix: paymentMixMap
+        },
+        tables: {
+          topList: topTables.slice(0, 10),
+          typeDistribution: tableTypeDistribution
+        },
+        services: {
+          topList: topServices,
+          bottomList: bottomServices
+        },
+        feedback: {
+          average: Number(averageRating),
+          total: feedbacks.length,
+          distribution: feedbackList
+        }
+      }
+    });
+
+  } catch (error) {
+    console.error("Lỗi lấy Analytics CLB:", error);
+    return res.status(500).json({ success: false, message: "Lỗi Server", error: error.message });
+  }
+};
+
+module.exports = {
+  getClubAnalytics
+};
