@@ -107,7 +107,13 @@ exports.getFeedbackByBooking = async (req, res) => {
 // Lấy danh sách đánh giá của quán (dành cho OWNER / STAFF_CLUB)
 exports.getClubFeedbacks = async (req, res) => {
   try {
-    const clubId = req.params.clubId || req.user.club_id;
+    let clubId = req.params.clubId;
+    if (clubId === "my" || clubId === "null" || clubId === "undefined") {
+      clubId = req.user.club_id;
+    } else {
+      clubId = clubId || req.user.club_id;
+    }
+
     if (!clubId) {
       return res.status(403).json({ success: false, message: "Bạn không thuộc quán nào hoặc chưa chọn quán" });
     }
@@ -117,6 +123,21 @@ exports.getClubFeedbacks = async (req, res) => {
     const skip = (page - 1) * limit;
 
     const query = { club_id: clubId };
+
+    if (req.query.rating && req.query.rating !== "all") {
+      query.rating = Number(req.query.rating);
+    }
+
+    if (req.query.isReplied && req.query.isReplied !== "all") {
+      if (req.query.isReplied === "true") {
+        query.reply_content = { $exists: true, $ne: "" };
+      } else if (req.query.isReplied === "false") {
+        query.$or = [
+          { reply_content: { $exists: false } },
+          { reply_content: "" }
+        ];
+      }
+    }
 
     const feedbacks = await Feedback.find(query)
       .populate("account_id", "fullname avatar")

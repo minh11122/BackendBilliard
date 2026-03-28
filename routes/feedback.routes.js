@@ -14,6 +14,6 @@ const authorizeRole = require("../middleware/authorizeRole.middleware");
 router.get("/club/:clubId", authenticate, authorizeRole("OWNER", "STAFF_CLUB"), feedbackController.getClubFeedbacks);
 
 // Owner/Staff replying to a feedback
-router.post("/:id/reply", authenticate, authorizeRole("OWNER", "STAFF_CLUB"), feedbackController.replyFeedback);
+router.post("/:id/reply", authenticate, authorizeRole("STAFF_CLUB"), feedbackController.replyFeedback);
 
 module.exports = router;

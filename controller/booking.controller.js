@@ -192,6 +192,12 @@ const createBooking = async (req, res) => {
       console.warn("Không lấy được Parameter, dùng mặc định");
     }
 
+    // Override bằng cấu hình riêng của Club (nếu có)
+    const clubInfo = await Club.findById(table.club_id).lean();
+    if (clubInfo && clubInfo.deposit_percentage !== undefined && clubInfo.deposit_percentage !== null) {
+        depositPercent = clubInfo.deposit_percentage;
+    }
+
     const hourPrice = table.price;
     const totalHours = duration || 2;
     const totalBill = hourPrice * totalHours;
@@ -240,7 +246,7 @@ const createBooking = async (req, res) => {
     });
 
     // Lấy thông tin club
-    const club = club_id ? await Club.findById(club_id).lean() : null;
+    const club = clubInfo || (club_id ? await Club.findById(club_id).lean() : null);
 
     res.status(201).json({
       success: true,

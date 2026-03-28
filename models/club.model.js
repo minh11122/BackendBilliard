@@ -25,6 +25,7 @@ const clubSchema = new mongoose.Schema(
     },
     reject_reason: { type: String, default: null },
     onboarding_completed: { type: Boolean, default: false },
+    deposit_percentage: { type: Number, default: 30 },
     plan_type: { type: String, enum: ["free", "basic", "pro"], default: "free" },
     created_at: { type: Date, default: Date.now, required: true }
   },

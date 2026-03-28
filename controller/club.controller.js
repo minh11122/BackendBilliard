@@ -484,6 +484,7 @@ const updateClub = async (req, res) => {
       avatar, // Single URL
       backgrounds, // Array of URLs
       amenities,
+      deposit_percentage,
       legalDocuments // Array of URLs for resubmitting
     } = req.body;
 
@@ -505,6 +506,7 @@ const updateClub = async (req, res) => {
     if (district_code) club.district_code = district_code;
     if (province_name) club.province_name = province_name;
     if (district_name) club.district_name = district_name;
+    if (deposit_percentage !== undefined) club.deposit_percentage = Number(deposit_percentage);
     if (amenities !== undefined) {
       club.amenities = Array.isArray(amenities) ? amenities : [amenities];
     }
