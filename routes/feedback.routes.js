@@ -6,6 +6,9 @@ const authenticate = require("../middleware/authenticate.middleware");
 // Customer creating a new feedback (Must be logged in)
 router.post("/", authenticate, feedbackController.createFeedback);
 
+// Customer editing a feedback
+router.put("/:id", authenticate, feedbackController.updateFeedback);
+
 // Fetching feedback by booking ID
 router.get("/booking/:bookingId", authenticate, feedbackController.getFeedbackByBooking);
 
