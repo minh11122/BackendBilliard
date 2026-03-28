@@ -1088,12 +1088,17 @@ const checkOutBooking = async (req, res) => {
       });
     }
 
-    // Cập nhật trạng thái booking
-    let finalEndTimeStr = booking.end_time;
-    let endMin = timeToMinutes(booking.end_time);
+    // Cập nhật trạng thái booking: Lấy giờ định trước để tính tiền, giờ thực tế để giải phóng bàn
+    const now = new Date();
+    const endH = now.getHours();
+    const endM = now.getMinutes();
+    const realEndTimeStr = `${String(endH).padStart(2, "0")}:${String(endM).padStart(2, "0")}`;
+
+    const scheduledEndStr = booking.end_time; // Giữ nguyên giờ đặt gốc để tính tiền
+    let endMin = timeToMinutes(scheduledEndStr);
     const startMin = timeToMinutes(booking.start_time);
 
-    // Xử lý chơi qua đêm (nếu endMin < startMin)
+    // Xử lý chơi qua đêm (nếu endMin <= startMin)
     if (endMin <= startMin) {
       endMin += 24 * 60;
     }
@@ -1105,7 +1110,7 @@ const checkOutBooking = async (req, res) => {
     const bookingServices = await BookingService.find({ booking_id: id });
     const serviceTotal = bookingServices.reduce((sum, s) => sum + (s.unit_price * s.quantity), 0);
 
-    booking.end_time = finalEndTimeStr;
+    booking.actual_end_time = realEndTimeStr; // Lưu giờ khách về thực tế
     booking.total_bill = playCost + serviceTotal;
     booking.status = "Completed";
     await booking.save();
@@ -1247,13 +1252,23 @@ const createBookingCheckoutPayOSPayment = async (req, res) => {
       return sum + (Number.isFinite(line) ? line : 0);
     }, 0);
 
-    // Calculate play cost (time-based)
-    let endMin = timeToMinutes(booking.end_time);
+    // Calculate play cost (time-based) - Sử dụng giờ đặt gốc
+    const now = new Date();
+    const endH = now.getHours();
+    const endM = now.getMinutes();
+    const realEndTimeStr = `${String(endH).padStart(2, "0")}:${String(endM).padStart(2, "0")}`;
+
+    const scheduledEndStr = booking.end_time;
+    let endMin = timeToMinutes(scheduledEndStr);
     const startMin = timeToMinutes(booking.start_time);
     if (endMin <= startMin) endMin += 24 * 60;
 
     const durationHours = (endMin - startMin) / 60;
     const playCost = Math.round(durationHours * (booking.hour_price || 0));
+
+    // Cập nhật actual_end_time vào DB ngay để timeline thu lại (nhưng giữ nguyên end_time)
+    booking.actual_end_time = realEndTimeStr;
+    await booking.save();
 
     const totalBill = Number(playCost || 0) + Number(serviceTotal || 0);
     const deposit = Number(booking.deposit || 0);
