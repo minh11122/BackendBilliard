@@ -78,6 +78,11 @@ const createTournament = async (req, res) => {
       return res.status(400).json({ success: false, message: "Thiếu club_id" });
     }
 
+    const club = await require("../models/club.model").findById(club_id).lean();
+    if (!club || club.plan_type !== "pro") {
+      return res.status(403).json({ success: false, message: "Tính năng Giải đấu chỉ dành cho gói Pro." });
+    }
+
     const {
       name,
       description,
@@ -134,6 +139,12 @@ const getTournamentsByClub = async (req, res) => {
     const club_id = req.headers["x-club-id"] || req.query.club_id;
     if (!club_id) {
       return res.status(400).json({ success: false, message: "Thiếu club_id" });
+    }
+
+    const club = await require("../models/club.model").findById(club_id).lean();
+    if (!club || club.plan_type !== "pro") {
+      // Return empty array if not pro, so UI doesn't crash but shows nothing
+      return res.status(403).json({ success: false, message: "Tính năng Giải đấu chỉ dành cho gói Pro." });
     }
 
     const tournaments = await Tournament.find({ club_id })
@@ -208,6 +219,16 @@ const updateTournament = async (req, res) => {
     const { id } = req.params;
     const updates = req.body;
 
+    const existingTournament = await Tournament.findById(id).lean();
+    if (!existingTournament) {
+      return res.status(404).json({ success: false, message: "Không tìm thấy giải đấu" });
+    }
+
+    const club = await require("../models/club.model").findById(existingTournament.club_id).lean();
+    if (!club || club.plan_type !== "pro") {
+      return res.status(403).json({ success: false, message: "Tính năng Giải đấu chỉ dành cho gói Pro." });
+    }
+
     // Convert date strings to Date objects if present
     const dateFields = ["registration_open", "registration_deadline", "play_date", "start_time", "end_time"];
     dateFields.forEach(field => {
@@ -239,6 +260,17 @@ const updateTournament = async (req, res) => {
 const deleteTournament = async (req, res) => {
   try {
     const { id } = req.params;
+
+    const existingTournament = await Tournament.findById(id).lean();
+    if (!existingTournament) {
+      return res.status(404).json({ success: false, message: "Không tìm thấy giải đấu" });
+    }
+
+    const club = await require("../models/club.model").findById(existingTournament.club_id).lean();
+    if (!club || club.plan_type !== "pro") {
+      return res.status(403).json({ success: false, message: "Tính năng Giải đấu chỉ dành cho gói Pro." });
+    }
+
     const tournament = await Tournament.findByIdAndDelete(id);
     if (!tournament) {
       return res.status(404).json({ success: false, message: "Không tìm thấy giải đấu" });

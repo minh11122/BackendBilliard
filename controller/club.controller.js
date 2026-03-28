@@ -602,6 +602,10 @@ const getClubStatistics = async (req, res) => {
         return res.status(404).json({ success: false, message: "Không tìm thấy câu lạc bộ" });
     }
 
+    if (currentClub.plan_type === "free") {
+        return res.status(403).json({ success: false, message: "Tính năng Thống kê theo ngày chỉ dành cho gói Basic hoặc Pro." });
+    }
+
     // Prepare date range if month and year are provided
     let dateFilter = {};
     if (month && year) {
