@@ -26,6 +26,12 @@ const tournamentSchema = new mongoose.Schema(
       enum: ["Draft", "Open", "Closed", "InProgress", "Completed", "Cancelled"],
       default: "Draft"
     },
+    bracket_generated: { type: Boolean, default: false },
+    bracket_generated_at: { type: Date, default: null },
+    started_at: { type: Date, default: null },
+    completed_at: { type: Date, default: null },
+    champion_account_id: { type: mongoose.Schema.Types.ObjectId, ref: "Account", default: null },
+    generation_config: { type: mongoose.Schema.Types.Mixed, default: null },
     created_by: { type: mongoose.Schema.Types.ObjectId, ref: "Account" },
     created_at: { type: Date, default: Date.now }
   },
