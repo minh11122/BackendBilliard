@@ -981,7 +981,7 @@ const startRoundMatch = async (req, res) => {
       await Booking.create({
         guest_name: `Trận giải đấu: ${match.match_name}`,
         table_id: match.table_id,
-        play_date: new Date(),
+        play_date: new Date(new Date().setHours(0, 0, 0, 0)),
         start_time: new Date().toTimeString().slice(0, 5),
         end_time: "23:59",
         code_number: `TOUR_${match._id.toString().slice(-6)}_${Date.now().toString().slice(-4)}`,
@@ -1022,6 +1022,17 @@ const updateMatchResult = async (req, res) => {
     const match = await RoundMatch.findOne({ _id: matchId, tournament_id: id });
     if (!match) {
       return res.status(404).json({ success: false, message: "Không tìm thấy trận đấu" });
+    }
+
+    // Kiểm tra Race To (Nếu có nhập race_to mới hoặc dùng race_to của trận đấu)
+    const currentRaceTo = race_to ? Number(race_to) : match.race_to;
+    if (currentRaceTo > 0) {
+      if (p1Score > currentRaceTo || p2Score > currentRaceTo) {
+        return res.status(400).json({ 
+          success: false, 
+          message: `Điểm số không được vượt quá số điểm chạm (${currentRaceTo})` 
+        });
+      }
     }
     if (!match.player1_id || !match.player2_id) {
       return res.status(400).json({ success: false, message: "Chưa đủ người chơi cho trận đấu" });
