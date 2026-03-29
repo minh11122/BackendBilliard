@@ -8,7 +8,8 @@ const feedbackSchema = new mongoose.Schema(
         rating: { type: Number, required: true },
         comment: { type: String },
         reply_content: { type: String },
-        replied_at: { type: Date }
+        replied_at: { type: Date },
+        is_edited: { type: Boolean, default: false }
     },
     {
         collection: "feedbacks",

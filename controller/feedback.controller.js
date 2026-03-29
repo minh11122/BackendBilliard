@@ -107,7 +107,13 @@ exports.getFeedbackByBooking = async (req, res) => {
 // Lấy danh sách đánh giá của quán (dành cho OWNER / STAFF_CLUB)
 exports.getClubFeedbacks = async (req, res) => {
   try {
-    const clubId = req.params.clubId || req.user.club_id;
+    let clubId = req.params.clubId;
+    if (clubId === "my" || clubId === "null" || clubId === "undefined") {
+      clubId = req.user.club_id;
+    } else {
+      clubId = clubId || req.user.club_id;
+    }
+
     if (!clubId) {
       return res.status(403).json({ success: false, message: "Bạn không thuộc quán nào hoặc chưa chọn quán" });
     }
@@ -117,6 +123,21 @@ exports.getClubFeedbacks = async (req, res) => {
     const skip = (page - 1) * limit;
 
     const query = { club_id: clubId };
+
+    if (req.query.rating && req.query.rating !== "all") {
+      query.rating = Number(req.query.rating);
+    }
+
+    if (req.query.isReplied && req.query.isReplied !== "all") {
+      if (req.query.isReplied === "true") {
+        query.reply_content = { $exists: true, $ne: "" };
+      } else if (req.query.isReplied === "false") {
+        query.$or = [
+          { reply_content: { $exists: false } },
+          { reply_content: "" }
+        ];
+      }
+    }
 
     const feedbacks = await Feedback.find(query)
       .populate("account_id", "fullname avatar")
@@ -184,7 +205,56 @@ exports.replyFeedback = async (req, res) => {
     });
 
   } catch (error) {
-    console.error("Lỗi replyFeedback:", error);
+    return res.status(500).json({ success: false, message: "Lỗi server" });
+  }
+};
+
+// Khách hàng sửa lại đánh giá (chỉ được sửa 1 lần và trong vòng 3 ngày)
+exports.updateFeedback = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { rating, comment } = req.body;
+    const account_id = req.user.accountId;
+
+    if (!rating || rating < 1 || rating > 5) {
+      return res.status(400).json({ success: false, message: "Số sao đánh giá phải từ 1 đến 5" });
+    }
+
+    const feedback = await Feedback.findById(id);
+    if (!feedback) {
+      return res.status(404).json({ success: false, message: "Không tìm thấy đánh giá" });
+    }
+
+    if (String(feedback.account_id) !== String(account_id)) {
+      return res.status(403).json({ success: false, message: "Bạn không có quyền sửa đánh giá này" });
+    }
+
+    if (feedback.is_edited) {
+      return res.status(400).json({ success: false, message: "Bạn chỉ được phép chỉnh sửa đánh giá 1 lần duy nhất" });
+    }
+
+    const createdAt = new Date(feedback.created_at || feedback._id.getTimestamp()).getTime();
+    const now = Date.now();
+    const diffDays = (now - createdAt) / (1000 * 60 * 60 * 24);
+
+    if (diffDays > 3) {
+      return res.status(400).json({ success: false, message: "Đã quá thời hạn 3 ngày để sửa đánh giá" });
+    }
+
+    feedback.rating = Number(rating);
+    feedback.comment = comment?.trim() || "";
+    feedback.is_edited = true;
+    
+    await feedback.save();
+
+    return res.status(200).json({
+      success: true,
+      message: "Cập nhật đánh giá thành công",
+      data: feedback
+    });
+
+  } catch (error) {
+    console.error("Lỗi updateFeedback:", error);
     return res.status(500).json({ success: false, message: "Lỗi server" });
   }
 };

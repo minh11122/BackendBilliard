@@ -16,6 +16,15 @@ const getClubAnalytics = async (req, res) => {
       return res.status(400).json({ success: false, message: "Thiếu club_id" });
     }
 
+    const currentClub = await require("../models/club.model").findById(club_id).lean();
+    if (!currentClub) {
+        return res.status(404).json({ success: false, message: "Không tìm thấy quán" });
+    }
+
+    if (currentClub.plan_type === "free") {
+        return res.status(403).json({ success: false, message: "Tính năng Báo cáo doanh thu chỉ dành cho gói Basic hoặc Pro." });
+    }
+
     // Prepare Date Range Filter
     const dateFilter = {};
     if (startDate && endDate) {

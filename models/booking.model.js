@@ -8,6 +8,7 @@ const bookingSchema = new mongoose.Schema(
     play_date: { type: Date, required: true },
     start_time: { type: String, required: true },
     end_time: { type: String, required: true },
+    actual_end_time: { type: String }, // Giờ kết thúc thực tế (để giải phóng bàn trên timeline)
     code_number: { type: String, required: true, unique: true },
     deposit: { type: Number, required: true },
     hour_price: { type: Number, required: true },

@@ -484,6 +484,7 @@ const updateClub = async (req, res) => {
       avatar, // Single URL
       backgrounds, // Array of URLs
       amenities,
+      deposit_percentage,
       legalDocuments // Array of URLs for resubmitting
     } = req.body;
 
@@ -505,6 +506,7 @@ const updateClub = async (req, res) => {
     if (district_code) club.district_code = district_code;
     if (province_name) club.province_name = province_name;
     if (district_name) club.district_name = district_name;
+    if (deposit_percentage !== undefined) club.deposit_percentage = Number(deposit_percentage);
     if (amenities !== undefined) {
       club.amenities = Array.isArray(amenities) ? amenities : [amenities];
     }
@@ -598,6 +600,10 @@ const getClubStatistics = async (req, res) => {
     const currentClub = await Club.findById(club_id).lean();
     if (!currentClub) {
         return res.status(404).json({ success: false, message: "Không tìm thấy câu lạc bộ" });
+    }
+
+    if (currentClub.plan_type === "free") {
+        return res.status(403).json({ success: false, message: "Tính năng Thống kê theo ngày chỉ dành cho gói Basic hoặc Pro." });
     }
 
     // Prepare date range if month and year are provided
