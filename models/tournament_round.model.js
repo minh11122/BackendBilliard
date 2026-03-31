@@ -6,8 +6,13 @@ const tournamentRoundSchema = new mongoose.Schema(
     round_number: { type: Number, required: true },
     round_type: {
       type: String,
-      enum: ["Knockout", "RoundRobin"],
+      enum: ["Knockout", "RoundRobin", "DoubleElimination"],
       required: true
+    },
+    bracket_side: {
+      type: String,
+      enum: ["Winners", "Losers", "GrandFinal", null],
+      default: null
     },
     group_key: { type: String, default: null },
     race_to: { type: Number, default: 7 },
@@ -24,6 +29,47 @@ const tournamentRoundSchema = new mongoose.Schema(
   }
 );
 
-tournamentRoundSchema.index({ tournament_id: 1, round_number: 1, group_key: 1 }, { unique: true });
+tournamentRoundSchema.index(
+  { tournament_id: 1, bracket_side: 1, round_number: 1, group_key: 1 },
+  { unique: true }
+);
 
-module.exports = mongoose.model("TournamentRound", tournamentRoundSchema);
+const TournamentRound =
+  mongoose.models.TournamentRound || mongoose.model("TournamentRound", tournamentRoundSchema);
+
+const LEGACY_INDEX_NAME = "tournament_id_1_round_number_1_group_key_1";
+const CURRENT_INDEX_NAME = "tournament_id_1_bracket_side_1_round_number_1_group_key_1";
+
+const ensureTournamentRoundIndexes = async () => {
+  try {
+    await TournamentRound.createCollection();
+  } catch (error) {
+    if (error?.codeName !== "NamespaceExists") {
+      throw error;
+    }
+  }
+
+  const indexes = await TournamentRound.collection.indexes();
+  const hasLegacyIndex = indexes.some((index) => index.name === LEGACY_INDEX_NAME);
+
+  if (hasLegacyIndex) {
+    console.log(`[TournamentRound] Dropping legacy index ${LEGACY_INDEX_NAME}`);
+    await TournamentRound.collection.dropIndex(LEGACY_INDEX_NAME);
+  }
+
+  const refreshedIndexes = await TournamentRound.collection.indexes();
+  const hasCurrentIndex = refreshedIndexes.some((index) => index.name === CURRENT_INDEX_NAME);
+
+  if (!hasCurrentIndex) {
+    console.log(`[TournamentRound] Creating index ${CURRENT_INDEX_NAME}`);
+    await TournamentRound.collection.createIndex(
+      { tournament_id: 1, bracket_side: 1, round_number: 1, group_key: 1 },
+      { unique: true, name: CURRENT_INDEX_NAME }
+    );
+  }
+
+  console.log("[TournamentRound] Tournament round indexes are ready");
+};
+
+module.exports = TournamentRound;
+module.exports.ensureTournamentRoundIndexes = ensureTournamentRoundIndexes;

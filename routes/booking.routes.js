@@ -1,66 +1,135 @@
 const express = require("express");
 const router = express.Router();
-const postController = require("../controller/post.controller");
+
+const {
+  createBooking,
+  cancelHold,
+  getMyBookings,
+  checkInBooking,
+  checkOutBooking,
+  getBookingById,
+  getClubBookings,
+  createWalkInBooking,
+  confirmPayment,
+  createBookingPayOSPayment,
+  payosWebhook,
+  verifyBookingPayOSPayment,
+  createBookingCheckoutPayOSPayment,
+  verifyBookingCheckoutPayOSPayment,
+  addBookingService,
+  getBookingServices,
+  updateBookingServiceQuantity,
+  deleteBookingService,
+  extendBooking,
+  changeTable,
+} = require("../controller/booking.controller");
+
 const authenticate = require("../middleware/authenticate.middleware");
 const authorizeRole = require("../middleware/authorizeRole.middleware");
 
-// ================= CUSTOMER =================
-
-// Xem danh sách bài post đã duyệt
-router.get("/", postController.getApprovedPosts);
-
-
-// ================= OWNER =================
-
-// Tạo bài post (owner)
+// Customer booking flows
+router.post("/", authenticate, authorizeRole("CUSTOMER"), createBooking);
+router.get("/my", authenticate, authorizeRole("CUSTOMER"), getMyBookings);
+router.post("/:id/cancel-hold", authenticate, authorizeRole("CUSTOMER"), cancelHold);
 router.post(
-  "/",
+  "/:id/payos/create-payment",
   authenticate,
-  authorizeRole("OWNER"),
-  postController.createPost
+  authorizeRole("CUSTOMER"),
+  createBookingPayOSPayment
 );
+router.post(
+  "/payos/verify",
+  authenticate,
+  authorizeRole("CUSTOMER"),
+  verifyBookingPayOSPayment
+);
+router.post("/payos/webhook", payosWebhook);
 
-// Xem bài post của mình
+// Staff/owner booking management
+router.post(
+  "/checkin",
+  authenticate,
+  authorizeRole("OWNER", "STAFF_CLUB"),
+  checkInBooking
+);
 router.get(
-  "/my",
+  "/club",
   authenticate,
-  authorizeRole("OWNER"),
-  postController.getMyPosts
+  authorizeRole("OWNER", "STAFF_CLUB"),
+  getClubBookings
+);
+router.post(
+  "/walk-in",
+  authenticate,
+  authorizeRole("OWNER", "STAFF_CLUB"),
+  createWalkInBooking
+);
+router.post(
+  "/checkout/payos/verify",
+  authenticate,
+  authorizeRole("OWNER", "STAFF_CLUB"),
+  verifyBookingCheckoutPayOSPayment
 );
 
-// Cập nhật bài post
-router.put(
+router.get(
   "/:id",
   authenticate,
-  authorizeRole("OWNER"),
-  postController.updatePost
+  authorizeRole("OWNER", "STAFF_CLUB"),
+  getBookingById
 );
-
-// Xóa bài post
+router.post(
+  "/:id/confirm-payment",
+  authenticate,
+  authorizeRole("OWNER", "STAFF_CLUB"),
+  confirmPayment
+);
+router.post(
+  "/:id/checkout",
+  authenticate,
+  authorizeRole("OWNER", "STAFF_CLUB"),
+  checkOutBooking
+);
+router.post(
+  "/:id/checkout/payos/create-payment",
+  authenticate,
+  authorizeRole("OWNER", "STAFF_CLUB"),
+  createBookingCheckoutPayOSPayment
+);
+router.get(
+  "/:id/services",
+  authenticate,
+  authorizeRole("OWNER", "STAFF_CLUB"),
+  getBookingServices
+);
+router.post(
+  "/:id/services",
+  authenticate,
+  authorizeRole("OWNER", "STAFF_CLUB"),
+  addBookingService
+);
+router.put(
+  "/:id/services/:bookingServiceId",
+  authenticate,
+  authorizeRole("OWNER", "STAFF_CLUB"),
+  updateBookingServiceQuantity
+);
 router.delete(
-  "/:id",
+  "/:id/services/:bookingServiceId",
   authenticate,
-  authorizeRole("OWNER"),
-  postController.deletePost
+  authorizeRole("OWNER", "STAFF_CLUB"),
+  deleteBookingService
 );
-
-
-// ================= STAFF SYSTEM =================
-
-// Lấy danh sách bài chờ duyệt
-router.get(
-  "/pending",
+router.post(
+  "/:id/extend",
   authenticate,
-  authorizeRole("STAFF_SYSTEM"),
-  postController.getPendingPosts
+  authorizeRole("OWNER", "STAFF_CLUB"),
+  extendBooking
 );
-
-// Duyệt / từ chối bài post (gộp)
-router.put(
-  "/:id/review",
+router.post(
+  "/:id/change-table",
   authenticate,
-  authorizeRole("STAFF_SYSTEM"),
-  postController.reviewPost
+  authorizeRole("OWNER", "STAFF_CLUB"),
+  changeTable
 );
 
 module.exports = router;

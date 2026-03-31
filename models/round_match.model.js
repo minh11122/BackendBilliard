@@ -19,11 +19,20 @@ const roundMatchSchema = new mongoose.Schema(
         finished_at: { type: Date, default: null },
         race_to: { type: Number, default: 7 },
         group_key: { type: String, default: null },
+        bracket_side: {
+            type: String,
+            enum: ["Winners", "Losers", "GrandFinal", null],
+            default: null
+        },
         next_match_id: { type: mongoose.Schema.Types.ObjectId, ref: "RoundMatch", default: null },
         next_slot: { type: Number, enum: [1, 2, null], default: null },
+        winner_next_match_id: { type: mongoose.Schema.Types.ObjectId, ref: "RoundMatch", default: null },
+        winner_next_slot: { type: Number, enum: [1, 2, null], default: null },
+        loser_next_match_id: { type: mongoose.Schema.Types.ObjectId, ref: "RoundMatch", default: null },
+        loser_next_slot: { type: Number, enum: [1, 2, null], default: null },
         match_format: {
             type: String,
-            enum: ["Knockout", "RoundRobin"],
+            enum: ["Knockout", "RoundRobin", "DoubleElimination"],
             required: true
         },
         status: {

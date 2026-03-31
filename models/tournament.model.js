@@ -7,7 +7,7 @@ const tournamentSchema = new mongoose.Schema(
     description: { type: String, default: "" },
     format: {
       type: String,
-      enum: ["Knockout", "Round Robin"],
+      enum: ["Knockout", "Round Robin", "Double Elimination"],
       default: "Knockout"
     },
     max_players: { type: Number, required: true },
