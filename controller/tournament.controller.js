@@ -978,10 +978,14 @@ const startRoundMatch = async (req, res) => {
         return res.status(400).json({ success: false, message: "Bàn này đang có khách chơi. Vui lòng chọn bàn khác!" });
       }
 
+      const todayStr = new Date().toLocaleString("en-US", { timeZone: "Asia/Ho_Chi_Minh" });
+      const localToday = new Date(todayStr);
+      localToday.setHours(0, 0, 0, 0);
+
       await Booking.create({
         guest_name: `Trận giải đấu: ${match.match_name}`,
         table_id: match.table_id,
-        play_date: new Date(new Date().setHours(0, 0, 0, 0)),
+        play_date: localToday,
         start_time: new Date().toTimeString().slice(0, 5),
         end_time: "23:59",
         code_number: `TOUR_${match._id.toString().slice(-6)}_${Date.now().toString().slice(-4)}`,
@@ -1329,12 +1333,47 @@ const tournamentPayOSWebhook = async (req, res) => {
   }
 };
 
+
+const getMyTournaments = async (req, res) => {
+  try {
+    const accountId = req.user?.accountId;
+    if (!accountId) return res.status(401).json({ success: false, message: "Chưa đăng nhập" });
+
+    // Find all tournament registrations by this user
+    const playerEntries = await TournamentPlayer.find({ account_id: accountId })
+      .populate({
+        path: "tournament_id",
+        populate: { path: "club_id", select: "name address" }
+      })
+      .sort({ register_date: -1 });
+
+    const data = playerEntries
+      .filter(entry => entry.tournament_id) // exclude orphaned entries
+      .map(entry => ({
+        tournament: entry.tournament_id,
+        playerEntry: {
+          _id: entry._id,
+          status: entry.status,
+          fee_ammount: entry.fee_ammount,
+          register_date: entry.register_date,
+          elimination_round: entry.elimination_round || null,
+        }
+      }));
+
+    return res.json({ success: true, data });
+  } catch (error) {
+    console.error("Error getMyTournaments:", error);
+    return res.status(500).json({ success: false, message: "Lỗi server", error: error.message });
+  }
+};
+
 module.exports = {
   createTournament,
   getTournamentsByClub,
   getPublicTournaments,
   getTournamentById,
   getMyRegisteredTournamentIds,
+  getMyTournaments,
   getTournamentPlayers,
   openTournamentRegistration,
   closeTournamentRegistration,

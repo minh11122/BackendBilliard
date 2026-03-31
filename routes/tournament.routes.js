@@ -6,6 +6,7 @@ const {
   getPublicTournaments,
   getTournamentById,
   getMyRegisteredTournamentIds,
+  getMyTournaments,
   getTournamentPlayers,
   openTournamentRegistration,
   closeTournamentRegistration,
@@ -31,6 +32,7 @@ router.get("/", authenticate, getTournamentsByClub);
 // GET /tournaments/public - get public tournaments
 router.get("/public", getPublicTournaments);
 router.get("/my/registered-ids", authenticate, getMyRegisteredTournamentIds);
+router.get("/my/tournaments", authenticate, getMyTournaments);
 
 // Public bracket / match view
 router.get("/:id/bracket", getTournamentBracket);
