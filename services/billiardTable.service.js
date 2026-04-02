@@ -20,9 +20,32 @@ const getTables = async (club_id, { page = 1, limit = 5, search, table_type_id, 
         query.table_type_id = new mongoose.Types.ObjectId(table_type_id);
     }
 
-    // 3. Lọc theo Trạng thái (chỉ áp dụng cho status bảng billiard_table)
-    if (status && ["Available", "Maintenance", "Holding"].includes(status)) {
-        query.status = status;
+    // 3. Lọc theo Trạng thái (kết hợp billiard_table + booking)
+    if (status && status !== "all") {
+        if (status === "Maintenance") {
+            query.status = "Maintenance";
+        } else if (status === "Holding") {
+            query.status = "Holding";
+        } else {
+            // Tìm các bàn đang được playing
+            const clubTables = await BilliardTable.find({ club_id: new mongoose.Types.ObjectId(club_id) }).distinct('_id');
+            const playingBookings = await Booking.find({
+                table_id: { $in: clubTables },
+                status: "Playing"
+            });
+            const playingTableIds = playingBookings.map(b => b.table_id);
+
+            if (status === "In Use") {
+                query._id = { $in: playingTableIds };
+            } else if (status === "Available") {
+                if (query._id) {
+                    query._id.$nin = playingTableIds;
+                } else {
+                    query._id = { $nin: playingTableIds };
+                }
+                query.status = "Available";
+            }
+        }
     }
 
     // 4. Tính toán Phân trang
@@ -63,10 +86,18 @@ const getTables = async (club_id, { page = 1, limit = 5, search, table_type_id, 
         }
     }
 
-    // 8. Gắn booking vào từng bàn
+    // 8. Gắn booking vào từng bàn và ghi đè trạng thái cho UI
     const enrichedTables = tables.map(t => {
         const tableObj = t.toObject();
-        tableObj.activeBooking = bookingMap[t._id.toString()] || null;
+        const activeBooking = bookingMap[t._id.toString()] || null;
+        tableObj.activeBooking = activeBooking;
+        
+        if (tableObj.status !== "Maintenance") {
+            if (activeBooking && activeBooking.status === "Playing") {
+                tableObj.status = "In Use";
+            }
+        }
+        
         return tableObj;
     });
 
@@ -139,12 +170,8 @@ const getTableStatusCounts = async (club_id) => {
 
         if (table.status === "Maintenance") {
             result.maintenance++;
-        } else if (booking) {
-            if (booking.status === "Playing") result.inUse++;
-            else if (booking.status === "Booked") result.booked++;
-            else result.holding++; // Pending
-        } else if (table.status === "Holding") {
-            result.holding++;
+        } else if (booking && booking.status === "Playing") {
+            result.inUse++;
         } else {
             result.available++;
         }
