@@ -51,7 +51,7 @@ const getDashboard = async (req, res) => {
         // 6) Stats tổng hợp
         const [totalClubs, openingTournaments, pendingBookingsCount] = await Promise.all([
             Club.countDocuments({ status: "Approved" }),
-            Tournament.countDocuments({ status: "Opening" }),
+            Tournament.countDocuments({ status: "Open" }),
             Booking.countDocuments({ status: "Pending" })
         ]);
 
