@@ -6,6 +6,7 @@ const ClubBank = require("../models/club_bank.model");
 const BookingService = require("../models/booking_service.model");
 const Service = require("../models/service.model");
 const payosService = require("../services/payos.service");
+const Notification = require("../models/notification.model");
 
 // Cấu hình thời gian giữ chỗ (phút) - Bạn có thể chỉnh ở đây để test nhanh
 const HOLD_MINUTES_OVERRIDE = 2;
@@ -18,11 +19,11 @@ const notifyStaff = async (club_id, title, message) => {
     const Notification = require("../models/notification.model");
     const staffs = await StaffClub.find({ club_id, status: "Active" });
     if (staffs.length > 0) {
-      const notifs = staffs.map(s => ({
+      const notifs = staffs.map((s) => ({
         account_id: s.account_id,
         title,
         message,
-        is_read: false
+        is_read: false,
       }));
       await Notification.insertMany(notifs);
     }
@@ -37,7 +38,7 @@ const ensureInvoiceForBooking = async ({
   bookingServices = [],
   tableCost,
   totalService,
-  paymentMethod
+  paymentMethod,
 }) => {
   const Invoice = require("../models/invoice.model");
   const InvoiceDetail = require("../models/invoice_detail.model");
@@ -58,7 +59,7 @@ const ensureInvoiceForBooking = async ({
     invoice_date,
     payment_method: paymentMethod, // "payOS" | "Cash"
     status: "Paid",
-    note: ""
+    note: "",
   });
 
   if (Array.isArray(bookingServices) && bookingServices.length > 0) {
@@ -66,7 +67,7 @@ const ensureInvoiceForBooking = async ({
       invoice_id: invoice._id,
       booking_service_id: bs._id,
       unit_price: Number(bs.unit_price || 0),
-      quantity: Number(bs.quantity || 0)
+      quantity: Number(bs.quantity || 0),
     }));
     await InvoiceDetail.insertMany(details);
   }
@@ -194,8 +195,12 @@ const createBooking = async (req, res) => {
 
     // Override bằng cấu hình riêng của Club (nếu có)
     const clubInfo = await Club.findById(table.club_id).lean();
-    if (clubInfo && clubInfo.deposit_percentage !== undefined && clubInfo.deposit_percentage !== null) {
-        depositPercent = clubInfo.deposit_percentage;
+    if (
+      clubInfo &&
+      clubInfo.deposit_percentage !== undefined &&
+      clubInfo.deposit_percentage !== null
+    ) {
+      depositPercent = clubInfo.deposit_percentage;
     }
 
     const hourPrice = table.price;
@@ -246,7 +251,8 @@ const createBooking = async (req, res) => {
     });
 
     // Lấy thông tin club
-    const club = clubInfo || (club_id ? await Club.findById(club_id).lean() : null);
+    const club =
+      clubInfo || (club_id ? await Club.findById(club_id).lean() : null);
 
     res.status(201).json({
       success: true,
@@ -381,15 +387,21 @@ const getMyBookings = async (req, res) => {
 
         // Attach feedback status for Completed bookings
         if (b.status === "Completed") {
-          const fb = await Feedback.findOne({ booking_id: b._id }).select("rating reply_content").lean();
+          const fb = await Feedback.findOne({ booking_id: b._id })
+            .select("rating reply_content")
+            .lean();
           if (fb) {
             b.feedback_status = {
               rated: true,
               rating: fb.rating,
-              has_reply: !!fb.reply_content
+              has_reply: !!fb.reply_content,
             };
           } else {
-            b.feedback_status = { rated: false, rating: null, has_reply: false };
+            b.feedback_status = {
+              rated: false,
+              rating: null,
+              has_reply: false,
+            };
           }
         }
 
@@ -605,11 +617,18 @@ const confirmPayment = async (req, res) => {
 // Nhân viên tạo đặt bàn trực tiếp (walk-in) cho khách đến quán
 const createWalkInBooking = async (req, res) => {
   try {
-    const { guest_name, table_number, play_date, start_time, end_time } = req.body;
+    const { guest_name, table_number, play_date, start_time, end_time } =
+      req.body;
     const staffId = req.user.accountId;
     const clubId = req.user.club_id;
 
-    if (!guest_name || !table_number || !play_date || !start_time || !end_time) {
+    if (
+      !guest_name ||
+      !table_number ||
+      !play_date ||
+      !start_time ||
+      !end_time
+    ) {
       return res.status(400).json({
         success: false,
         message:
@@ -672,7 +691,7 @@ const createWalkInBooking = async (req, res) => {
       table_id: table._id,
       play_date: new Date(play_date),
       start_time,
-      end_time, 
+      end_time,
       code_number: codeNumber,
       deposit: 0,
       hour_price: table.price || 0,
@@ -681,7 +700,11 @@ const createWalkInBooking = async (req, res) => {
       status: "Playing",
     });
 
-    notifyStaff(clubId, "Khách mới", `Bàn ${table_number} vừa được mở cho khách ${guest_name}`);
+    notifyStaff(
+      clubId,
+      "Khách mới",
+      `Bàn ${table_number} vừa được mở cho khách ${guest_name}`,
+    );
 
     res.status(201).json({
       success: true,
@@ -878,16 +901,23 @@ const payosWebhook = async (req, res) => {
       if (booking.status === "Booked") {
         return res.status(200).json({
           success: true,
-          message: "Already booked"
+          message: "Already booked",
         });
       }
 
       booking.status = "Booked";
       await booking.save();
 
+      await Notification.create({
+        account_id: booking.account_id,
+        title: "Thanh toán thành công",
+        message: `Bạn đã đặt bàn ${booking.table_id.table_number} thành công. Mã đơn: ${booking.code_number}`,
+        is_read: false,
+      });
+
       await TransactionHistory.findOneAndUpdate(
         { order_code: orderCode },
-        { status: "SUCCESS" }
+        { status: "SUCCESS" },
       );
 
       // Release holding
@@ -896,13 +926,13 @@ const payosWebhook = async (req, res) => {
         {
           status: "Available",
           held_by: null,
-          held_until: null
-        }
+          held_until: null,
+        },
       );
 
       return res.status(200).json({
         success: true,
-        message: "Updated booking to Booked"
+        message: "Updated booking to Booked",
       });
     }
 
@@ -910,16 +940,21 @@ const payosWebhook = async (req, res) => {
     if (booking.status === "Completed") {
       await TransactionHistory.findOneAndUpdate(
         { order_code: orderCode },
-        { status: "SUCCESS" }
+        { status: "SUCCESS" },
       );
       return res.status(200).json({
         success: true,
-        message: "Already completed"
+        message: "Already completed",
       });
     }
 
-    const bookingServices = await BookingService.find({ booking_id: booking._id });
-    const serviceTotal = bookingServices.reduce((sum, s) => sum + (s.unit_price * s.quantity), 0);
+    const bookingServices = await BookingService.find({
+      booking_id: booking._id,
+    });
+    const serviceTotal = bookingServices.reduce(
+      (sum, s) => sum + s.unit_price * s.quantity,
+      0,
+    );
 
     let endMin = timeToMinutes(booking.end_time);
     const startMin = timeToMinutes(booking.start_time);
@@ -929,35 +964,51 @@ const payosWebhook = async (req, res) => {
     const playCost = Math.round(durationHours * (booking.hour_price || 0));
     const totalBill = playCost + serviceTotal;
 
-    booking.total_bill = totalBill;
-    booking.status = "Completed";
-    await booking.save();
+    if (booking.status !== "Completed") {
+      booking.total_bill = totalBill;
+      booking.status = "Completed";
+      await booking.save();
+
+      await Notification.create({
+        account_id: booking.account_id,
+        title: "Thanh toán hoàn tất",
+        message: `Bạn đã thanh toán xong bàn ${booking.table_id.table_number}. Tổng tiền: ${booking.total_bill}đ`,
+        is_read: false,
+      });
+    }
 
     await TransactionHistory.findOneAndUpdate(
       { order_code: orderCode },
-      { status: "SUCCESS" }
+      { status: "SUCCESS" },
     );
 
     // Release table
-    await BilliardTable.findByIdAndUpdate(booking.table_id._id || booking.table_id, {
-      status: "Available",
-      held_by: null,
-      held_until: null
-    });
+    await BilliardTable.findByIdAndUpdate(
+      booking.table_id._id || booking.table_id,
+      {
+        status: "Available",
+        held_by: null,
+        held_until: null,
+      },
+    );
 
-    notifyStaff(clubId, "Thanh toán", `Bàn ${booking.table_id.table_number} đã được thanh toán xong`);
+    notifyStaff(
+      clubId,
+      "Thanh toán",
+      `Bàn ${booking.table_id.table_number} đã được thanh toán xong`,
+    );
 
     await ensureInvoiceForBooking({
       booking,
       bookingServices,
       tableCost: playCost,
       totalService: serviceTotal,
-      paymentMethod: "payOS"
+      paymentMethod: "payOS",
     });
 
     return res.status(200).json({
       success: true,
-      message: "Updated booking to Completed"
+      message: "Updated booking to Completed",
     });
   } catch (error) {
     console.error("Lỗi payosWebhook:", error);
@@ -1059,12 +1110,10 @@ const checkOutBooking = async (req, res) => {
     const clubId = req.user.club_id;
 
     if (!clubId) {
-      return res
-        .status(400)
-        .json({
-          success: false,
-          message: "Không xác định được quán của nhân viên",
-        });
+      return res.status(400).json({
+        success: false,
+        message: "Không xác định được quán của nhân viên",
+      });
     }
 
     const booking = await Booking.findById(id).populate("table_id");
@@ -1108,19 +1157,30 @@ const checkOutBooking = async (req, res) => {
 
     // Lấy tiền dịch vụ
     const bookingServices = await BookingService.find({ booking_id: id });
-    const serviceTotal = bookingServices.reduce((sum, s) => sum + (s.unit_price * s.quantity), 0);
+    const serviceTotal = bookingServices.reduce(
+      (sum, s) => sum + s.unit_price * s.quantity,
+      0,
+    );
 
     booking.actual_end_time = realEndTimeStr; // Lưu giờ khách về thực tế
-    booking.total_bill = playCost + serviceTotal;
-    booking.status = "Completed";
-    await booking.save();
+    if (booking.status !== "Completed") {
+      booking.total_bill = playCost + serviceTotal;
+      booking.status = "Completed";
+      await booking.save();
 
+      await Notification.create({
+        account_id: booking.account_id,
+        title: "Thanh toán hoàn tất",
+        message: `Bạn đã thanh toán xong bàn ${booking.table_id.table_number}. Tổng tiền: ${booking.total_bill}đ`,
+        is_read: false,
+      });
+    }
     // Store final payment cash transaction
     const TransactionHistory = require("../models/transiction_history.model");
     if (!booking.account_id) {
       return res.status(400).json({
         success: false,
-        message: "Booking thiếu account_id, không thể lưu transaction_history"
+        message: "Booking thiếu account_id, không thể lưu transaction_history",
       });
     }
 
@@ -1135,7 +1195,7 @@ const checkOutBooking = async (req, res) => {
       description: `BookingFinalPaymentCash:${booking._id}`,
       transaction_type: "BOOKING_FINAL_PAYMENT_CASH",
       transaction_time: new Date(),
-      status: "SUCCESS"
+      status: "SUCCESS",
     });
 
     await ensureInvoiceForBooking({
@@ -1143,7 +1203,7 @@ const checkOutBooking = async (req, res) => {
       bookingServices,
       tableCost: playCost,
       totalService: serviceTotal,
-      paymentMethod: "Cash"
+      paymentMethod: "Cash",
     });
 
     // Cập nhật trạng thái bàn về Available
@@ -1153,7 +1213,11 @@ const checkOutBooking = async (req, res) => {
       held_until: null,
     });
 
-    notifyStaff(clubId, "Thanh toán", `Bàn ${booking.table_id.table_number} đã được thanh toán xong`);
+    notifyStaff(
+      clubId,
+      "Thanh toán",
+      `Bàn ${booking.table_id.table_number} đã được thanh toán xong`,
+    );
 
     res.status(200).json({
       success: true,
@@ -1166,7 +1230,7 @@ const checkOutBooking = async (req, res) => {
         play_cost: playCost,
         service_total: serviceTotal,
         deposit,
-        due_amount: dueAmount
+        due_amount: dueAmount,
       },
     });
   } catch (error) {
@@ -1184,7 +1248,7 @@ const getBookingById = async (req, res) => {
     if (!clubId) {
       return res.status(400).json({
         success: false,
-        message: "Không xác định được quán của nhân viên"
+        message: "Không xác định được quán của nhân viên",
       });
     }
 
@@ -1192,14 +1256,14 @@ const getBookingById = async (req, res) => {
     if (!booking) {
       return res.status(404).json({
         success: false,
-        message: "Không tìm thấy đơn đặt bàn"
+        message: "Không tìm thấy đơn đặt bàn",
       });
     }
 
     if (booking.table_id?.club_id?.toString() !== clubId.toString()) {
       return res.status(403).json({
         success: false,
-        message: "Đơn này không thuộc quán của bạn"
+        message: "Đơn này không thuộc quán của bạn",
       });
     }
 
@@ -1218,7 +1282,7 @@ const createBookingCheckoutPayOSPayment = async (req, res) => {
     if (!clubId) {
       return res.status(400).json({
         success: false,
-        message: "Không xác định được quán của nhân viên"
+        message: "Không xác định được quán của nhân viên",
       });
     }
 
@@ -1226,21 +1290,21 @@ const createBookingCheckoutPayOSPayment = async (req, res) => {
     if (!booking) {
       return res.status(404).json({
         success: false,
-        message: "Không tìm thấy đơn đặt bàn"
+        message: "Không tìm thấy đơn đặt bàn",
       });
     }
 
     if (booking.table_id?.club_id?.toString() !== clubId.toString()) {
       return res.status(403).json({
         success: false,
-        message: "Đơn này không thuộc quán của bạn"
+        message: "Đơn này không thuộc quán của bạn",
       });
     }
 
     if (booking.status !== "Playing") {
       return res.status(400).json({
         success: false,
-        message: `Không thể thanh toán khi đơn đang ở trạng thái: ${booking.status}`
+        message: `Không thể thanh toán khi đơn đang ở trạng thái: ${booking.status}`,
       });
     }
 
@@ -1277,7 +1341,7 @@ const createBookingCheckoutPayOSPayment = async (req, res) => {
     if (!booking.account_id) {
       return res.status(400).json({
         success: false,
-        message: "Booking thiếu account_id, không thể lưu transaction_history"
+        message: "Booking thiếu account_id, không thể lưu transaction_history",
       });
     }
 
@@ -1285,7 +1349,7 @@ const createBookingCheckoutPayOSPayment = async (req, res) => {
 
     const orderCode = Date.now();
     const expiredAt = Math.floor(
-      (Date.now() + PAYOS_EXPIRE_MINUTES * 60 * 1000) / 1000
+      (Date.now() + PAYOS_EXPIRE_MINUTES * 60 * 1000) / 1000,
     );
 
     // Create transaction record as PENDING before redirecting to PayOS
@@ -1297,7 +1361,7 @@ const createBookingCheckoutPayOSPayment = async (req, res) => {
       description: `BookingFinalPayment:${booking._id}`,
       transaction_type: "BOOKING_FINAL_PAYMENT_TRANSFER",
       transaction_time: new Date(),
-      status: "PENDING"
+      status: "PENDING",
     });
 
     // No remaining amount -> finalize immediately
@@ -1309,14 +1373,18 @@ const createBookingCheckoutPayOSPayment = async (req, res) => {
       await BilliardTable.findByIdAndUpdate(booking.table_id._id, {
         status: "Available",
         held_by: null,
-        held_until: null
+        held_until: null,
       });
 
-      notifyStaff(clubId, "Thanh toán", `Bàn ${booking.table_id.table_number} đã được thanh toán xong`);
+      notifyStaff(
+        clubId,
+        "Thanh toán",
+        `Bàn ${booking.table_id.table_number} đã được thanh toán xong`,
+      );
 
       await TransactionHistory.findOneAndUpdate(
         { order_code: orderCode },
-        { status: "SUCCESS", transaction_time: new Date() }
+        { status: "SUCCESS", transaction_time: new Date() },
       );
 
       await ensureInvoiceForBooking({
@@ -1324,7 +1392,7 @@ const createBookingCheckoutPayOSPayment = async (req, res) => {
         bookingServices,
         tableCost: playCost,
         totalService: serviceTotal,
-        paymentMethod: "payOS"
+        paymentMethod: "payOS",
       });
 
       return res.status(200).json({
@@ -1340,9 +1408,9 @@ const createBookingCheckoutPayOSPayment = async (req, res) => {
             serviceTotal,
             totalBill,
             deposit,
-            dueAmount
-          }
-        }
+            dueAmount,
+          },
+        },
       });
     }
 
@@ -1356,7 +1424,7 @@ const createBookingCheckoutPayOSPayment = async (req, res) => {
       return res.status(400).json({
         success: false,
         message:
-          "CLB chưa thiết lập PayOS (Client ID / API Key / Checksum Key)"
+          "CLB chưa thiết lập PayOS (Client ID / API Key / Checksum Key)",
       });
     }
 
@@ -1370,13 +1438,13 @@ const createBookingCheckoutPayOSPayment = async (req, res) => {
         description: safeDescription || "Thanh toán",
         returnUrl: `http://localhost:5173/staff/tables/checkout/${booking._id}?orderCode=${orderCode}`,
         cancelUrl: `http://localhost:5173/staff/tables/checkout/${booking._id}?orderCode=${orderCode}`,
-        expiredAt
+        expiredAt,
       },
       {
         clientId: bank.payos_client_id,
         apiKey: bank.payos_api_key,
-        checksumKey: bank.payos_checksum_key
-      }
+        checksumKey: bank.payos_checksum_key,
+      },
     );
 
     return res.status(200).json({
@@ -1392,15 +1460,15 @@ const createBookingCheckoutPayOSPayment = async (req, res) => {
           serviceTotal,
           totalBill,
           deposit,
-          dueAmount
-        }
-      }
+          dueAmount,
+        },
+      },
     });
   } catch (error) {
     console.error("Error createBookingCheckoutPayOSPayment:", error);
     return res.status(500).json({
       success: false,
-      message: error?.response?.data?.message || error?.message || "Lỗi server"
+      message: error?.response?.data?.message || error?.message || "Lỗi server",
     });
   }
 };
@@ -1410,22 +1478,26 @@ const verifyBookingCheckoutPayOSPayment = async (req, res) => {
   try {
     const { orderCode } = req.body;
     if (!orderCode) {
-      return res.status(400).json({ success: false, message: "Thiếu orderCode" });
+      return res
+        .status(400)
+        .json({ success: false, message: "Thiếu orderCode" });
     }
 
     const TransactionHistory = require("../models/transiction_history.model");
-    const tx = await TransactionHistory.findOne({ order_code: orderCode }).lean();
+    const tx = await TransactionHistory.findOne({
+      order_code: orderCode,
+    }).lean();
     if (!tx || !tx.booking_id) {
       return res.status(404).json({
         success: false,
-        message: "Không tìm thấy giao dịch thanh toán checkout"
+        message: "Không tìm thấy giao dịch thanh toán checkout",
       });
     }
 
     if (tx.transaction_type !== "BOOKING_FINAL_PAYMENT_TRANSFER") {
       return res.status(400).json({
         success: false,
-        message: "orderCode không thuộc loại checkout PayOS"
+        message: "orderCode không thuộc loại checkout PayOS",
       });
     }
 
@@ -1433,7 +1505,7 @@ const verifyBookingCheckoutPayOSPayment = async (req, res) => {
     if (!booking) {
       return res.status(404).json({
         success: false,
-        message: "Không tìm thấy booking"
+        message: "Không tìm thấy booking",
       });
     }
 
@@ -1441,25 +1513,25 @@ const verifyBookingCheckoutPayOSPayment = async (req, res) => {
     if (!clubId) {
       return res.status(400).json({
         success: false,
-        message: "Không xác định được quán của nhân viên"
+        message: "Không xác định được quán của nhân viên",
       });
     }
 
     if (booking.table_id?.club_id?.toString() !== clubId.toString()) {
       return res.status(403).json({
         success: false,
-        message: "Đơn này không thuộc quán của bạn"
+        message: "Đơn này không thuộc quán của bạn",
       });
     }
 
     if (tx.status === "SUCCESS" || booking.status === "Completed") {
       await TransactionHistory.findOneAndUpdate(
         { order_code: orderCode },
-        { status: "SUCCESS" }
+        { status: "SUCCESS" },
       );
       return res.status(200).json({
         success: true,
-        message: "Đã được hoàn tất trước đó"
+        message: "Đã được hoàn tất trước đó",
       });
     }
 
@@ -1470,21 +1542,27 @@ const verifyBookingCheckoutPayOSPayment = async (req, res) => {
       !bank.payos_api_key ||
       !bank.payos_checksum_key
     ) {
-      return res.status(400).json({ success: false, message: "CLB chưa cấu hình PayOS" });
+      return res
+        .status(400)
+        .json({ success: false, message: "CLB chưa cấu hình PayOS" });
     }
 
     const paymentInfo = await payosService.getPaymentInfo(orderCode, {
       clientId: bank.payos_client_id,
       apiKey: bank.payos_api_key,
-      checksumKey: bank.payos_checksum_key
+      checksumKey: bank.payos_checksum_key,
     });
 
     if (paymentInfo.status !== "PAID") {
-      return res.status(400).json({ success: false, message: "Thanh toán chưa hoàn tất" });
+      return res
+        .status(400)
+        .json({ success: false, message: "Thanh toán chưa hoàn tất" });
     }
 
     // Finalize booking
-    const bookingServices = await BookingService.find({ booking_id: booking._id });
+    const bookingServices = await BookingService.find({
+      booking_id: booking._id,
+    });
     const serviceTotal = bookingServices.reduce((sum, s) => {
       const unitPrice = Number(s.unit_price || 0);
       const qty = Number(s.quantity || 0);
@@ -1500,37 +1578,52 @@ const verifyBookingCheckoutPayOSPayment = async (req, res) => {
     const playCost = Math.round(durationHours * (booking.hour_price || 0));
     const totalBill = Number(playCost || 0) + Number(serviceTotal || 0);
 
-    booking.total_bill = totalBill;
-    booking.status = "Completed";
-    await booking.save();
+    if (booking.status !== "Completed") {
+      booking.total_bill = totalBill;
+      booking.status = "Completed";
+      await booking.save();
+
+      await Notification.create({
+        account_id: booking.account_id,
+        title: "Thanh toán hoàn tất",
+        message: `Bạn đã thanh toán xong bàn ${booking.table_id.table_number}. Tổng tiền: ${booking.total_bill}đ`,
+        is_read: false,
+      });
+    }
 
     await BilliardTable.findByIdAndUpdate(booking.table_id._id, {
       status: "Available",
       held_by: null,
-      held_until: null
+      held_until: null,
     });
 
-    notifyStaff(clubId, "Thanh toán", `Bàn ${booking.table_id.table_number} đã được thanh toán xong`);
+    notifyStaff(
+      clubId,
+      "Thanh toán",
+      `Bàn ${booking.table_id.table_number} đã được thanh toán xong`,
+    );
 
     await ensureInvoiceForBooking({
       booking,
       bookingServices,
       tableCost: playCost,
       totalService: serviceTotal,
-      paymentMethod: "payOS"
+      paymentMethod: "payOS",
     });
 
     await TransactionHistory.findOneAndUpdate(
       { order_code: orderCode },
-      { status: "SUCCESS", transaction_time: new Date() }
+      { status: "SUCCESS", transaction_time: new Date() },
     );
 
-    return res.status(200).json({ success: true, message: "Thanh toán checkout thành công" });
+    return res
+      .status(200)
+      .json({ success: true, message: "Thanh toán checkout thành công" });
   } catch (error) {
     console.error("Error verifyBookingCheckoutPayOSPayment:", error);
     return res.status(500).json({
       success: false,
-      message: error?.response?.data?.message || error?.message || "Lỗi server"
+      message: error?.response?.data?.message || error?.message || "Lỗi server",
     });
   }
 };
@@ -1543,23 +1636,33 @@ const addBookingService = async (req, res) => {
     const clubId = req.user.club_id;
 
     if (!service_id || !quantity || quantity <= 0) {
-      return res.status(400).json({ success: false, message: "Thông tin dịch vụ không hợp lệ" });
+      return res
+        .status(400)
+        .json({ success: false, message: "Thông tin dịch vụ không hợp lệ" });
     }
 
     const booking = await Booking.findById(id).populate("table_id");
-    if (!booking) return res.status(404).json({ success: false, message: "Không tìm thấy đơn đặt bàn" });
+    if (!booking)
+      return res
+        .status(404)
+        .json({ success: false, message: "Không tìm thấy đơn đặt bàn" });
 
     // Kiểm tra quyền hạn
     if (booking.table_id.club_id.toString() !== clubId.toString()) {
-      return res.status(403).json({ success: false, message: "Đơn này không thuộc quán của bạn" });
+      return res
+        .status(403)
+        .json({ success: false, message: "Đơn này không thuộc quán của bạn" });
     }
 
     const service = await Service.findOne({ _id: service_id, club_id: clubId });
-    if (!service) return res.status(404).json({ success: false, message: "Dịch vụ không tồn tại trong quán" });
+    if (!service)
+      return res
+        .status(404)
+        .json({ success: false, message: "Dịch vụ không tồn tại trong quán" });
 
     // Kiểm tra xem dịch vụ này đã có trong booking chưa
     let bs = await BookingService.findOne({ booking_id: id, service_id });
-    
+
     if (bs) {
       // Nếu đã có -> cộng thêm số lượng
       bs.quantity += quantity;
@@ -1570,7 +1673,7 @@ const addBookingService = async (req, res) => {
         booking_id: id,
         service_id,
         quantity,
-        unit_price: service.price
+        unit_price: service.price,
       });
     }
 
@@ -1579,9 +1682,15 @@ const addBookingService = async (req, res) => {
     booking.total_bill = (booking.total_bill || 0) + serviceTotal;
     await booking.save();
 
-    notifyStaff(clubId, "Gọi dịch vụ", `Bàn ${booking.table_id.table_number} vừa gọi ${quantity} ${service.name}`);
+    notifyStaff(
+      clubId,
+      "Gọi dịch vụ",
+      `Bàn ${booking.table_id.table_number} vừa gọi ${quantity} ${service.name}`,
+    );
 
-    res.status(201).json({ success: true, message: "Thêm dịch vụ thành công", data: bs });
+    res
+      .status(201)
+      .json({ success: true, message: "Thêm dịch vụ thành công", data: bs });
   } catch (error) {
     console.error("Lỗi addBookingService:", error);
     res.status(500).json({ success: false, message: "Lỗi server" });
@@ -1596,18 +1705,31 @@ const updateBookingServiceQuantity = async (req, res) => {
     const clubId = req.user.club_id;
 
     if (quantity === undefined || quantity < 1) {
-      return res.status(400).json({ success: false, message: "Số lượng không hợp lệ (tối thiểu 1)" });
+      return res.status(400).json({
+        success: false,
+        message: "Số lượng không hợp lệ (tối thiểu 1)",
+      });
     }
 
     const bs = await BookingService.findById(bookingServiceId);
-    if (!bs) return res.status(404).json({ success: false, message: "Không tìm thấy thông tin dịch vụ trong đơn" });
+    if (!bs)
+      return res.status(404).json({
+        success: false,
+        message: "Không tìm thấy thông tin dịch vụ trong đơn",
+      });
 
     const booking = await Booking.findById(id).populate("table_id");
-    if (!booking) return res.status(404).json({ success: false, message: "Không tìm thấy đơn đặt bàn" });
+    if (!booking)
+      return res
+        .status(404)
+        .json({ success: false, message: "Không tìm thấy đơn đặt bàn" });
 
     // Kiểm tra quyền hạn
     if (booking.table_id.club_id.toString() !== clubId.toString()) {
-      return res.status(403).json({ success: false, message: "Bạn không có quyền chỉnh sửa đơn này" });
+      return res.status(403).json({
+        success: false,
+        message: "Bạn không có quyền chỉnh sửa đơn này",
+      });
     }
 
     // Tính toán chênh lệch tiền
@@ -1623,7 +1745,11 @@ const updateBookingServiceQuantity = async (req, res) => {
     booking.total_bill = (booking.total_bill || 0) + diff;
     await booking.save();
 
-    res.status(200).json({ success: true, message: "Cập nhật số lượng thành công", data: bs });
+    res.status(200).json({
+      success: true,
+      message: "Cập nhật số lượng thành công",
+      data: bs,
+    });
   } catch (error) {
     console.error("Lỗi updateBookingServiceQuantity:", error);
     res.status(500).json({ success: false, message: "Lỗi server" });
@@ -1637,19 +1763,32 @@ const deleteBookingService = async (req, res) => {
     const clubId = req.user.club_id;
 
     const bs = await BookingService.findById(bookingServiceId);
-    if (!bs) return res.status(404).json({ success: false, message: "Không tìm thấy thông tin dịch vụ trong đơn" });
+    if (!bs)
+      return res.status(404).json({
+        success: false,
+        message: "Không tìm thấy thông tin dịch vụ trong đơn",
+      });
 
     const booking = await Booking.findById(id).populate("table_id");
-    if (!booking) return res.status(404).json({ success: false, message: "Không tìm thấy đơn đặt bàn" });
+    if (!booking)
+      return res
+        .status(404)
+        .json({ success: false, message: "Không tìm thấy đơn đặt bàn" });
 
     // Kiểm tra quyền
     if (booking.table_id.club_id.toString() !== clubId.toString()) {
-      return res.status(403).json({ success: false, message: "Bạn không có quyền xoá dịch vụ trong đơn này" });
+      return res.status(403).json({
+        success: false,
+        message: "Bạn không có quyền xoá dịch vụ trong đơn này",
+      });
     }
 
     // Trừ tiền khỏi tổng bill
     const totalToSubtract = bs.unit_price * bs.quantity;
-    booking.total_bill = Math.max(0, (booking.total_bill || 0) - totalToSubtract);
+    booking.total_bill = Math.max(
+      0,
+      (booking.total_bill || 0) - totalToSubtract,
+    );
     await booking.save();
 
     // Xoá record
@@ -1666,7 +1805,9 @@ const deleteBookingService = async (req, res) => {
 const getBookingServices = async (req, res) => {
   try {
     const { id } = req.params;
-    const services = await BookingService.find({ booking_id: id }).populate("service_id");
+    const services = await BookingService.find({ booking_id: id }).populate(
+      "service_id",
+    );
     res.status(200).json({ success: true, data: services });
   } catch (error) {
     res.status(500).json({ success: false, message: "Lỗi server" });
@@ -1681,27 +1822,36 @@ const extendBooking = async (req, res) => {
     const clubId = req.user.club_id;
 
     if (!minutes || minutes <= 0) {
-      return res.status(400).json({ success: false, message: "Số phút gia hạn không hợp lệ" });
+      return res
+        .status(400)
+        .json({ success: false, message: "Số phút gia hạn không hợp lệ" });
     }
 
     const booking = await Booking.findById(id).populate("table_id");
     if (!booking) {
-      return res.status(404).json({ success: false, message: "Không tìm thấy đơn đặt bàn" });
+      return res
+        .status(404)
+        .json({ success: false, message: "Không tìm thấy đơn đặt bàn" });
     }
 
     // Kiểm tra quyền hạn
     if (booking.table_id.club_id.toString() !== clubId.toString()) {
-      return res.status(403).json({ success: false, message: "Đơn này không thuộc quán của bạn" });
+      return res
+        .status(403)
+        .json({ success: false, message: "Đơn này không thuộc quán của bạn" });
     }
 
     if (booking.status !== "Playing") {
-      return res.status(400).json({ success: false, message: "Chỉ có thể gia hạn cho đơn đang chơi" });
+      return res.status(400).json({
+        success: false,
+        message: "Chỉ có thể gia hạn cho đơn đang chơi",
+      });
     }
 
     // Tính toán end_time mới
     const [h, m] = booking.end_time.split(":").map(Number);
     let totalMinutes = h * 60 + m + parseInt(minutes);
-    
+
     // Format lại HH:mm (xử lý qua ngày nếu cần, nhưng booking model lưu String HH:mm)
     const newH = Math.floor(totalMinutes / 60) % 24;
     const newM = totalMinutes % 60;
@@ -1710,23 +1860,32 @@ const extendBooking = async (req, res) => {
     // Cập nhật tổng tiền (tính thêm tiền cho phần gia hạn)
     const extraHours = minutes / 60;
     const extraCost = Math.round(extraHours * booking.hour_price);
-    
-    const nowStr = new Date().toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit', hour12: false });
+
+    const nowStr = new Date().toLocaleTimeString("vi-VN", {
+      hour: "2-digit",
+      minute: "2-digit",
+      hour12: false,
+    });
     booking.end_time = newEndTime;
     booking.total_bill = (booking.total_bill || 0) + extraCost;
-    booking.note = (booking.note || "") + ` [Gia hạn +${minutes}ph lúc ${nowStr}]`;
-    
+    booking.note =
+      (booking.note || "") + ` [Gia hạn +${minutes}ph lúc ${nowStr}]`;
+
     await booking.save();
 
-    notifyStaff(clubId, "Gia hạn bàn", `Bàn ${booking.table_id.table_number} đã gia hạn thêm ${minutes} phút`);
+    notifyStaff(
+      clubId,
+      "Gia hạn bàn",
+      `Bàn ${booking.table_id.table_number} đã gia hạn thêm ${minutes} phút`,
+    );
 
     res.status(200).json({
       success: true,
       message: `Gia hạn thành công thêm ${minutes} phút`,
       data: {
         end_time: booking.end_time,
-        total_bill: booking.total_bill
-      }
+        total_bill: booking.total_bill,
+      },
     });
   } catch (error) {
     console.error("Lỗi extendBooking:", error);
@@ -1743,26 +1902,39 @@ const changeTable = async (req, res) => {
     const staffId = req.user.accountId;
 
     if (!new_table_id) {
-      return res.status(400).json({ success: false, message: "Vui lòng chọn bàn mới" });
+      return res
+        .status(400)
+        .json({ success: false, message: "Vui lòng chọn bàn mới" });
     }
 
     const oldBooking = await Booking.findById(id).populate("table_id");
-    if (!oldBooking) return res.status(404).json({ success: false, message: "Không tìm thấy đơn" });
+    if (!oldBooking)
+      return res
+        .status(404)
+        .json({ success: false, message: "Không tìm thấy đơn" });
 
     if (oldBooking.table_id.club_id.toString() !== clubId.toString()) {
-      return res.status(403).json({ success: false, message: "Đơn này không thuộc quán của bạn" });
+      return res
+        .status(403)
+        .json({ success: false, message: "Đơn này không thuộc quán của bạn" });
     }
 
     if (oldBooking.status !== "Playing") {
-      return res.status(400).json({ success: false, message: "Chỉ có thể đổi bàn khi đang chơi" });
+      return res
+        .status(400)
+        .json({ success: false, message: "Chỉ có thể đổi bàn khi đang chơi" });
     }
 
     const newTable = await BilliardTable.findById(new_table_id);
     if (!newTable || newTable.club_id.toString() !== clubId.toString()) {
-      return res.status(404).json({ success: false, message: "Bàn mới không khả dụng" });
+      return res
+        .status(404)
+        .json({ success: false, message: "Bàn mới không khả dụng" });
     }
     if (newTable.status !== "Available") {
-      return res.status(400).json({ success: false, message: "Bàn mới đang không trống" });
+      return res
+        .status(400)
+        .json({ success: false, message: "Bàn mới đang không trống" });
     }
 
     // 1. Chốt đơn bàn cũ
@@ -1780,21 +1952,30 @@ const changeTable = async (req, res) => {
 
     // Tính tổng dịch vụ
     const BookingService = require("../models/booking_service.model");
-    const oldServices = await BookingService.find({ booking_id: oldBooking._id });
-    const serviceTotal = oldServices.reduce((sum, s) => sum + (s.unit_price * s.quantity), 0);
+    const oldServices = await BookingService.find({
+      booking_id: oldBooking._id,
+    });
+    const serviceTotal = oldServices.reduce(
+      (sum, s) => sum + s.unit_price * s.quantity,
+      0,
+    );
 
     oldBooking.end_time = realEndTimeStr;
     oldBooking.total_bill = playCost + serviceTotal;
     oldBooking.status = "Completed";
-    oldBooking.note = (oldBooking.note || "") + ` [Đã chuyển sang bàn ${newTable.table_number}]`;
+    oldBooking.note =
+      (oldBooking.note || "") +
+      ` [Đã chuyển sang bàn ${newTable.table_number}]`;
     await oldBooking.save();
 
-    await BilliardTable.findByIdAndUpdate(oldBooking.table_id._id, { status: "Available" });
+    await BilliardTable.findByIdAndUpdate(oldBooking.table_id._id, {
+      status: "Available",
+    });
 
     // 2. Tạo đơn bàn mới
     const codeNumber = "WI" + Date.now().toString().slice(-8);
     const computedEndH = (endH + 1) % 24;
-    const computedEndTime = `${String(computedEndH).padStart(2, '0')}:${String(endM).padStart(2, '0')}`;
+    const computedEndTime = `${String(computedEndH).padStart(2, "0")}:${String(endM).padStart(2, "0")}`;
 
     const newBooking = await Booking.create({
       account_id: oldBooking.account_id,
@@ -1811,16 +1992,33 @@ const changeTable = async (req, res) => {
       status: "Playing",
     });
 
-    notifyStaff(clubId, "Đổi bàn", `Bàn ${oldBooking.table_id.table_number} đã chuyển sang Bàn ${newTable.table_number}`);
+    notifyStaff(
+      clubId,
+      "Đổi bàn",
+      `Bàn ${oldBooking.table_id.table_number} đã chuyển sang Bàn ${newTable.table_number}`,
+    );
 
     res.status(200).json({
       success: true,
       message: "Đổi bàn thành công",
-      data: newBooking
+      data: newBooking,
     });
   } catch (error) {
     console.error("Lỗi changeTable:", error);
     res.status(500).json({ success: false, message: "Lỗi server" });
+  }
+};
+
+const notifyCustomer = async (account_id, title, message) => {
+  try {
+    await Notification.create({
+      account_id,
+      title,
+      message,
+      is_read: false,
+    });
+  } catch (err) {
+    console.error("Notify customer error:", err);
   }
 };
 
@@ -1844,5 +2042,5 @@ module.exports = {
   updateBookingServiceQuantity,
   deleteBookingService,
   extendBooking,
-  changeTable
+  changeTable,
 };
