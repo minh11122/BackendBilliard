@@ -256,6 +256,12 @@ const getClubById = async (req, res) => {
       club.priceFrom = 0;
     }
     
+    // Lấy gói cước hiện tại
+    const activeSub = await SubscriptionAccount.findOne({ club_id: id, status: "Active" }).populate("subscription_id").lean();
+    if (activeSub && activeSub.subscription_id) {
+        club.subscription_name = activeSub.subscription_id.name;
+    }
+
     // Lấy rating thực tế cho detail
     const feedbacks = await Feedback.find({ club_id: id }).populate("account_id").sort({ created_at: -1 }).lean();
     

@@ -4,6 +4,7 @@ const Booking = require("../models/booking.model");
 const Feedback = require("../models/feedback.model");
 const Post = require("../models/post.model");
 const Account = require("../models/account.model");
+const SubscriptionAccount = require("../models/subcription_account.model");
 const Role = require("../models/role.model");
 const Image = require("../models/image.model");
 const Notification = require("../models/notification.model");
@@ -12,9 +13,31 @@ const { sendClubApprovalEmail, sendClubRejectionEmail } = require("../services/m
 // ==================== GET DASHBOARD ====================
 const getDashboard = async (req, res) => {
     try {
-        const today = new Date();
-        const startOfDay = new Date(today.getFullYear(), today.getMonth(), today.getDate());
-        const endOfDay = new Date(today.getFullYear(), today.getMonth(), today.getDate() + 1);
+        let startOfDay, endOfDay;
+        const { dateType, specificDate } = req.query;
+        
+        if (dateType === "custom" && specificDate) {
+            startOfDay = new Date(specificDate);
+            startOfDay.setHours(0, 0, 0, 0);
+            endOfDay = new Date(specificDate);
+            endOfDay.setHours(23, 59, 59, 999);
+        } else if (dateType === "week") {
+            const today = new Date();
+            const firstDay = today.getDate() - today.getDay() + (today.getDay() === 0 ? -6 : 1);
+            startOfDay = new Date(today.setDate(firstDay));
+            startOfDay.setHours(0, 0, 0, 0);
+            endOfDay = new Date(startOfDay);
+            endOfDay.setDate(endOfDay.getDate() + 6);
+            endOfDay.setHours(23, 59, 59, 999);
+        } else if (dateType === "month") {
+            const today = new Date();
+            startOfDay = new Date(today.getFullYear(), today.getMonth(), 1);
+            endOfDay = new Date(today.getFullYear(), today.getMonth() + 1, 0, 23, 59, 59, 999);
+        } else {
+            const today = new Date();
+            startOfDay = new Date(today.getFullYear(), today.getMonth(), today.getDate());
+            endOfDay = new Date(today.getFullYear(), today.getMonth(), today.getDate() + 1);
+        }
 
         // 1) Clubs chờ duyệt
         const pendingClubs = await Club.find({ status: "Pending" })
@@ -55,30 +78,28 @@ const getDashboard = async (req, res) => {
             Booking.countDocuments({ status: "Pending" })
         ]);
 
-        // 7) Recent activity – lấy 8 hoạt động mới nhất từ clubs + bookings + feedbacks
-        const [recentClubs, recentBookings, recentFeedbacks] = await Promise.all([
-            Club.find().sort({ created_at: -1 }).limit(3).lean(),
-            Booking.find().sort({ created_at: -1 }).limit(3).lean(),
-            Feedback.find().sort({ created_at: -1 }).limit(2).populate("club_id", "name").lean()
+        // 7) Recent activity – lấy 8 hoạt động mới nhất: duyệt/từ chối bài đăng, CLB và mua gói
+        const [recentPosts, recentClubs, recentSubs] = await Promise.all([
+            Post.find({ status: { $in: ["Approved", "Rejected"] } }).sort({ updated_at: -1 }).limit(3).populate("club_id", "name").lean(),
+            Club.find({ status: { $in: ["Approved", "Rejected"] } }).sort({ updated_at: -1 }).limit(3).lean(),
+            SubscriptionAccount.find().sort({ created_at: -1 }).limit(3).populate("account_id", "fullname").populate("subscription_id", "name").lean()
         ]);
 
         const recentActivity = [
+            ...recentPosts.map(p => ({
+                type: "post",
+                text: `Bài đăng của CLB "${p.club_id?.name || '?'}" đã bị ${p.status === 'Approved' ? 'duyệt' : 'từ chối'}`,
+                time: p.updated_at || p.created_at
+            })),
             ...recentClubs.map(c => ({
                 type: "club",
-                text: `CLB "${c.name}" đăng ký hệ thống`,
-                time: c.created_at,
-                status: c.status
+                text: `CLB "${c.name}" đã bị ${c.status === 'Approved' ? 'duyệt' : 'từ chối'}`,
+                time: c.updated_at || c.created_at
             })),
-            ...recentBookings.map(b => ({
-                type: "booking",
-                text: `Đơn đặt bàn mới ${b.code_number}`,
-                time: b.created_at,
-                status: b.status
-            })),
-            ...recentFeedbacks.map(f => ({
-                type: "feedback",
-                text: `Đánh giá ${f.rating}★ cho CLB ${f.club_id?.name || ""}`,
-                time: f.created_at
+            ...recentSubs.map(s => ({
+                type: "subscription",
+                text: `Người dùng ${s.account_id?.fullname || '?'} đã mua gói ${s.subscription_id?.name || '?'}`,
+                time: s.purchase_date || s.created_at
             }))
         ]
             .filter(a => a.time)
