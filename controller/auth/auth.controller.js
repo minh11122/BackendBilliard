@@ -644,6 +644,39 @@ const countUnread = async (req, res) => {
   }
 };
 
+// 🔥 CHECK PROFILE RIÊNG
+const checkProfileStatus = async (req, res) => {
+  try {
+    const accountId = req.user.accountId;
+
+    const account = await Account.findById(accountId).select(
+      "fullname phone email",
+    );
+
+    if (!account) {
+      return res.status(404).json({
+        message: "Account not found",
+      });
+    }
+
+    const isComplete = !!(
+      account.fullname &&
+      account.phone &&
+      account.email
+    );
+
+    res.json({
+      message: "Check profile success",
+      is_profile_complete: isComplete,
+    });
+  } catch (error) {
+    res.status(500).json({
+      message: "Server error",
+      error: error.message,
+    });
+  }
+};
+
 module.exports = {
   getRoleNameById,
   register,
@@ -663,4 +696,5 @@ module.exports = {
   deleteNotification,
   deleteAllNotifications,
   countUnread,
+  checkProfileStatus
 };

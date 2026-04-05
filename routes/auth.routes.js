@@ -19,6 +19,7 @@ const {
   deleteNotification,
   deleteAllNotifications,
   countUnread,
+  checkProfileStatus
 } = require("../controller/auth/auth.controller");
 const authenticate = require("../middleware/authenticate.middleware");
 const authorize = require("../middleware/authorize.middleware");
@@ -42,6 +43,8 @@ router.patch("/notifications/:id/read", authenticate, authorize("CUSTOMER"), mar
 router.patch("/notifications/read-all", authenticate, authorize("CUSTOMER"), markAllAsRead);
 router.delete("/notifications/:id", authenticate, authorize("CUSTOMER"), deleteNotification);
 router.delete("/notifications", authenticate, authorize("CUSTOMER"), deleteAllNotifications);
+
+router.get("/profile/check",authenticate,authorize("CUSTOMER"),checkProfileStatus);
 
 
 module.exports = router;

@@ -3,6 +3,7 @@ const Role = require("../../models/role.model");
 const Club = require("../../models/club.model");
 const Subscription = require("../../models/subscription.model");
 const SubscriptionAccount  = require("../../models/subcription_account.model");
+const bcrypt = require("bcryptjs");
 
 
 // ADMIN - lấy danh sách account (trừ ADMIN)
@@ -210,18 +211,14 @@ const deleteAccount = async (req, res) => {
   try {
     const { id } = req.params;
 
-    const account = await Account.findByIdAndUpdate(
-      id,
-      { status: "DELETED" },
-      { new: true }
-    );
+    const account = await Account.findByIdAndDelete(id);
 
     if (!account) {
       return res.status(404).json({ message: "Không tìm thấy account" });
     }
 
     res.json({
-      message: "Đã xóa account",
+      message: "Đã xóa vĩnh viễn account",
     });
   } catch (error) {
     res.status(500).json({ message: error.message });
@@ -479,6 +476,72 @@ const getRevenueWebSummary = async (req, res) => {
   }
 };
 
+const createAccount = async (req, res) => {
+  try {
+    const { email, password, fullname, phone } = req.body;
+
+    const role = await Role.findOne({ name: "STAFF_SYSTEM" });
+
+    if (!role) {
+      return res.status(400).json({ message: "Role không tồn tại" });
+    }
+
+    // ❗ validate password giống FE
+    const passwordRegex =
+      /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[@$!%*?&]).{6,}$/;
+
+    if (!passwordRegex.test(password)) {
+      return res.status(400).json({
+        message:
+          "Mật khẩu ≥6 ký tự, gồm chữ hoa, chữ thường, số và ký tự đặc biệt",
+      });
+    }
+
+    // ❗ validate phone (không cần check trùng)
+    const phoneRegex = /^(0|\+84)[0-9]{9}$/;
+    if (phone && !phoneRegex.test(phone)) {
+      return res.status(400).json({
+        message: "Số điện thoại không hợp lệ",
+      });
+    }
+
+    // ✅ check email trùng
+    const existEmail = await Account.findOne({ email });
+    if (existEmail) {
+      return res.status(400).json({
+        message: "Email đã tồn tại",
+      });
+    }
+
+    // 🔐 hash password
+    const hashedPassword = await bcrypt.hash(password, 10);
+
+    const newAcc = new Account({
+      email,
+      fullname,
+      phone,
+      password_hash: hashedPassword,
+      role_id: role._id,
+      status: "ACTIVE",
+    });
+
+    await newAcc.save();
+
+    res.json({
+      message: "Tạo nhân viên hệ thống thành công",
+      data: newAcc,
+    });
+  } catch (error) {
+    // 🔥 fallback nếu DB có unique email
+    if (error.code === 11000) {
+      return res.status(400).json({
+        message: "Email đã tồn tại",
+      });
+    }
+
+    res.status(500).json({ message: error.message });
+  }
+};
 module.exports = {
   getAllAccountsForAdmin,
   getAllClubs,
@@ -490,5 +553,6 @@ module.exports = {
   deleteAccount,
   toggleBanAccount,
   getRevenueWeb,
-  getRevenueWebSummary
+  getRevenueWebSummary,
+  createAccount
 };
