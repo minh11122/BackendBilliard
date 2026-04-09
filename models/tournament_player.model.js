@@ -6,8 +6,6 @@ const tournamentPlayerSchema = new mongoose.Schema(
     account_id: { type: mongoose.Schema.Types.ObjectId, ref: "Account", required: true },
     register_date: { type: Date, default: Date.now },
     fee_amount: { type: Number, default: 0 },
-    // Legacy field kept for backward compatibility with old data.
-    fee_ammount: { type: Number, default: 0 },
     status: {
       type: String,
       enum: ["Pending", "Approved", "Rejected", "Eliminated", "Champion"],
@@ -22,14 +20,7 @@ const tournamentPlayerSchema = new mongoose.Schema(
   }
 );
 
-tournamentPlayerSchema.pre("save", function syncLegacyFee(next) {
-  if (typeof this.fee_amount === "number") {
-    this.fee_ammount = this.fee_amount;
-  } else if (typeof this.fee_ammount === "number") {
-    this.fee_amount = this.fee_ammount;
-  }
-  next();
-});
+
 
 tournamentPlayerSchema.index({ tournament_id: 1, account_id: 1 }, { unique: true });
 

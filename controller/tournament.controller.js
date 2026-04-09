@@ -33,7 +33,6 @@ const ensureTournamentApproved = async (tournamentId, accountId, feeAmount) => {
       $set: {
         register_date: new Date(),
         fee_amount: feeAmount,
-        fee_ammount: feeAmount,
         status: "Approved"
       }
     },
@@ -2039,7 +2038,7 @@ const getMyTournaments = async (req, res) => {
         playerEntry: {
           _id: entry._id,
           status: entry.status,
-          fee_ammount: entry.fee_ammount,
+          fee_amount: entry.fee_amount,
           register_date: entry.register_date,
           elimination_round: entry.elimination_round || null,
         }
