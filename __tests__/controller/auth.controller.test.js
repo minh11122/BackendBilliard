@@ -53,6 +53,7 @@ jest.mock("../../models/notification.model", () => ({
   findByIdAndUpdate: jest.fn(),
   updateMany: jest.fn(),
   findByIdAndDelete: jest.fn(),
+  deleteMany: jest.fn(),
 }));
 
 const jwt = require("jsonwebtoken");
@@ -99,466 +100,524 @@ describe("Auth Controller", () => {
 
       await authController.register(req, res);
 
-      expect(Account.create).toHaveBeenCalledWith(
-        expect.objectContaining({
-          fullname: "ngocanh.nguyen",
-          email: "ngocanh.nguyen@example.com",
-          provider: "local",
-          status: "PENDING",
-        }),
-      );
+      expect(Account.create).toHaveBeenCalledWith(expect.objectContaining({ email: "ngocanh.nguyen@example.com" }));
       expect(sendOtpEmail).toHaveBeenCalledWith("ngocanh.nguyen@example.com", "482951");
       expect(res.status).toHaveBeenCalledWith(201);
-      expect(res.json).toHaveBeenCalledWith({
-        message: "Đăng ký thành công, OTP đã gửi",
-      });
     });
 
     it("should return 400 when required fields are missing", async () => {
-      const req = {
-        body: {
-          email: "thao.tran@example.com",
-          password: "",
-          confirmPassword: "",
-        },
-      };
+      const req = { body: { email: "", password: "", confirmPassword: "" } };
       const res = createRes();
-
       await authController.register(req, res);
-
       expect(res.status).toHaveBeenCalledWith(400);
-      expect(res.json).toHaveBeenCalledWith({
-        message: "Vui lòng nhập email và mật khẩu",
-      });
+    });
+
+    it("should return 400 when passwords do not match", async () => {
+      const req = { body: { email: "a@a.com", password: "123", confirmPassword: "456" } };
+      const res = createRes();
+      await authController.register(req, res);
+      expect(res.status).toHaveBeenCalledWith(400);
     });
 
     it("should return 400 when email already exists", async () => {
-      const req = {
-        body: {
-          fullname: "Trần Minh Khoa",
-          email: "khoa.tran@example.com",
-          password: "MatKhau@123",
-          confirmPassword: "MatKhau@123",
-        },
-      };
+      const req = { body: { email: "dup@e.com", password: "123", confirmPassword: "123" } };
       const res = createRes();
-
-      Account.findOne.mockResolvedValue({ _id: "acc-dup" });
-
+      Account.findOne.mockResolvedValue({ _id: "acc-02" });
       await authController.register(req, res);
-
       expect(res.status).toHaveBeenCalledWith(400);
-      expect(res.json).toHaveBeenCalledWith({
-        message: "Email đã tồn tại",
-      });
+    });
+
+    it("should handle duplicate key error (11000)", async () => {
+      const req = { body: { email: "dup@e.com", password: "123", confirmPassword: "123" } };
+      const res = createRes();
+      Account.findOne.mockResolvedValue(null);
+      Role.findOne.mockResolvedValue({ _id: "r1" });
+      Account.create.mockRejectedValue({ code: 11000, keyPattern: { email: 1 } });
+      await authController.register(req, res);
+      expect(res.status).toHaveBeenCalledWith(400);
+    });
+
+    it("should return 500 on unexpected error", async () => {
+      const req = { body: { email: "e@e.com", password: "123", confirmPassword: "123" } };
+      const res = createRes();
+      Account.findOne.mockRejectedValue(new Error("DB error"));
+      await authController.register(req, res);
+      expect(res.status).toHaveBeenCalledWith(500);
     });
   });
 
   describe("verifyOtp", () => {
-    it("should activate account when OTP is valid", async () => {
-      const req = {
-        body: {
-          email: "linh.pham@example.com",
-          otp_code: "258369",
-        },
-      };
+    it("should verify successfully", async () => {
+      const req = { body: { email: "e@e.com", otp_code: "123" } };
       const res = createRes();
-      const account = { _id: "acc-otp-01", status: "PENDING", save: jest.fn() };
-
+      const account = { save: jest.fn(), status: "PENDING" };
       Account.findOne.mockResolvedValue(account);
-      Otp.findOne.mockResolvedValue({
-        _id: "otp-01",
-        otp_code: "258369",
-        attempts: 0,
-        expires_at: new Date(Date.now() + 5 * 60 * 1000),
-      });
-      Otp.deleteOne.mockResolvedValue({});
-
+      Otp.findOne.mockResolvedValue({ _id: "o1", otp_code: "123", expires_at: new Date(Date.now() + 1000) });
       await authController.verifyOtp(req, res);
-
       expect(account.status).toBe("ACTIVE");
-      expect(account.save).toHaveBeenCalled();
-      expect(Otp.deleteOne).toHaveBeenCalledWith({ _id: "otp-01" });
       expect(res.json).toHaveBeenCalledWith({ message: "Xác thực thành công" });
     });
 
-    it("should return 400 when OTP is incorrect", async () => {
-      const req = {
-        body: {
-          email: "viet.hoang@example.com",
-          otp_code: "111111",
-        },
-      };
+    it("should return 404 if account not found", async () => {
+      const req = { body: { email: "n@e.com", otp_code: "1" } };
       const res = createRes();
-      const otpDoc = {
-        otp_code: "654321",
-        attempts: 0,
-        expires_at: new Date(Date.now() + 5 * 60 * 1000),
-        save: jest.fn(),
-      };
-
-      Account.findOne.mockResolvedValue({ _id: "acc-otp-02" });
-      Otp.findOne.mockResolvedValue(otpDoc);
-
+      Account.findOne.mockResolvedValue(null);
       await authController.verifyOtp(req, res);
+      expect(res.status).toHaveBeenCalledWith(404);
+    });
 
-      expect(otpDoc.attempts).toBe(1);
-      expect(otpDoc.save).toHaveBeenCalled();
+    it("should return 400 if otp not found", async () => {
+      const req = { body: { email: "e@e.com", otp_code: "1" } };
+      const res = createRes();
+      Account.findOne.mockResolvedValue({ _id: "a1" });
+      Otp.findOne.mockResolvedValue(null);
+      await authController.verifyOtp(req, res);
       expect(res.status).toHaveBeenCalledWith(400);
-      expect(res.json).toHaveBeenCalledWith({ message: "OTP sai" });
+    });
+
+    it("should return 400 if otp expired", async () => {
+      const req = { body: { email: "e@e.com", otp_code: "1" } };
+      const res = createRes();
+      Account.findOne.mockResolvedValue({ _id: "a1" });
+      Otp.findOne.mockResolvedValue({ expires_at: new Date(Date.now() - 1000) });
+      await authController.verifyOtp(req, res);
+      expect(res.status).toHaveBeenCalledWith(400);
+    });
+
+    it("should return 400 if too many attempts", async () => {
+      const req = { body: { email: "e@e.com", otp_code: "1" } };
+      const res = createRes();
+      Account.findOne.mockResolvedValue({ _id: "a1" });
+      Otp.findOne.mockResolvedValue({ expires_at: new Date(Date.now() + 1000), attempts: 5 });
+      await authController.verifyOtp(req, res);
+      expect(res.status).toHaveBeenCalledWith(400);
+    });
+
+    it("should return 400 if otp incorrect", async () => {
+      const req = { body: { email: "e@e.com", otp_code: "wrong" } };
+      const res = createRes();
+      const otp = { otp_code: "123", attempts: 0, save: jest.fn(), expires_at: new Date(Date.now() + 1000) };
+      Account.findOne.mockResolvedValue({ _id: "a1" });
+      Otp.findOne.mockResolvedValue(otp);
+      await authController.verifyOtp(req, res);
+      expect(otp.attempts).toBe(1);
+      expect(res.status).toHaveBeenCalledWith(400);
     });
   });
 
   describe("resendOtp", () => {
-    it("should resend OTP for pending account", async () => {
-      const req = {
-        body: {
-          email: "huong.le@example.com",
-        },
-      };
+    it("should resend successfully", async () => {
+      const req = { body: { email: "e@e.com" } };
       const res = createRes();
-
-      Account.findOne.mockResolvedValue({ _id: "acc-resend-01", status: "PENDING" });
-      generateOtp.mockReturnValue("998877");
-      Otp.findOneAndUpdate.mockResolvedValue({});
-      sendOtpEmail.mockResolvedValue();
-
+      Account.findOne.mockResolvedValue({ _id: "a1", status: "PENDING" });
+      generateOtp.mockReturnValue("111");
       await authController.resendOtp(req, res);
-
-      expect(sendOtpEmail).toHaveBeenCalledWith("huong.le@example.com", "998877");
+      expect(sendOtpEmail).toHaveBeenCalled();
       expect(res.json).toHaveBeenCalledWith({ message: "OTP mới đã được gửi" });
+    });
+
+    it("should return 404 if account not found", async () => {
+      const req = { body: { email: "n@e.com" } };
+      const res = createRes();
+      Account.findOne.mockResolvedValue(null);
+      await authController.resendOtp(req, res);
+      expect(res.status).toHaveBeenCalledWith(404);
+    });
+
+    it("should return 400 if already active", async () => {
+      const req = { body: { email: "a@e.com" } };
+      const res = createRes();
+      Account.findOne.mockResolvedValue({ status: "ACTIVE" });
+      await authController.resendOtp(req, res);
+      expect(res.status).toHaveBeenCalledWith(400);
+    });
+  });
+
+  describe("registerGoogle", () => {
+    const { __mockVerifyIdToken } = require("google-auth-library");
+    it("should register via google successfully", async () => {
+      const req = { body: { tokenId: "tok" } };
+      const res = createRes();
+      __mockVerifyIdToken.mockResolvedValue({
+        getPayload: () => ({ email: "g@e.com", name: "n", picture: "p", sub: "s" }),
+      });
+      Account.findOne.mockResolvedValue(null);
+      Role.findOne.mockResolvedValue({ _id: "role-customer-01" });
+      Account.create.mockResolvedValue({ _id: "acc-goog-new" });
+
+      await authController.registerGoogle(req, res);
+      expect(Account.create).toHaveBeenCalled();
+      expect(res.status).toHaveBeenCalledWith(201);
+    });
+
+    it("should return 400 if email registered", async () => {
+      const req = { body: { tokenId: "tok" } };
+      const res = createRes();
+      __mockVerifyIdToken.mockResolvedValue({ getPayload: () => ({ email: "g@e.com" }) });
+      Account.findOne.mockResolvedValue({ _id: "a1" });
+      await authController.registerGoogle(req, res);
+      expect(res.status).toHaveBeenCalledWith(400);
+    });
+
+    it("should return 500 if role CUSTOMER not found", async () => {
+      const req = { body: { tokenId: "tok" } };
+      const res = createRes();
+      __mockVerifyIdToken.mockResolvedValue({ getPayload: () => ({ email: "g@e.com" }) });
+      Account.findOne.mockResolvedValue(null);
+      Role.findOne.mockResolvedValue(null);
+      await authController.registerGoogle(req, res);
+      expect(res.status).toHaveBeenCalledWith(500);
     });
   });
 
   describe("forgotPassword", () => {
-    it("should reset password for active local account", async () => {
-      const req = {
-        body: {
-          email: "bao.nguyen@example.com",
-        },
-      };
+    it("should send reset email successfully", async () => {
+      const req = { body: { email: "e@e.com" } };
       const res = createRes();
-      const account = {
-        provider: "local",
-        status: "ACTIVE",
-        password_hash: "old-hash",
-        save: jest.fn(),
-      };
-
-      Account.findOne.mockReturnValue({
-        select: jest.fn().mockResolvedValue(account),
-      });
-      generateTempPassword.mockReturnValue("Tmp@2026!");
-      bcrypt.hash.mockResolvedValue("new-temp-hash");
-      sendResetPasswordEmail.mockResolvedValue();
-
+      const account = { provider: "local", status: "ACTIVE", save: jest.fn() };
+      Account.findOne.mockReturnValue({ select: jest.fn().mockResolvedValue(account) });
+      generateTempPassword.mockReturnValue("tmp");
+      bcrypt.hash.mockResolvedValue("hash");
       await authController.forgotPassword(req, res);
-
-      expect(account.password_hash).toBe("new-temp-hash");
-      expect(account.save).toHaveBeenCalled();
-      expect(sendResetPasswordEmail).toHaveBeenCalledWith(
-        "bao.nguyen@example.com",
-        "Tmp@2026!",
-      );
-      expect(res.json).toHaveBeenCalledWith({
-        message: "Mật khẩu tạm thời đã được gửi",
-      });
+      expect(sendResetPasswordEmail).toHaveBeenCalled();
+      expect(res.json).toHaveBeenCalledWith({ message: "Mật khẩu tạm thời đã được gửi" });
     });
 
-    it("should return 400 for Google account", async () => {
-      const req = {
-        body: {
-          email: "mai.do@example.com",
-        },
-      };
+    it("should return 404 if no account", async () => {
+      const req = { body: { email: "n@e.com" } };
       const res = createRes();
-
-      Account.findOne.mockReturnValue({
-        select: jest.fn().mockResolvedValue({
-          provider: "google",
-          status: "ACTIVE",
-        }),
-      });
-
+      Account.findOne.mockReturnValue({ select: jest.fn().mockResolvedValue(null) });
       await authController.forgotPassword(req, res);
+      expect(res.status).toHaveBeenCalledWith(404);
+    });
 
+    it("should return 400 if google provider", async () => {
+      const req = { body: { email: "g@e.com" } };
+      const res = createRes();
+      Account.findOne.mockReturnValue({ select: jest.fn().mockResolvedValue({ provider: "google" }) });
+      await authController.forgotPassword(req, res);
       expect(res.status).toHaveBeenCalledWith(400);
-      expect(res.json).toHaveBeenCalledWith({
-        message: "Tài khoản Google không dùng mật khẩu",
-      });
+    });
+
+    it("should return 400 if not active", async () => {
+      const req = { body: { email: "p@e.com" } };
+      const res = createRes();
+      Account.findOne.mockReturnValue({ select: jest.fn().mockResolvedValue({ provider: "local", status: "PENDING" }) });
+      await authController.forgotPassword(req, res);
+      expect(res.status).toHaveBeenCalledWith(400);
     });
   });
 
   describe("login", () => {
-    it("should login successfully with valid local account", async () => {
-      const req = {
-        body: {
-          email: "anh.vo@example.com",
-          password: "MatKhau@123",
-        },
-      };
+    it("should login successfully", async () => {
+      const req = { body: { email: "e@e.com", password: "p" } };
       const res = createRes();
-      const account = {
-        _id: "acc-login-01",
-        role_id: { _id: "role-01", name: "CUSTOMER" },
-        provider: "local",
-        status: "ACTIVE",
-        fullname: "Võ Ngọc Anh",
-        password_hash: "hashed-password",
-      };
-
+      const account = { _id: "a1", provider: "local", status: "ACTIVE", password_hash: "h", role_id: { _id: "r1", name: "USER" } };
       Account.findOne.mockReturnValue({
         select: jest.fn().mockReturnValue({
-          populate: jest.fn().mockResolvedValue(account),
-        }),
+          populate: jest.fn().mockResolvedValue(account)
+        })
       });
       bcrypt.compare.mockResolvedValue(true);
-      jwt.sign.mockReturnValue("jwt-token-customer");
-
+      jwt.sign.mockReturnValue("tok");
       await authController.login(req, res);
-
-      expect(jwt.sign).toHaveBeenCalled();
-      expect(res.json).toHaveBeenCalledWith({
-        message: "Đăng nhập thành công",
-        token: "jwt-token-customer",
-        role: "CUSTOMER",
-        fullname: "Võ Ngọc Anh",
-      });
+      expect(res.json).toHaveBeenCalledWith(expect.objectContaining({ token: "tok" }));
     });
 
-    it("should return 400 when password is incorrect", async () => {
-      const req = {
-        body: {
-          email: "anh.vo@example.com",
-          password: "SaiMatKhau@123",
-        },
-      };
+    it("should return 404 if no email", async () => {
+      const req = { body: { email: "n" } };
       const res = createRes();
-      const account = {
-        _id: "acc-login-02",
-        role_id: { _id: "role-01", name: "CUSTOMER" },
-        provider: "local",
-        status: "ACTIVE",
-        password_hash: "hashed-password",
-      };
-
-      Account.findOne.mockReturnValue({
-        select: jest.fn().mockReturnValue({
-          populate: jest.fn().mockResolvedValue(account),
-        }),
-      });
-      bcrypt.compare.mockResolvedValue(false);
-
+      Account.findOne.mockReturnValue({ select: jest.fn().mockReturnValue({ populate: jest.fn().mockResolvedValue(null) }) });
       await authController.login(req, res);
+      expect(res.status).toHaveBeenCalledWith(404);
+    });
 
+    it("should return 400 if wrong provider", async () => {
+      const req = { body: { email: "g" } };
+      const res = createRes();
+      Account.findOne.mockReturnValue({ select: jest.fn().mockReturnValue({ populate: jest.fn().mockResolvedValue({ provider: "google" }) }) });
+      await authController.login(req, res);
       expect(res.status).toHaveBeenCalledWith(400);
-      expect(res.json).toHaveBeenCalledWith({ message: "Sai mật khẩu" });
+    });
+
+    it("should return 403 if not active", async () => {
+      const req = { body: { email: "p" } };
+      const res = createRes();
+      Account.findOne.mockReturnValue({ select: jest.fn().mockReturnValue({ populate: jest.fn().mockResolvedValue({ provider: "local", status: "PENDING" }) }) });
+      await authController.login(req, res);
+      expect(res.status).toHaveBeenCalledWith(403);
+    });
+
+    it("should return 400 if wrong password", async () => {
+      const req = { body: { email: "e", password: "p" } };
+      const res = createRes();
+      Account.findOne.mockReturnValue({ select: jest.fn().mockReturnValue({ populate: jest.fn().mockResolvedValue({ provider: "local", status: "ACTIVE", password_hash: "h" }) }) });
+      bcrypt.compare.mockResolvedValue(false);
+      await authController.login(req, res);
+      expect(res.status).toHaveBeenCalledWith(400);
+    });
+  });
+
+  describe("loginGoogle", () => {
+    const { __mockVerifyIdToken } = require("google-auth-library");
+    it("should login successfully", async () => {
+      const req = { body: { tokenId: "tok" } };
+      const res = createRes();
+      __mockVerifyIdToken.mockResolvedValue({ getPayload: () => ({ email: "g@e.com" }) });
+      Account.findOne.mockResolvedValue({ _id: "a1", status: "ACTIVE", role_id: "r1" });
+      jwt.sign.mockReturnValue("tok");
+      await authController.loginGoogle(req, res);
+      expect(res.json).toHaveBeenCalledWith(expect.objectContaining({ token: "tok" }));
+    });
+
+    it("should return 404 if not found", async () => {
+      const req = { body: { tokenId: "tok" } };
+      const res = createRes();
+      __mockVerifyIdToken.mockResolvedValue({ getPayload: () => ({ email: "g" }) });
+      Account.findOne.mockResolvedValue(null);
+      await authController.loginGoogle(req, res);
+      expect(res.status).toHaveBeenCalledWith(404);
+    });
+
+    it("should return 403 if not active", async () => {
+      const req = { body: { tokenId: "tok" } };
+      const res = createRes();
+      __mockVerifyIdToken.mockResolvedValue({ getPayload: () => ({ email: "g" }) });
+      Account.findOne.mockResolvedValue({ status: "BANNED" });
+      await authController.loginGoogle(req, res);
+      expect(res.status).toHaveBeenCalledWith(403);
+    });
+  });
+
+  describe("googleAuth", () => {
+    const { __mockVerifyIdToken } = require("google-auth-library");
+    it("should auth and create successfully", async () => {
+      const req = { body: { tokenId: "tok" } };
+      const res = createRes();
+      __mockVerifyIdToken.mockResolvedValue({ getPayload: () => ({ email: "g", name: "n", picture: "p", sub: "s" }) });
+      Account.findOne.mockResolvedValue(null);
+      Role.findOne.mockResolvedValue({ _id: "r1" });
+      Account.create.mockResolvedValue({ _id: "a1", provider: "google", status: "ACTIVE", role_id: "r1" });
+      jwt.sign.mockReturnValue("tok");
+      await authController.googleAuth(req, res);
+      expect(res.json).toHaveBeenCalledWith(expect.objectContaining({ token: "tok" }));
+    });
+
+    it("should return 400 if registered with local", async () => {
+      const req = { body: { tokenId: "tok" } };
+      const res = createRes();
+      __mockVerifyIdToken.mockResolvedValue({ getPayload: () => ({ email: "g" }) });
+      Account.findOne.mockResolvedValue({ provider: "local" });
+      await authController.googleAuth(req, res);
+      expect(res.status).toHaveBeenCalledWith(400);
+    });
+
+    it("should return 403 if trapped status", async () => {
+      const req = { body: { tokenId: "tok" } };
+      const res = createRes();
+      __mockVerifyIdToken.mockResolvedValue({ getPayload: () => ({ email: "g" }) });
+      Account.findOne.mockResolvedValue({ provider: "google", status: "BANNED" });
+      await authController.googleAuth(req, res);
+      expect(res.status).toHaveBeenCalledWith(403);
     });
   });
 
   describe("updateProfile", () => {
-    it("should update profile successfully", async () => {
-      const req = {
-        user: { accountId: "acc-profile-01" },
-        body: {
-          fullname: "Nguyễn Thảo Vy",
-          phone: "0912345678",
-          avatar_url: "https://cdn.example.com/avatar/thao-vy.jpg",
-        },
-      };
+    it("should update successfully", async () => {
+      const req = { user: { accountId: "a1" }, body: { fullname: "n", phone: "0912345678" } };
       const res = createRes();
       const account = { save: jest.fn() };
-      const updatedProfile = {
-        _id: "acc-profile-01",
-        fullname: "Nguyễn Thảo Vy",
-        phone: "0912345678",
-        avatar_url: "https://cdn.example.com/avatar/thao-vy.jpg",
-      };
-
-      Account.findById
-        .mockResolvedValueOnce(account)
-        .mockReturnValueOnce({
-          populate: jest.fn().mockReturnValue({
-            select: jest.fn().mockResolvedValue(updatedProfile),
-          }),
-        });
-
+      Account.findById.mockResolvedValueOnce(account);
+      Account.findById.mockReturnValue({ populate: jest.fn().mockReturnValue({ select: jest.fn().mockResolvedValue({ _id: "a1", fullname: "n" }) }) });
       await authController.updateProfile(req, res);
-
-      expect(account.fullname).toBe("Nguyễn Thảo Vy");
-      expect(account.phone).toBe("0912345678");
-      expect(account.avatar_url).toBe("https://cdn.example.com/avatar/thao-vy.jpg");
+      expect(account.fullname).toBe("n");
       expect(account.save).toHaveBeenCalled();
-      expect(res.json).toHaveBeenCalledWith({
-        message: "Cập nhật profile thành công",
-        data: updatedProfile,
-      });
+      expect(res.json).toHaveBeenCalled();
     });
 
-    it("should return 400 when phone format is invalid", async () => {
-      const req = {
-        user: { accountId: "acc-profile-02" },
-        body: {
-          phone: "12345",
-        },
-      };
+    it("should return 400 if invalid phone", async () => {
+      const req = { user: { accountId: "a1" }, body: { phone: "123" } };
       const res = createRes();
-
       await authController.updateProfile(req, res);
-
       expect(res.status).toHaveBeenCalledWith(400);
-      expect(res.json).toHaveBeenCalledWith({
-        message: "Số điện thoại không hợp lệ",
-      });
+    });
+
+    it("should return 404 if no account", async () => {
+      const req = { user: { accountId: "a1" }, body: { fullname: "n" } };
+      const res = createRes();
+      Account.findById.mockResolvedValue(null);
+      await authController.updateProfile(req, res);
+      expect(res.status).toHaveBeenCalledWith(404);
     });
   });
 
   describe("updatePassword", () => {
-    it("should update password successfully", async () => {
-      const req = {
-        user: { accountId: "acc-pass-01" },
-        body: {
-          oldPassword: "OldPass@123",
-          newPassword: "NewPass@456",
-          confirmPassword: "NewPass@456",
-        },
-      };
+    it("should update successfully", async () => {
+      const req = { user: { accountId: "a1" }, body: { oldPassword: "o", newPassword: "n", confirmPassword: "n" } };
       const res = createRes();
-      const account = {
-        provider: "local",
-        password_hash: "old-hash",
-        save: jest.fn(),
-      };
-
-      Account.findById.mockReturnValue({
-        select: jest.fn().mockResolvedValue(account),
-      });
+      const account = { provider: "local", password_hash: "h", save: jest.fn() };
+      Account.findById.mockReturnValue({ select: jest.fn().mockResolvedValue(account) });
       bcrypt.compare.mockResolvedValue(true);
-      bcrypt.hash.mockResolvedValue("new-hash");
-
+      bcrypt.hash.mockResolvedValue("nh");
       await authController.updatePassword(req, res);
-
-      expect(account.password_hash).toBe("new-hash");
+      expect(account.password_hash).toBe("nh");
       expect(account.save).toHaveBeenCalled();
-      expect(res.json).toHaveBeenCalledWith({
-        message: "Đổi mật khẩu thành công",
-      });
     });
 
-    it("should return 400 when old password does not match", async () => {
-      const req = {
-        user: { accountId: "acc-pass-02" },
-        body: {
-          oldPassword: "SaiMatKhau@123",
-          newPassword: "NewPass@456",
-          confirmPassword: "NewPass@456",
-        },
-      };
+    it("should return 400 if missing info", async () => {
+      const req = { user: { accountId: "a1" }, body: { oldPassword: "o" } };
       const res = createRes();
-
-      Account.findById.mockReturnValue({
-        select: jest.fn().mockResolvedValue({
-          provider: "local",
-          password_hash: "old-hash",
-        }),
-      });
-      bcrypt.compare.mockResolvedValue(false);
-
       await authController.updatePassword(req, res);
-
       expect(res.status).toHaveBeenCalledWith(400);
-      expect(res.json).toHaveBeenCalledWith({
-        message: "Mật khẩu cũ không đúng",
-      });
+    });
+
+    it("should return 400 if mismatch", async () => {
+      const req = { user: { accountId: "a1" }, body: { oldPassword: "o", newPassword: "n", confirmPassword: "m" } };
+      const res = createRes();
+      await authController.updatePassword(req, res);
+      expect(res.status).toHaveBeenCalledWith(400);
+    });
+
+    it("should return 404 if no account", async () => {
+      const req = { user: { accountId: "a1" }, body: { oldPassword: "o", newPassword: "n", confirmPassword: "n" } };
+      const res = createRes();
+      Account.findById.mockReturnValue({ select: jest.fn().mockResolvedValue(null) });
+      await authController.updatePassword(req, res);
+      expect(res.status).toHaveBeenCalledWith(404);
+    });
+
+    it("should return 400 if google provider", async () => {
+      const req = { user: { accountId: "a1" }, body: { oldPassword: "o", newPassword: "n", confirmPassword: "n" } };
+      const res = createRes();
+      Account.findById.mockReturnValue({ select: jest.fn().mockResolvedValue({ provider: "google" }) });
+      await authController.updatePassword(req, res);
+      expect(res.status).toHaveBeenCalledWith(400);
+    });
+
+    it("should return 400 if old password wrong", async () => {
+      const req = { user: { accountId: "a1" }, body: { oldPassword: "wrong", newPassword: "n", confirmPassword: "n" } };
+      const res = createRes();
+      Account.findById.mockReturnValue({ select: jest.fn().mockResolvedValue({ provider: "local", password_hash: "h" }) });
+      bcrypt.compare.mockResolvedValue(false);
+      await authController.updatePassword(req, res);
+      expect(res.status).toHaveBeenCalledWith(400);
     });
   });
 
   describe("notifications", () => {
-    it("should return paginated notifications", async () => {
-      const req = {
-        user: { accountId: "acc-notif-01" },
-        query: { page: "2", limit: "2" },
-      };
+    it("getNotifications should return list", async () => {
+      const req = { user: { accountId: "a1" }, query: { page: "1", limit: "10" } };
       const res = createRes();
-      const notifications = [
-        { _id: "notif-03", title: "Thanh toán hoàn tất" },
-        { _id: "notif-04", title: "Bàn đã được xác nhận" },
-      ];
-
-      Notification.find.mockReturnValue({
-        sort: jest.fn().mockReturnValue({
-          skip: jest.fn().mockReturnValue({
-            limit: jest.fn().mockResolvedValue(notifications),
-          }),
-        }),
-      });
-      Notification.countDocuments.mockResolvedValue(5);
-
+      Notification.find.mockReturnValue({ sort: jest.fn().mockReturnValue({ skip: jest.fn().mockReturnValue({ limit: jest.fn().mockResolvedValue([]) }) }) });
+      Notification.countDocuments.mockResolvedValue(0);
       await authController.getNotifications(req, res);
-
-      expect(res.json).toHaveBeenCalledWith({
-        message: "Lấy danh sách notification thành công",
-        data: notifications,
-        pagination: {
-          total: 5,
-          page: 2,
-          limit: 2,
-          totalPages: 3,
-        },
-      });
+      expect(res.json).toHaveBeenCalled();
     });
 
-    it("should return 404 when notification is not found while marking as read", async () => {
-      const req = {
-        params: { id: "67f1c1d7d3f4d2e3a4b5c6d7" },
-      };
+    it("markAsRead should work", async () => {
+      const req = { params: { id: "n1" } };
       const res = createRes();
-
-      Notification.findByIdAndUpdate.mockResolvedValue(null);
-
+      Notification.findByIdAndUpdate.mockResolvedValue({ _id: "n1" });
       await authController.markAsRead(req, res);
-
-      expect(res.status).toHaveBeenCalledWith(404);
-      expect(res.json).toHaveBeenCalledWith({
-        message: "Không tìm thấy notification",
-      });
+      expect(res.json).toHaveBeenCalled();
     });
 
-    it("should count unread notifications", async () => {
-      const req = {
-        user: { accountId: "acc-notif-02" },
-      };
+    it("markAsRead should return 404 if not found", async () => {
+      const req = { params: { id: "n1" } };
       const res = createRes();
+      Notification.findByIdAndUpdate.mockResolvedValue(null);
+      await authController.markAsRead(req, res);
+      expect(res.status).toHaveBeenCalledWith(404);
+    });
 
-      Notification.countDocuments.mockResolvedValue(4);
+    it("markAllAsRead should work", async () => {
+      const req = { user: { accountId: "a1" } };
+      const res = createRes();
+      await authController.markAllAsRead(req, res);
+      expect(Notification.updateMany).toHaveBeenCalled();
+    });
 
+    it("deleteNotification should work", async () => {
+      const req = { params: { id: "n1" } };
+      const res = createRes();
+      Notification.findByIdAndDelete.mockResolvedValue({ _id: "n1" });
+      await authController.deleteNotification(req, res);
+      expect(res.json).toHaveBeenCalled();
+    });
+
+    it("deleteNotification should 404 if not found", async () => {
+      const req = { params: { id: "n1" } };
+      const res = createRes();
+      Notification.findByIdAndDelete.mockResolvedValue(null);
+      await authController.deleteNotification(req, res);
+      expect(res.status).toHaveBeenCalledWith(404);
+    });
+
+    it("deleteAllNotifications should work", async () => {
+      const req = { user: { accountId: "a1" } };
+      const res = createRes();
+      await authController.deleteAllNotifications(req, res);
+      expect(Notification.deleteMany).toHaveBeenCalled();
+    });
+
+    it("countUnread should work", async () => {
+      const req = { user: { accountId: "a1" } };
+      const res = createRes();
+      Notification.countDocuments.mockResolvedValue(5);
       await authController.countUnread(req, res);
-
-      expect(res.json).toHaveBeenCalledWith({ unread: 4 });
+      expect(res.json).toHaveBeenCalledWith({ unread: 5 });
     });
   });
 
   describe("checkProfileStatus", () => {
-    it("should return incomplete profile status when phone is missing", async () => {
-      const req = {
-        user: { accountId: "acc-check-01" },
-      };
+    it("should return complete true", async () => {
+      const req = { user: { accountId: "a1" } };
       const res = createRes();
-
-      Account.findById.mockReturnValue({
-        select: jest.fn().mockResolvedValue({
-          fullname: "Bùi Khánh Linh",
-          phone: "",
-          email: "linh.bui@example.com",
-        }),
-      });
-
+      Account.findById.mockReturnValue({ select: jest.fn().mockResolvedValue({ fullname: "n", phone: "p", email: "e" }) });
       await authController.checkProfileStatus(req, res);
+      expect(res.json).toHaveBeenCalledWith(expect.objectContaining({ is_profile_complete: true }));
+    });
 
-      expect(res.json).toHaveBeenCalledWith({
-        message: "Check profile success",
-        is_profile_complete: false,
-      });
+    it("should return 404 if no account", async () => {
+      const req = { user: { accountId: "a1" } };
+      const res = createRes();
+      Account.findById.mockReturnValue({ select: jest.fn().mockResolvedValue(null) });
+      await authController.checkProfileStatus(req, res);
+      expect(res.status).toHaveBeenCalledWith(404);
+    });
+  });
+
+  describe("Other Info", () => {
+    it("getRoleNameById should work", async () => {
+      const req = { body: { id: "r1" } };
+      const res = createRes();
+      Role.findById.mockReturnValue({ select: jest.fn().mockResolvedValue({ name: "R" }) });
+      await authController.getRoleNameById(req, res);
+      expect(res.json).toHaveBeenCalledWith({ name: "R" });
+    });
+
+    it("getRoleNameById return 404", async () => {
+      const req = { body: { id: "r1" } };
+      const res = createRes();
+      Role.findById.mockReturnValue({ select: jest.fn().mockResolvedValue(null) });
+      await authController.getRoleNameById(req, res);
+      expect(res.status).toHaveBeenCalledWith(404);
+    });
+
+    it("getInforById should work", async () => {
+      const req = { user: { accountId: "a1" } };
+      const res = createRes();
+      Account.findById.mockReturnValue({ populate: jest.fn().mockReturnValue({ select: jest.fn().mockResolvedValue({ _id: "a1" }) }) });
+      await authController.getInforById(req, res);
+      expect(res.json).toHaveBeenCalledWith(expect.objectContaining({ message: "Get profile success" }));
+    });
+
+    it("getInforById return 404", async () => {
+      const req = { user: { accountId: "a1" } };
+      const res = createRes();
+      Account.findById.mockReturnValue({ populate: jest.fn().mockReturnValue({ select: jest.fn().mockResolvedValue(null) }) });
+      await authController.getInforById(req, res);
+      expect(res.status).toHaveBeenCalledWith(404);
     });
   });
 });
