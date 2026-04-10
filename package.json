@@ -4,7 +4,7 @@
   "description": "",
   "main": "index.js",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1",
+    "test": "jest",
     "start": "nodemon index.js"
   },
   "author": "",
@@ -25,5 +25,17 @@
     "multer-storage-cloudinary": "^4.0.0",
     "nodemailer": "^7.0.6",
     "nodemon": "^3.1.10"
-  }
+  },
+  "devDependencies": {
+    "jest": "^30.3.0"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/minh11122/BackendBilliard.git"
+  },
+  "keywords": [],
+  "bugs": {
+    "url": "https://github.com/minh11122/BackendBilliard/issues"
+  },
+  "homepage": "https://github.com/minh11122/BackendBilliard#readme"
 }
