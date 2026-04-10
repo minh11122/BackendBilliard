@@ -42,7 +42,7 @@ const getCurrentSubscription = async (req, res) => {
 
     const current = await SubscriptionAccount.findOne({
       club_id: club_id,
-      status: "Active"
+      status: { $in: ["active", "Active"] }
     })
       .populate("subscription_id")
       .sort({ purchase_date: -1 });
@@ -151,7 +151,7 @@ const verifySubscriptionPayment = async (req, res) => {
     const purchaseDate = new Date();
 
     const expireDate = new Date();
-    expireDate.setMonth(expireDate.getMonth() + 1);
+    expireDate.setDate(expireDate.getDate() + (subscription.duration_days || 30));
 
     const price =
       subscription.price -
@@ -166,9 +166,12 @@ const verifySubscriptionPayment = async (req, res) => {
       clubSubscription.subscription_id = subscription_id;
       clubSubscription.account_id = accountId;
       clubSubscription.purchase_date = purchaseDate;
+      clubSubscription.start_date = purchaseDate;
       clubSubscription.expire_date = expireDate;
       clubSubscription.purchase_price = price;
-      clubSubscription.status = "Active";
+      clubSubscription.status = "active";
+      clubSubscription.post_limit = subscription.post_limit || 0;
+      clubSubscription.posts_used = 0;
 
       await clubSubscription.save();
 
@@ -179,9 +182,12 @@ const verifySubscriptionPayment = async (req, res) => {
         account_id: accountId,
         club_id: club_id,
         purchase_date: purchaseDate,
+        start_date: purchaseDate,
         expire_date: expireDate,
         purchase_price: price,
-        status: "Active"
+        status: "active",
+        post_limit: subscription.post_limit || 0,
+        posts_used: 0
       });
 
     }
