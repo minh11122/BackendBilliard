@@ -257,7 +257,10 @@ const getClubById = async (req, res) => {
     }
     
     // Lấy gói cước hiện tại
-    const activeSub = await SubscriptionAccount.findOne({ club_id: id, status: "Active" }).populate("subscription_id").lean();
+    const activeSub = await SubscriptionAccount.findOne({
+      club_id: id,
+      status: { $in: ["active", "Active"] }
+    }).populate("subscription_id").lean();
     if (activeSub && activeSub.subscription_id) {
         club.subscription_name = activeSub.subscription_id.name;
     }
@@ -310,7 +313,10 @@ const getClubsByAccount = async (req, res) => {
 
         // Tự động chữa lỗi đồng bộ plan_type nếu quán đã có gói khác free đang Active
         let realPlanType = "free";
-        const activeSub = await SubscriptionAccount.findOne({ club_id: club._id, status: "Active" }).populate("subscription_id");
+        const activeSub = await SubscriptionAccount.findOne({
+          club_id: club._id,
+          status: { $in: ["active", "Active"] }
+        }).populate("subscription_id");
         if (activeSub && activeSub.subscription_id) {
            const subName = activeSub.subscription_id.name.toLowerCase();
            if (subName.includes("basic")) realPlanType = "basic";
@@ -691,7 +697,10 @@ const completeOnboarding = async (req, res) => {
     }
 
     let realPlanType = "free";
-    const activeSub = await SubscriptionAccount.findOne({ club_id: id, status: "Active" })
+    const activeSub = await SubscriptionAccount.findOne({
+      club_id: id,
+      status: { $in: ["active", "Active"] }
+    })
       .populate("subscription_id")
       .sort({ purchase_date: -1 });
 
