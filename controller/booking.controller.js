@@ -15,12 +15,12 @@ const PAYOS_EXPIRE_MINUTES = 5;
 // Helper to push notifications to all specific club staff
 const notifyStaff = async (club_id, title, message) => {
   try {
-    const StaffClub = require("../models/staff_club.model");
+    const Account = require("../models/account.model");
     const Notification = require("../models/notification.model");
-    const staffs = await StaffClub.find({ club_id, status: "Active" });
+    const staffs = await Account.find({ club_id, status: "ACTIVE" });
     if (staffs.length > 0) {
       const notifs = staffs.map((s) => ({
-        account_id: s.account_id,
+        account_id: s._id,
         title,
         message,
         is_read: false,
