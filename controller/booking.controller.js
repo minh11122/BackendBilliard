@@ -1943,8 +1943,9 @@ const changeTable = async (req, res) => {
     const endM = now.getMinutes();
     const realEndTimeStr = `${String(endH).padStart(2, "0")}:${String(endM).padStart(2, "0")}`;
 
+    const scheduledEndStr = oldBooking.end_time;
+    let endMin = timeToMinutes(scheduledEndStr);
     const startMin = timeToMinutes(oldBooking.start_time);
-    let endMin = endH * 60 + endM;
     if (endMin <= startMin) endMin += 24 * 60;
 
     const durationHours = (endMin - startMin) / 60;
@@ -1960,7 +1961,7 @@ const changeTable = async (req, res) => {
       0,
     );
 
-    oldBooking.end_time = realEndTimeStr;
+    oldBooking.actual_end_time = realEndTimeStr;
     oldBooking.total_bill = playCost + serviceTotal;
     oldBooking.status = "Completed";
     oldBooking.note =
