@@ -160,6 +160,10 @@ const registerGoogle = async (req, res) => {
   try {
     const { tokenId } = req.body;
 
+    if (typeof tokenId !== "string" || !tokenId.trim()) {
+      return res.status(400).json({ message: "Google token không hợp lệ" });
+    }
+
     const ticket = await client.verifyIdToken({
       idToken: tokenId,
       audience: process.env.VITE_GOOGLE_CLIENT_ID,
@@ -276,6 +280,10 @@ const loginGoogle = async (req, res) => {
   try {
     const { tokenId } = req.body;
 
+    if (typeof tokenId !== "string" || !tokenId.trim()) {
+      return res.status(400).json({ message: "Google token không hợp lệ" });
+    }
+
     const ticket = await client.verifyIdToken({
       idToken: tokenId,
       audience: process.env.VITE_GOOGLE_CLIENT_ID,
@@ -284,20 +292,28 @@ const loginGoogle = async (req, res) => {
     const payload = ticket.getPayload();
     const { email } = payload;
 
-    let account = await Account.findOne({ email });
+    let account = await Account.findOne({ email })
+      .populate("role_id", "name"); // ✅ THÊM
+
     if (!account) {
       return res
         .status(404)
         .json({ message: "Tài khoản Google chưa được đăng ký" });
     }
 
-    // Kiểm tra trạng thái
     if (account.status !== "ACTIVE") {
       return res.status(403).json({ message: "Tài khoản chưa được kích hoạt" });
     }
 
+    const roleName = account.role_id.name; // ✅ THÊM
+
     const token = jwt.sign(
-      { accountId: account._id, roleId: account.role_id },
+      {
+        accountId: account._id,
+        roleId: account.role_id._id,
+        role: roleName,                 // ✅ THÊM
+        ...(account.club_id && { club_id: account.club_id }),
+      },
       process.env.JWT_SECRET,
       { expiresIn: "7d" },
     );
@@ -305,6 +321,8 @@ const loginGoogle = async (req, res) => {
     return res.json({
       message: "Đăng nhập Google thành công",
       token,
+      role: roleName,                  // ✅ QUAN TRỌNG
+      fullname: account.fullname,      // (nên thêm luôn)
     });
   } catch (error) {
     res.status(500).json({ message: error.message });
