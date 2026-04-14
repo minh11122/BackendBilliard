@@ -10,7 +10,7 @@ const Notification = require("../models/notification.model");
 
 // Cấu hình thời gian giữ chỗ (phút) - Bạn có thể chỉnh ở đây để test nhanh
 const HOLD_MINUTES_OVERRIDE = 2;
-const PAYOS_EXPIRE_MINUTES = 5;
+const PAYOS_EXPIRE_MINUTES = 2;
 
 // Helper to push notifications to all specific club staff
 const notifyStaff = async (club_id, title, message) => {
@@ -272,10 +272,10 @@ const createBooking = async (req, res) => {
         },
         club: club
           ? {
-              _id: club._id,
-              name: club.name,
-              address: club.address,
-            }
+            _id: club._id,
+            name: club.name,
+            address: club.address,
+          }
           : null,
         holdMinutes: finalHoldMinutes,
         heldUntil,
@@ -370,11 +370,11 @@ const getMyBookings = async (req, res) => {
           }).lean();
           b.club = club
             ? {
-                _id: club._id,
-                name: club.name,
-                address: club.address,
-                avatar: banner?.image_url || null,
-              }
+              _id: club._id,
+              name: club.name,
+              address: club.address,
+              avatar: banner?.image_url || null,
+            }
             : null;
           b.table_info = {
             table_number: table.table_number,

@@ -6,6 +6,7 @@ const RoundMatch = require("../models/round_match.model");
 const Booking = require("../models/booking.model");
 const TransactionHistory = require("../models/transiction_history.model");
 const ClubBank = require("../models/club_bank.model");
+const Club = require("../models/club.model");
 const payosService = require("../services/payos.service");
 
 const PAYOS_EXPIRE_MINUTES = 10;
@@ -1125,11 +1126,11 @@ const getTournamentPlayers = async (req, res) => {
 const createTournament = async (req, res) => {
   try {
     const club_id = req.headers["x-club-id"];
-    if (!club_id) {
-      return res.status(400).json({ success: false, message: "Thiếu club_id" });
+    if (!club_id || !mongoose.Types.ObjectId.isValid(club_id)) {
+      return res.status(400).json({ success: false, message: "Thiếu hoặc sai định dạng club_id" });
     }
 
-    const club = await require("../models/club.model").findById(club_id).lean();
+    const club = await Club.findById(club_id).lean();
     if (!club || club.plan_type !== "pro") {
       return res.status(403).json({ success: false, message: "Tính năng Giải đấu chỉ dành cho gói Pro." });
     }
@@ -1171,7 +1172,7 @@ const createTournament = async (req, res) => {
       auto_bracket: auto_bracket !== undefined ? auto_bracket : true,
       banner: req.file ? req.file.path : (banner || ""),
       status: "Draft",
-      created_by: req.account?._id || null,
+      created_by: req.user?.accountId || null,
       created_at: new Date()
     });
 
@@ -1202,13 +1203,12 @@ const getTournamentsByClub = async (req, res) => {
       }
     }
 
-    if (!club_id) {
-      return res.status(400).json({ success: false, message: "Thiếu club_id" });
+    if (!club_id || !mongoose.Types.ObjectId.isValid(club_id)) {
+      return res.status(400).json({ success: false, message: "Thiếu hoặc sai định dạng club_id" });
     }
 
-    const club = await require("../models/club.model").findById(club_id).lean();
+    const club = await Club.findById(club_id).lean();
     if (!club || club.plan_type !== "pro") {
-      // Return empty array if not pro, so UI doesn't crash but shows nothing
       return res.status(403).json({ success: false, message: "Tính năng Giải đấu chỉ dành cho gói Pro." });
     }
 
