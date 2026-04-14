@@ -3,6 +3,7 @@ const cors = require("cors");
 require("dotenv").config();
 const connectDB = require("./configs/db.connect");
 const routes = require("./routes/index");
+require("./cron/bookingCron");
 
 
 const app = express();
