@@ -107,6 +107,11 @@ const buildFirstRoundPairs = (playerIds, bracketSize) => {
 };
 
 const normalizePrizePool = (prizePool, fee = 0) => {
+  const feeValue = Number(fee) || 0;
+  if (!Number.isFinite(feeValue) || feeValue < 0) {
+    return { error: "Phí tham gia không được là số âm" };
+  }
+
   const rawPrizePool = typeof prizePool === "string" ? prizePool.trim() : prizePool;
 
   if (rawPrizePool === undefined || rawPrizePool === null || rawPrizePool === "") {
@@ -118,7 +123,6 @@ const normalizePrizePool = (prizePool, fee = 0) => {
     return { error: "Tiền thưởng phải lớn hơn 0" };
   }
 
-  const feeValue = Number(fee) || 0;
   if (feeValue > 0 && prizeValue <= feeValue) {
     return { error: "Tiền thưởng phải lớn hơn phí tham gia" };
   }
