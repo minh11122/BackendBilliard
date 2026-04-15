@@ -10,7 +10,7 @@ const Notification = require("../models/notification.model");
 
 // Cấu hình thời gian giữ chỗ (phút) - Bạn có thể chỉnh ở đây để test nhanh
 const HOLD_MINUTES_OVERRIDE = 2;
-const PAYOS_EXPIRE_MINUTES = 5;
+const PAYOS_EXPIRE_MINUTES = 2;
 
 // Helper to push notifications to all specific club staff
 const notifyStaff = async (club_id, title, message) => {
@@ -272,10 +272,10 @@ const createBooking = async (req, res) => {
         },
         club: club
           ? {
-              _id: club._id,
-              name: club.name,
-              address: club.address,
-            }
+            _id: club._id,
+            name: club.name,
+            address: club.address,
+          }
           : null,
         holdMinutes: finalHoldMinutes,
         heldUntil,
@@ -370,11 +370,11 @@ const getMyBookings = async (req, res) => {
           }).lean();
           b.club = club
             ? {
-                _id: club._id,
-                name: club.name,
-                address: club.address,
-                avatar: banner?.image_url || null,
-              }
+              _id: club._id,
+              name: club.name,
+              address: club.address,
+              avatar: banner?.image_url || null,
+            }
             : null;
           b.table_info = {
             table_number: table.table_number,
@@ -1943,8 +1943,9 @@ const changeTable = async (req, res) => {
     const endM = now.getMinutes();
     const realEndTimeStr = `${String(endH).padStart(2, "0")}:${String(endM).padStart(2, "0")}`;
 
+    const scheduledEndStr = oldBooking.end_time;
+    let endMin = timeToMinutes(scheduledEndStr);
     const startMin = timeToMinutes(oldBooking.start_time);
-    let endMin = endH * 60 + endM;
     if (endMin <= startMin) endMin += 24 * 60;
 
     const durationHours = (endMin - startMin) / 60;
@@ -1960,7 +1961,7 @@ const changeTable = async (req, res) => {
       0,
     );
 
-    oldBooking.end_time = realEndTimeStr;
+    oldBooking.actual_end_time = realEndTimeStr;
     oldBooking.total_bill = playCost + serviceTotal;
     oldBooking.status = "Completed";
     oldBooking.note =

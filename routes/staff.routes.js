@@ -12,6 +12,8 @@ router.patch("/clubs/:id/unlock", authenticate, staff.unlockClub);
 router.patch("/posts/:id/approve", authenticate, staff.approvePost);
 router.patch("/posts/:id/reject", authenticate, staff.rejectPost);
 
+router.get("/posts", authenticate, staff.getPosts);
+
 // Notifications
 router.get("/notifications", authenticate, staff.getNotifications);
 router.patch("/notifications/read-all", authenticate, staff.markAllNotificationsRead);

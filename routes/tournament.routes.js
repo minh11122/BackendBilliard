@@ -21,7 +21,8 @@ const {
   deleteTournament,
   createTournamentPayOSPayment,
   verifyTournamentPayOSPayment,
-  tournamentPayOSWebhook
+  tournamentPayOSWebhook,
+  cancelTournament
 } = require("../controller/tournament.controller");
 const upload = require("../middleware/uploadCloud.middleware");
 const authenticate = require("../middleware/authenticate.middleware");
@@ -48,6 +49,7 @@ router.post("/:id/open", authenticate, openTournamentRegistration);
 router.post("/:id/close", authenticate, closeTournamentRegistration);
 router.post("/:id/generate-bracket", authenticate, generateTournamentBracket);
 router.post("/:id/start", authenticate, startTournament);
+router.post("/:id/cancel", authenticate, cancelTournament);
 
 // Match operations
 router.post("/:id/matches/:matchId/start", authenticate, startRoundMatch);

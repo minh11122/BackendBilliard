@@ -352,6 +352,23 @@ const markNotificationRead = async (req, res) => {
     }
 };
 
+// ==================== GET POSTS (with optional status filter) ====================
+const getPosts = async (req, res) => {
+    try {
+        const { status } = req.query;
+        const filter = status ? { status } : {};
+        const posts = await Post.find(filter)
+            .populate("club_id", "name")
+            .sort({ created_at: -1 })
+            .lean();
+
+        res.status(200).json({ success: true, data: posts });
+    } catch (error) {
+        console.error("Lỗi getPosts:", error);
+        res.status(500).json({ success: false, message: "Lỗi server" });
+    }
+};
+
 module.exports = {
     getDashboard,
     getClubs,
@@ -361,6 +378,7 @@ module.exports = {
     unlockClub,
     approvePost,
     rejectPost,
+    getPosts,
     getNotifications,
     markAllNotificationsRead,
     markNotificationRead
