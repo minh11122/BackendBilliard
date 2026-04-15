@@ -1240,11 +1240,20 @@ const getTournamentsByClub = async (req, res) => {
   }
 };
 
-// Get all public tournaments (excluding Draft)
+// Get all public tournaments (excluding Draft, only from onboarded clubs)
 const getPublicTournaments = async (req, res) => {
   try {
+    // Get IDs of all approved + onboarding-completed clubs
+    const eligibleClubs = await Club.find({
+      status: "Approved",
+      onboarding_completed: true
+    }).select("_id").lean();
+
+    const eligibleClubIds = eligibleClubs.map(c => c._id);
+
     const tournaments = await Tournament.find({
-      status: { $in: ["Open", "Closed", "InProgress", "Completed"] }
+      status: { $in: ["Open", "Closed", "InProgress", "Completed"] },
+      club_id: { $in: eligibleClubIds }
     })
       .populate("club_id", "name address")
       .sort({ created_at: -1 })

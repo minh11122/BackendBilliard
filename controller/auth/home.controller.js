@@ -33,7 +33,7 @@ const getLatestTournaments = async (req, res) => {
 
 const getFeaturedClubs = async (req, res) => {
   try {
-    const clubs = await Club.find({ status: "Approved" })
+    const clubs = await Club.find({ status: "Approved", onboarding_completed: true })
       .sort({ created_at: -1 })
       .limit(4)
       .lean();
