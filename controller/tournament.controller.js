@@ -1111,7 +1111,7 @@ const getTournamentPlayers = async (req, res) => {
     }
 
     const players = await TournamentPlayer.find({ tournament_id: id })
-      .populate("account_id", "fullname phone avatar_url")
+      .populate("account_id", "fullname phone avatar_url email")
       .sort({ register_date: -1 })
       .lean();
 
@@ -2091,6 +2091,46 @@ const getMyTournaments = async (req, res) => {
   }
 };
 
+// Cancel a tournament
+const cancelTournament = async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    // Only owner can cancel tournament
+    if (req.account.role !== "owner") {
+      return res.status(403).json({ success: false, message: "Chỉ chủ quán mới có quyền hủy giải đấu." });
+    }
+
+    const tournament = await Tournament.findById(id);
+
+    if (!tournament) {
+      return res.status(404).json({ success: false, message: "Không tìm thấy giải đấu" });
+    }
+
+    if (tournament.status === "Completed" || tournament.status === "Cancelled") {
+      return res.status(400).json({ success: false, message: "Giải đấu đã kết thúc hoặc đã hủy" });
+    }
+
+    tournament.status = "Cancelled";
+    await tournament.save();
+
+    // Update all players in this tournament to Cancelled
+    await TournamentPlayer.updateMany(
+      { tournament_id: id },
+      { status: "Cancelled" }
+    );
+
+    return res.status(200).json({
+      success: true,
+      message: "Đã hủy giải đấu thành công. Vui lòng liên hệ người chơi để hoàn lệ phí thủ công.",
+      data: tournament
+    });
+  } catch (error) {
+    console.error("Error cancelTournament:", error);
+    return res.status(500).json({ success: false, message: "Lỗi server", error: error.message });
+  }
+};
+
 module.exports = {
   createTournament,
   getTournamentsByClub,
@@ -2112,5 +2152,6 @@ module.exports = {
   deleteTournament,
   createTournamentPayOSPayment,
   verifyTournamentPayOSPayment,
-  tournamentPayOSWebhook
+  tournamentPayOSWebhook,
+  cancelTournament
 };

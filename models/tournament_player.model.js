@@ -8,7 +8,7 @@ const tournamentPlayerSchema = new mongoose.Schema(
     fee_amount: { type: Number, default: 0 },
     status: {
       type: String,
-      enum: ["Pending", "Approved", "Rejected", "Eliminated", "Champion"],
+      enum: ["Pending", "Approved", "Rejected", "Eliminated", "Champion", "Cancelled"],
       default: "Pending"
     },
     elimination_round: { type: Number, default: null },
