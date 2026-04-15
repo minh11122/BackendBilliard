@@ -1081,6 +1081,13 @@ const verifyBookingPayOSPayment = async (req, res) => {
     booking.status = "Booked";
     await booking.save();
 
+    await Notification.create({
+      account_id: booking.account_id,
+      title: "Thanh toÃ¡n thÃ nh cÃ´ng",
+      message: `Báº¡n Ä‘Ã£ Ä‘áº·t bÃ n ${booking.table_id.table_number} thÃ nh cÃ´ng. MÃ£ Ä‘Æ¡n: ${booking.code_number}`,
+      is_read: false,
+    });
+
     await TransactionHistory.findOneAndUpdate(
       { order_code: orderCode },
       { status: "SUCCESS" },
