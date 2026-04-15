@@ -1158,6 +1158,23 @@ const createTournament = async (req, res) => {
       return res.status(400).json({ success: false, message: normalizedPrizePool.error });
     }
 
+    // Date validations
+    if (registration_open && registration_deadline) {
+      if (new Date(registration_open) >= new Date(registration_deadline)) {
+        return res.status(400).json({ success: false, message: "Ngày mở đăng ký phải trước ngày đóng đăng ký" });
+      }
+    }
+    if (registration_deadline && play_date) {
+      if (new Date(registration_deadline) >= new Date(play_date)) {
+        return res.status(400).json({ success: false, message: "Ngày đóng đăng ký phải trước ngày thi đấu" });
+      }
+    }
+    if (registration_open && play_date) {
+      if (new Date(registration_open) >= new Date(play_date)) {
+        return res.status(400).json({ success: false, message: "Ngày mở đăng ký phải trước ngày thi đấu" });
+      }
+    }
+
     const tournament = new Tournament({
       club_id,
       name,
@@ -1364,11 +1381,30 @@ const updateTournament = async (req, res) => {
       return res.status(403).json({ success: false, message: "Tính năng Giải đấu chỉ dành cho gói Pro." });
     }
 
+    if (existingTournament.registered_player > 0) {
+      return res.status(400).json({ success: false, message: "Không thể chỉnh sửa giải đấu đã có người tham gia." });
+    }
+
     // Convert date strings to Date objects if present
     const dateFields = ["registration_open", "registration_deadline", "play_date", "start_time", "end_time"];
     dateFields.forEach(field => {
       if (updates[field]) updates[field] = new Date(updates[field]);
     });
+
+    // Date validations
+    const regOpen = updates.registration_open || (existingTournament.registration_open ? new Date(existingTournament.registration_open) : null);
+    const regDeadline = updates.registration_deadline || (existingTournament.registration_deadline ? new Date(existingTournament.registration_deadline) : null);
+    const playDate = updates.play_date || (existingTournament.play_date ? new Date(existingTournament.play_date) : null);
+
+    if (regOpen && regDeadline && regOpen >= regDeadline) {
+      return res.status(400).json({ success: false, message: "Ngày mở đăng ký phải trước ngày đóng đăng ký" });
+    }
+    if (regDeadline && playDate && regDeadline >= playDate) {
+      return res.status(400).json({ success: false, message: "Ngày đóng đăng ký phải trước ngày thi đấu" });
+    }
+    if (regOpen && playDate && regOpen >= playDate) {
+      return res.status(400).json({ success: false, message: "Ngày mở đăng ký phải trước ngày thi đấu" });
+    }
 
     const feeValue = updates.fee !== undefined ? updates.fee : existingTournament.fee;
     const prizeValue = updates.prize_pool !== undefined ? updates.prize_pool : existingTournament.prize_pool;
