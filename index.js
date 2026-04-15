@@ -11,6 +11,16 @@ app.use(express.json());
 app.use(cors());
 app.use("/api", routes);
 
+// Global Error Handler
+app.use((err, req, res, next) => {
+    console.error("Unhandled Error:", err);
+    res.status(err.status || 500).json({
+        success: false,
+        message: err.message || "Lỗi server nội bộ",
+        error: process.env.NODE_ENV === "development" ? err : {}
+    });
+});
+
 const PORT = process.env.PORT;
 const HOST = process.env.HOSTNAME;
 
