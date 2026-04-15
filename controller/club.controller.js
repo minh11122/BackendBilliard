@@ -19,7 +19,7 @@ const getAllClubs = async (req, res) => {
   try {
     const { keyword, price, tableType, rating, province_code, district_code } = req.query;
 
-    const query = { status: "Approved" };
+    const query = { status: "Approved", onboarding_completed: true };
 
     if (keyword) {
       query.$or = [

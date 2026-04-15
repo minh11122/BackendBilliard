@@ -1247,7 +1247,9 @@ const createTournament = async (req, res) => {
 
     const club = await Club.findById(club_id).lean();
     if (!club) {
-      return res.status(404).json({ success: false, message: "Không tìm thấy CLB" });
+      return res
+        .status(404)
+        .json({ success: false, message: "Không tìm thấy CLB" });
     }
 
     // Verify ownership
@@ -1259,12 +1261,10 @@ const createTournament = async (req, res) => {
     }
 
     if (club.plan_type !== "pro") {
-      return res
-        .status(403)
-        .json({
-          success: false,
-          message: "Tính năng Giải đấu chỉ dành cho gói Pro.",
-        });
+      return res.status(403).json({
+        success: false,
+        message: "Tính năng Giải đấu chỉ dành cho gói Pro.",
+      });
     }
 
     const {
@@ -1282,12 +1282,10 @@ const createTournament = async (req, res) => {
     } = req.body;
 
     if (!name || !max_players) {
-      return res
-        .status(400)
-        .json({
-          success: false,
-          message: "Tên giải và số lượng người chơi là bắt buộc",
-        });
+      return res.status(400).json({
+        success: false,
+        message: "Tên giải và số lượng người chơi là bắt buộc",
+      });
     }
 
     const normalizedPrizePool = normalizePrizePool(prize_pool, fee);
@@ -1300,32 +1298,26 @@ const createTournament = async (req, res) => {
     // Date validations
     if (registration_open && registration_deadline) {
       if (new Date(registration_open) >= new Date(registration_deadline)) {
-        return res
-          .status(400)
-          .json({
-            success: false,
-            message: "Ngày mở đăng ký phải trước ngày đóng đăng ký",
-          });
+        return res.status(400).json({
+          success: false,
+          message: "Ngày mở đăng ký phải trước ngày đóng đăng ký",
+        });
       }
     }
     if (registration_deadline && play_date) {
       if (new Date(registration_deadline) >= new Date(play_date)) {
-        return res
-          .status(400)
-          .json({
-            success: false,
-            message: "Ngày đóng đăng ký phải trước ngày thi đấu",
-          });
+        return res.status(400).json({
+          success: false,
+          message: "Ngày đóng đăng ký phải trước ngày thi đấu",
+        });
       }
     }
     if (registration_open && play_date) {
       if (new Date(registration_open) >= new Date(play_date)) {
-        return res
-          .status(400)
-          .json({
-            success: false,
-            message: "Ngày mở đăng ký phải trước ngày thi đấu",
-          });
+        return res.status(400).json({
+          success: false,
+          message: "Ngày mở đăng ký phải trước ngày thi đấu",
+        });
       }
     }
 
@@ -1388,12 +1380,10 @@ const getTournamentsByClub = async (req, res) => {
 
     const club = await Club.findById(club_id).lean();
     if (!club || club.plan_type !== "pro") {
-      return res
-        .status(403)
-        .json({
-          success: false,
-          message: "Tính năng Giải đấu chỉ dành cho gói Pro.",
-        });
+      return res.status(403).json({
+        success: false,
+        message: "Tính năng Giải đấu chỉ dành cho gói Pro.",
+      });
     }
 
     const tournaments = await Tournament.find({ club_id })
@@ -1409,11 +1399,22 @@ const getTournamentsByClub = async (req, res) => {
   }
 };
 
-// Get all public tournaments (excluding Draft)
+// Get all public tournaments (excluding Draft, only from onboarded clubs)
 const getPublicTournaments = async (req, res) => {
   try {
+    // Get IDs of all approved + onboarding-completed clubs
+    const eligibleClubs = await Club.find({
+      status: "Approved",
+      onboarding_completed: true,
+    })
+      .select("_id")
+      .lean();
+
+    const eligibleClubIds = eligibleClubs.map((c) => c._id);
+
     const tournaments = await Tournament.find({
       status: { $in: ["Open", "Closed", "InProgress", "Completed"] },
+      club_id: { $in: eligibleClubIds },
     })
       .populate("club_id", "name address")
       .sort({ created_at: -1 })
@@ -1495,12 +1496,10 @@ const openTournamentRegistration = async (req, res) => {
       });
     }
     if (["InProgress", "Completed", "Cancelled"].includes(tournament.status)) {
-      return res
-        .status(400)
-        .json({
-          success: false,
-          message: "Không thể mở đăng ký cho giải đã bắt đầu hoặc kết thúc",
-        });
+      return res.status(400).json({
+        success: false,
+        message: "Không thể mở đăng ký cho giải đã bắt đầu hoặc kết thúc",
+      });
     }
 
     tournament.status = "Open";
@@ -1541,12 +1540,10 @@ const closeTournamentRegistration = async (req, res) => {
       });
     }
     if (["InProgress", "Completed", "Cancelled"].includes(tournament.status)) {
-      return res
-        .status(400)
-        .json({
-          success: false,
-          message: "Không thể chốt đăng ký cho giải đã bắt đầu hoặc kết thúc",
-        });
+      return res.status(400).json({
+        success: false,
+        message: "Không thể chốt đăng ký cho giải đã bắt đầu hoặc kết thúc",
+      });
     }
 
     const approvedPlayers = await fetchApprovedPlayers(id);
@@ -1602,7 +1599,9 @@ const updateTournament = async (req, res) => {
       .findById(existingTournament.club_id)
       .lean();
     if (!club) {
-      return res.status(404).json({ success: false, message: "Không tìm thấy CLB" });
+      return res
+        .status(404)
+        .json({ success: false, message: "Không tìm thấy CLB" });
     }
 
     // Verify ownership
@@ -1614,21 +1613,17 @@ const updateTournament = async (req, res) => {
     }
 
     if (club.plan_type !== "pro") {
-      return res
-        .status(403)
-        .json({
-          success: false,
-          message: "Tính năng Giải đấu chỉ dành cho gói Pro.",
-        });
+      return res.status(403).json({
+        success: false,
+        message: "Tính năng Giải đấu chỉ dành cho gói Pro.",
+      });
     }
 
     if (existingTournament.registered_player > 0) {
-      return res
-        .status(400)
-        .json({
-          success: false,
-          message: "Không thể chỉnh sửa giải đấu đã có người tham gia.",
-        });
+      return res.status(400).json({
+        success: false,
+        message: "Không thể chỉnh sửa giải đấu đã có người tham gia.",
+      });
     }
 
     // Convert date strings to Date objects if present
@@ -1661,28 +1656,22 @@ const updateTournament = async (req, res) => {
         : null);
 
     if (regOpen && regDeadline && regOpen >= regDeadline) {
-      return res
-        .status(400)
-        .json({
-          success: false,
-          message: "Ngày mở đăng ký phải trước ngày đóng đăng ký",
-        });
+      return res.status(400).json({
+        success: false,
+        message: "Ngày mở đăng ký phải trước ngày đóng đăng ký",
+      });
     }
     if (regDeadline && playDate && regDeadline >= playDate) {
-      return res
-        .status(400)
-        .json({
-          success: false,
-          message: "Ngày đóng đăng ký phải trước ngày thi đấu",
-        });
+      return res.status(400).json({
+        success: false,
+        message: "Ngày đóng đăng ký phải trước ngày thi đấu",
+      });
     }
     if (regOpen && playDate && regOpen >= playDate) {
-      return res
-        .status(400)
-        .json({
-          success: false,
-          message: "Ngày mở đăng ký phải trước ngày thi đấu",
-        });
+      return res.status(400).json({
+        success: false,
+        message: "Ngày mở đăng ký phải trước ngày thi đấu",
+      });
     }
 
     const feeValue =
@@ -1739,7 +1728,9 @@ const deleteTournament = async (req, res) => {
     }
 
     // Verify ownership
-    if (String(tournamentCheck.club_id.account_id) !== String(req.user.accountId)) {
+    if (
+      String(tournamentCheck.club_id.account_id) !== String(req.user.accountId)
+    ) {
       return res.status(403).json({
         success: false,
         message: "Bạn không có quyền xóa giải đấu của CLB này.",
@@ -1748,12 +1739,10 @@ const deleteTournament = async (req, res) => {
 
     const club = tournamentCheck.club_id;
     if (!club || club.plan_type !== "pro") {
-      return res
-        .status(403)
-        .json({
-          success: false,
-          message: "Tính năng Giải đấu chỉ dành cho gói Pro.",
-        });
+      return res.status(403).json({
+        success: false,
+        message: "Tính năng Giải đấu chỉ dành cho gói Pro.",
+      });
     }
 
     const tournament = await Tournament.findByIdAndDelete(id);
@@ -1794,12 +1783,10 @@ const generateTournamentBracket = async (req, res) => {
       });
     }
     if (["InProgress", "Completed", "Cancelled"].includes(tournament.status)) {
-      return res
-        .status(400)
-        .json({
-          success: false,
-          message: "Không thể tạo nhánh cho giải đã bắt đầu hoặc kết thúc",
-        });
+      return res.status(400).json({
+        success: false,
+        message: "Không thể tạo nhánh cho giải đã bắt đầu hoặc kết thúc",
+      });
     }
 
     const approvedPlayers = await fetchApprovedPlayers(id);
@@ -1862,13 +1849,11 @@ const startTournament = async (req, res) => {
         .json({ success: false, message: "Chưa tạo nhánh/bảng đấu" });
     }
     if (tournament.status === "InProgress") {
-      return res
-        .status(200)
-        .json({
-          success: true,
-          message: "Giải đấu đã ở trạng thái đang diễn ra",
-          data: tournament,
-        });
+      return res.status(200).json({
+        success: true,
+        message: "Giải đấu đã ở trạng thái đang diễn ra",
+        data: tournament,
+      });
     }
 
     tournament.status = "InProgress";
@@ -1893,13 +1878,11 @@ const startTournament = async (req, res) => {
     }
     await syncRoundStatusesForStartedTournament(id);
 
-    return res
-      .status(200)
-      .json({
-        success: true,
-        message: "Đã bắt đầu giải đấu",
-        data: tournament,
-      });
+    return res.status(200).json({
+      success: true,
+      message: "Đã bắt đầu giải đấu",
+      data: tournament,
+    });
   } catch (error) {
     console.error("Error startTournament:", error);
     return res
@@ -2036,12 +2019,10 @@ const startRoundMatch = async (req, res) => {
         .json({ success: false, message: "Không tìm thấy giải đấu" });
     }
     if (tournament.status !== "InProgress") {
-      return res
-        .status(400)
-        .json({
-          success: false,
-          message: "Giải đấu chưa ở trạng thái đang diễn ra",
-        });
+      return res.status(400).json({
+        success: false,
+        message: "Giải đấu chưa ở trạng thái đang diễn ra",
+      });
     }
 
     const match = await RoundMatch.findOne({ _id: matchId, tournament_id: id });
@@ -2080,12 +2061,10 @@ const startRoundMatch = async (req, res) => {
         status: { $in: ["Playing"] },
       });
       if (activeBooking) {
-        return res
-          .status(400)
-          .json({
-            success: false,
-            message: "Bàn này đang có khách chơi. Vui lòng chọn bàn khác!",
-          });
+        return res.status(400).json({
+          success: false,
+          message: "Bàn này đang có khách chơi. Vui lòng chọn bàn khác!",
+        });
       }
 
       const todayStr = new Date().toLocaleString("en-US", {
@@ -2283,12 +2262,10 @@ const getRoundRobinLeaderboard = async (req, res) => {
         .json({ success: false, message: "Không tìm thấy giải đấu" });
     }
     if (tournament.format !== "Round Robin") {
-      return res
-        .status(400)
-        .json({
-          success: false,
-          message: "Giải đấu không ở thể thức vòng tròn",
-        });
+      return res.status(400).json({
+        success: false,
+        message: "Giải đấu không ở thể thức vòng tròn",
+      });
     }
 
     const leaderboard = await computeRoundRobinLeaderboard(id);
@@ -2329,12 +2306,10 @@ const createTournamentPayOSPayment = async (req, res) => {
       status: "Approved",
     });
     if (approvedCount >= Number(tournament.max_players || 0)) {
-      return res
-        .status(400)
-        .json({
-          success: false,
-          message: "Giải đấu đã đủ số lượng người chơi",
-        });
+      return res.status(400).json({
+        success: false,
+        message: "Giải đấu đã đủ số lượng người chơi",
+      });
     }
 
     const existedApproved = await TournamentPlayer.findOne({
@@ -2446,21 +2421,17 @@ const verifyTournamentPayOSPayment = async (req, res) => {
       order_code: orderCode,
     }).lean();
     if (!tx || !tx.description?.startsWith("TournamentFee:")) {
-      return res
-        .status(404)
-        .json({
-          success: false,
-          message: "Không tìm thấy giao dịch thanh toán giải đấu",
-        });
+      return res.status(404).json({
+        success: false,
+        message: "Không tìm thấy giao dịch thanh toán giải đấu",
+      });
     }
 
     if (tx.status === "SUCCESS") {
-      return res
-        .status(200)
-        .json({
-          success: true,
-          message: "Thanh toán đã được xác nhận trước đó",
-        });
+      return res.status(200).json({
+        success: true,
+        message: "Thanh toán đã được xác nhận trước đó",
+      });
     }
 
     const [, tournamentId] = tx.description.split(":");
@@ -2496,12 +2467,10 @@ const verifyTournamentPayOSPayment = async (req, res) => {
     }
 
     await markTransactionSuccessAndApprove(orderCode);
-    return res
-      .status(200)
-      .json({
-        success: true,
-        message: "Thanh toán thành công, đăng ký đã được duyệt",
-      });
+    return res.status(200).json({
+      success: true,
+      message: "Thanh toán thành công, đăng ký đã được duyệt",
+    });
   } catch (error) {
     console.error("Error verifyTournamentPayOSPayment:", error);
     return res
@@ -2638,8 +2607,12 @@ const cancelTournament = async (req, res) => {
     }
 
     // Verify ownership
-    console.log(`[CANCEL TOURNAMENT] Auth UserAccountId: ${req.user?.accountId}`);
-    console.log(`[CANCEL TOURNAMENT] Tournament ClubOwnerId: ${tournament.club_id?.account_id}`);
+    console.log(
+      `[CANCEL TOURNAMENT] Auth UserAccountId: ${req.user?.accountId}`,
+    );
+    console.log(
+      `[CANCEL TOURNAMENT] Tournament ClubOwnerId: ${tournament.club_id?.account_id}`,
+    );
 
     if (String(tournament.club_id.account_id) !== String(req.user.accountId)) {
       console.log(`[CANCEL TOURNAMENT] OWNERSHIP MISMATCH!`);

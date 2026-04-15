@@ -6,6 +6,7 @@ const TableType = require("../models/table_type.model");
 const Service = require("../models/service.model");
 const BookingService = require("../models/booking_service.model");
 const Feedback = require("../models/feedback.model");
+const Tournament = require("../models/tournament.model");
 
 const getClubAnalytics = async (req, res) => {
   try {
@@ -216,12 +217,44 @@ const getClubAnalytics = async (req, res) => {
       status: "Unpaid"
     });
 
+    // --- 6. TOURNAMENT STATS ---
+    const tournaments = await Tournament.find({
+        club_id: clubObjectId,
+        created_at: dateFilter
+    }).lean();
+
+    let totalTournaments = tournaments.length;
+    let totalTournamentRevenue = 0;
+    let totalTournamentPlayers = 0;
+    
+    tournaments.forEach(t => {
+       // Only count revenue for some statuses or maybe all, but let's just use what's generated.
+       const fee = t.fee || 0;
+       const players = t.registered_player || 0;
+       totalTournamentRevenue += (fee * players);
+       totalTournamentPlayers += players;
+    });
+
+    const tournamentStats = {
+       totalTournaments,
+       totalRevenue: totalTournamentRevenue,
+       totalPlayers: totalTournamentPlayers,
+       tournamentsList: tournaments.map(t => ({
+           id: t._id,
+           name: t.name,
+           fee: t.fee,
+           players: t.registered_player,
+           status: t.status,
+           revenue: (t.fee || 0) * (t.registered_player || 0)
+       })).sort((a,b) => b.revenue - a.revenue).slice(0, 5)
+    };
+
     // XONG TẤT CẢ DATA - TRẢ VỀ
     return res.status(200).json({
       success: true,
       data: {
         kpi: {
-          totalRevenue: totalTableRevenue + totalServiceRevenue,
+          totalRevenue: totalTableRevenue + totalServiceRevenue + totalTournamentRevenue,
           totalBookings: totalBookingsCount,
           averageOrderValue: invoices.length > 0 ? Math.round((totalTableRevenue + totalServiceRevenue) / invoices.length) : 0,
           averagePlayMinutes: totalBookingsCount > 0 ? Math.round(totalPlayMinutes / totalBookingsCount) : 0,
@@ -229,7 +262,7 @@ const getClubAnalytics = async (req, res) => {
         },
         revenue: {
           timeline: revenueTimeline,
-          breakdown: { table: totalTableRevenue, service: totalServiceRevenue },
+          breakdown: { table: totalTableRevenue, service: totalServiceRevenue, tournament: totalTournamentRevenue },
           paymentMix: paymentMixMap
         },
         tables: {
@@ -244,7 +277,8 @@ const getClubAnalytics = async (req, res) => {
           average: Number(averageRating),
           total: feedbacks.length,
           distribution: feedbackList
-        }
+        },
+        tournaments: tournamentStats
       }
     });
 
