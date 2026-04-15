@@ -9,14 +9,16 @@ const authorizeRole = (...allowedRoles) => {
         }
 
         const userRole = req.user.role; // role được lưu trong JWT payload
+        process.stdout.write(`[AUTH DEBUG] UserRole: "${userRole}", Allowed: ${JSON.stringify(allowedRoles)}\n`);
 
         if (!userRole || !allowedRoles.includes(userRole)) {
+            process.stdout.write(`[AUTH ACCESS DENIED] Role "${userRole}" not in ${JSON.stringify(allowedRoles)}\n`);
             return res.status(403).json({ 
                 success: false, 
                 message: "Bạn không có quyền truy cập chức năng này!" 
             });
         }
-
+    
         next();
     };
 };

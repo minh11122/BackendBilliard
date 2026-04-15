@@ -1246,7 +1246,19 @@ const createTournament = async (req, res) => {
     }
 
     const club = await Club.findById(club_id).lean();
-    if (!club || club.plan_type !== "pro") {
+    if (!club) {
+      return res.status(404).json({ success: false, message: "Không tìm thấy CLB" });
+    }
+
+    // Verify ownership
+    if (String(club.account_id) !== String(req.user.accountId)) {
+      return res.status(403).json({
+        success: false,
+        message: "Bạn không có quyền tạo giải đấu cho CLB này.",
+      });
+    }
+
+    if (club.plan_type !== "pro") {
       return res
         .status(403)
         .json({
@@ -1468,11 +1480,19 @@ const getMyRegisteredTournamentIds = async (req, res) => {
 const openTournamentRegistration = async (req, res) => {
   try {
     const { id } = req.params;
-    const tournament = await Tournament.findById(id);
+    const tournament = await Tournament.findById(id).populate("club_id");
     if (!tournament) {
       return res
         .status(404)
         .json({ success: false, message: "Không tìm thấy giải đấu" });
+    }
+
+    // Verify ownership
+    if (String(tournament.club_id.account_id) !== String(req.user.accountId)) {
+      return res.status(403).json({
+        success: false,
+        message: "Bạn không có quyền quản lý giải đấu của CLB này.",
+      });
     }
     if (["InProgress", "Completed", "Cancelled"].includes(tournament.status)) {
       return res
@@ -1506,11 +1526,19 @@ const closeTournamentRegistration = async (req, res) => {
     const { id } = req.params;
     const { auto_generate, group_size } = req.body || {};
 
-    const tournament = await Tournament.findById(id);
+    const tournament = await Tournament.findById(id).populate("club_id");
     if (!tournament) {
       return res
         .status(404)
         .json({ success: false, message: "Không tìm thấy giải đấu" });
+    }
+
+    // Verify ownership
+    if (String(tournament.club_id.account_id) !== String(req.user.accountId)) {
+      return res.status(403).json({
+        success: false,
+        message: "Bạn không có quyền quản lý giải đấu của CLB này.",
+      });
     }
     if (["InProgress", "Completed", "Cancelled"].includes(tournament.status)) {
       return res
@@ -1573,7 +1601,19 @@ const updateTournament = async (req, res) => {
     const club = await require("../models/club.model")
       .findById(existingTournament.club_id)
       .lean();
-    if (!club || club.plan_type !== "pro") {
+    if (!club) {
+      return res.status(404).json({ success: false, message: "Không tìm thấy CLB" });
+    }
+
+    // Verify ownership
+    if (String(club.account_id) !== String(req.user.accountId)) {
+      return res.status(403).json({
+        success: false,
+        message: "Bạn không có quyền chỉnh sửa giải đấu của CLB này.",
+      });
+    }
+
+    if (club.plan_type !== "pro") {
       return res
         .status(403)
         .json({
@@ -1691,16 +1731,22 @@ const deleteTournament = async (req, res) => {
   try {
     const { id } = req.params;
 
-    const existingTournament = await Tournament.findById(id).lean();
-    if (!existingTournament) {
+    const tournamentCheck = await Tournament.findById(id).populate("club_id");
+    if (!tournamentCheck) {
       return res
         .status(404)
         .json({ success: false, message: "Không tìm thấy giải đấu" });
     }
 
-    const club = await require("../models/club.model")
-      .findById(existingTournament.club_id)
-      .lean();
+    // Verify ownership
+    if (String(tournamentCheck.club_id.account_id) !== String(req.user.accountId)) {
+      return res.status(403).json({
+        success: false,
+        message: "Bạn không có quyền xóa giải đấu của CLB này.",
+      });
+    }
+
+    const club = tournamentCheck.club_id;
     if (!club || club.plan_type !== "pro") {
       return res
         .status(403)
@@ -1733,11 +1779,19 @@ const generateTournamentBracket = async (req, res) => {
     const { id } = req.params;
     const { format, group_size } = req.body || {};
 
-    const tournament = await Tournament.findById(id);
+    const tournament = await Tournament.findById(id).populate("club_id");
     if (!tournament) {
       return res
         .status(404)
         .json({ success: false, message: "Không tìm thấy giải đấu" });
+    }
+
+    // Verify ownership
+    if (String(tournament.club_id.account_id) !== String(req.user.accountId)) {
+      return res.status(403).json({
+        success: false,
+        message: "Bạn không có quyền quản lý giải đấu của CLB này.",
+      });
     }
     if (["InProgress", "Completed", "Cancelled"].includes(tournament.status)) {
       return res
@@ -1788,11 +1842,19 @@ const generateTournamentBracket = async (req, res) => {
 const startTournament = async (req, res) => {
   try {
     const { id } = req.params;
-    const tournament = await Tournament.findById(id);
+    const tournament = await Tournament.findById(id).populate("club_id");
     if (!tournament) {
       return res
         .status(404)
         .json({ success: false, message: "Không tìm thấy giải đấu" });
+    }
+
+    // Verify ownership
+    if (String(tournament.club_id.account_id) !== String(req.user.accountId)) {
+      return res.status(403).json({
+        success: false,
+        message: "Bạn không có quyền quản lý giải đấu của CLB này.",
+      });
     }
     if (!tournament.bracket_generated) {
       return res
@@ -2567,22 +2629,24 @@ const cancelTournament = async (req, res) => {
   try {
     const { id } = req.params;
 
-    // Only owner can cancel tournament
-    if (req.account.role !== "owner") {
-      return res
-        .status(403)
-        .json({
-          success: false,
-          message: "Chỉ chủ quán mới có quyền hủy giải đấu.",
-        });
-    }
-
-    const tournament = await Tournament.findById(id);
-
+    const tournament = await Tournament.findById(id).populate("club_id");
     if (!tournament) {
+      console.log(`[CANCEL TOURNAMENT] NOT FOUND: ${id}`);
       return res
         .status(404)
         .json({ success: false, message: "Không tìm thấy giải đấu" });
+    }
+
+    // Verify ownership
+    console.log(`[CANCEL TOURNAMENT] Auth UserAccountId: ${req.user?.accountId}`);
+    console.log(`[CANCEL TOURNAMENT] Tournament ClubOwnerId: ${tournament.club_id?.account_id}`);
+
+    if (String(tournament.club_id.account_id) !== String(req.user.accountId)) {
+      console.log(`[CANCEL TOURNAMENT] OWNERSHIP MISMATCH!`);
+      return res.status(403).json({
+        success: false,
+        message: "Bạn không có quyền quản lý giải đấu của CLB này.",
+      });
     }
 
     if (

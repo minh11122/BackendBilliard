@@ -26,6 +26,7 @@ const {
 } = require("../controller/tournament.controller");
 const upload = require("../middleware/uploadCloud.middleware");
 const authenticate = require("../middleware/authenticate.middleware");
+const authorizeRole = require("../middleware/authorizeRole.middleware");
 
 // GET /tournaments - list all tournaments for a club (x-club-id header or ?club_id=)
 router.get("/", authenticate, getTournamentsByClub);
@@ -45,11 +46,11 @@ router.get("/:id", getTournamentById);
 router.get("/:id/players", getTournamentPlayers);
 
 // Registration control & bracket generation
-router.post("/:id/open", authenticate, openTournamentRegistration);
-router.post("/:id/close", authenticate, closeTournamentRegistration);
-router.post("/:id/generate-bracket", authenticate, generateTournamentBracket);
-router.post("/:id/start", authenticate, startTournament);
-router.post("/:id/cancel", authenticate, cancelTournament);
+router.post("/:id/open", authenticate, authorizeRole("OWNER"), openTournamentRegistration);
+router.post("/:id/close", authenticate, authorizeRole("OWNER"), closeTournamentRegistration);
+router.post("/:id/generate-bracket", authenticate, authorizeRole("OWNER"), generateTournamentBracket);
+router.post("/:id/start", authenticate, authorizeRole("OWNER"), startTournament);
+router.post("/:id/cancel", authenticate, authorizeRole("OWNER"), cancelTournament);
 
 // Match operations
 router.post("/:id/matches/:matchId/start", authenticate, startRoundMatch);
@@ -61,12 +62,12 @@ router.post("/payos/verify", authenticate, verifyTournamentPayOSPayment);
 router.post("/payos/webhook", tournamentPayOSWebhook);
 
 // POST /tournaments - create a new tournament
-router.post("/", authenticate, upload.single("banner"), createTournament);
+router.post("/", authenticate, authorizeRole("OWNER"), upload.single("banner"), createTournament);
 
 // PUT /tournaments/:id - update a tournament
-router.put("/:id", authenticate, upload.single("banner"), updateTournament);
+router.put("/:id", authenticate, authorizeRole("OWNER"), upload.single("banner"), updateTournament);
 
 // DELETE /tournaments/:id - delete a tournament
-router.delete("/:id", authenticate, deleteTournament);
+router.delete("/:id", authenticate, authorizeRole("OWNER"), deleteTournament);
 
 module.exports = router;
