@@ -1106,7 +1106,7 @@ const getTournamentPlayers = async (req, res) => {
     }
 
     const players = await TournamentPlayer.find({ tournament_id: id })
-      .populate("account_id", "fullname phone avatar_url")
+      .populate("account_id", "fullname phone email avatar_url")
       .sort({ register_date: -1 })
       .lean();
 
