@@ -454,7 +454,14 @@ const registerClub = async (req, res) => {
     const createdClub = await Club.findById(club._id).lean();
 
     // Create notifications for STAFF_SYSTEM
-    const staffAccounts = await Account.find({ role: "STAFF_SYSTEM" }).lean();
+    const Role = require("../models/role.model");
+    const staffSystemRole = await Role.findOne({ name: "STAFF_SYSTEM" }).lean();
+    const staffAccounts = staffSystemRole
+      ? await Account.find({
+          role_id: staffSystemRole._id,
+          status: "ACTIVE",
+        }).lean()
+      : [];
     if (staffAccounts && staffAccounts.length > 0) {
       const notifications = staffAccounts.map(staff => ({
         account_id: staff._id,

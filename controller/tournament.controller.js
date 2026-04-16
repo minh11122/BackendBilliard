@@ -7,6 +7,8 @@ const Booking = require("../models/booking.model");
 const TransactionHistory = require("../models/transiction_history.model");
 const ClubBank = require("../models/club_bank.model");
 const Club = require("../models/club.model");
+const Notification = require("../models/notification.model");
+const Account = require("../models/account.model");
 const payosService = require("../services/payos.service");
 
 const PAYOS_EXPIRE_MINUTES = 10;
@@ -28,6 +30,12 @@ const nextPowerOfTwo = (n) => {
 };
 
 const ensureTournamentApproved = async (tournamentId, accountId, feeAmount) => {
+  const existingRegistration = await TournamentPlayer.findOne({
+    tournament_id: tournamentId,
+    account_id: accountId,
+    status: "Approved",
+  }).lean();
+
   await TournamentPlayer.findOneAndUpdate(
     { tournament_id: tournamentId, account_id: accountId },
     {
@@ -41,8 +49,33 @@ const ensureTournamentApproved = async (tournamentId, accountId, feeAmount) => {
   );
 
   const tournament =
-    await Tournament.findById(tournamentId).select("max_players");
+    await Tournament.findById(tournamentId).select("max_players name club_id");
   if (!tournament) return;
+
+  if (!existingRegistration) {
+    await Notification.create({
+      account_id: accountId,
+      title: "Dang ky giai dau thanh cong",
+      message: `Ban da dang ky thanh cong giai dau ${tournament.name || ""}.`,
+      is_read: false,
+    });
+
+    const clubStaffs = await Account.find({
+      club_id: tournament.club_id,
+      status: "ACTIVE",
+    }).select("_id").lean();
+
+    if (clubStaffs.length > 0) {
+      await Notification.insertMany(
+        clubStaffs.map((staff) => ({
+          account_id: staff._id,
+          title: "Co nguoi dang ky giai dau",
+          message: `Giai dau ${tournament.name || ""} vua co nguoi choi dang ky moi.`,
+          is_read: false,
+        })),
+      );
+    }
+  }
 
   const approvedCount = await TournamentPlayer.countDocuments({
     tournament_id: tournamentId,

@@ -16,6 +16,7 @@ router.get("/posts", authenticate, staff.getPosts);
 
 // Notifications
 router.get("/notifications", authenticate, staff.getNotifications);
+router.post("/notifications/test", authenticate, staff.createTestNotification);
 router.patch("/notifications/read-all", authenticate, staff.markAllNotificationsRead);
 router.patch("/notifications/:id/read", authenticate, staff.markNotificationRead);
 

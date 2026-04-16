@@ -1083,8 +1083,8 @@ const verifyBookingPayOSPayment = async (req, res) => {
 
     await Notification.create({
       account_id: booking.account_id,
-      title: "Thanh toÃ¡n thÃ nh cÃ´ng",
-      message: `Báº¡n Ä‘Ã£ Ä‘áº·t bÃ n ${booking.table_id.table_number} thÃ nh cÃ´ng. MÃ£ Ä‘Æ¡n: ${booking.code_number}`,
+      title: "Dat ban da duoc xac nhan",
+      message: `Thanh toan thanh cong, don dat ban ${booking.code_number} da duoc xac nhan.`,
       is_read: false,
     });
 

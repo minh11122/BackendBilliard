@@ -1,5 +1,8 @@
 const Post = require("../models/post.model");
 const Club = require("../models/club.model");
+const Account = require("../models/account.model");
+const Role = require("../models/role.model");
+const Notification = require("../models/notification.model");
 
 //customer get approved posts
 //Duc
@@ -31,7 +34,7 @@ exports.createPost = async (req, res) => {
     }
 
     // Security: chỉ cho owner tạo bài đăng cho đúng quán thuộc sở hữu
-    const ownedClub = await Club.findOne({ _id: club_id, account_id: ownerAccountId }).select("_id");
+    const ownedClub = await Club.findOne({ _id: club_id, account_id: ownerAccountId }).select("_id name");
     if (!ownedClub) {
       return res.status(403).json({ message: "Bạn không có quyền thao tác bài đăng cho CLB này" });
     }
@@ -45,6 +48,26 @@ exports.createPost = async (req, res) => {
     });
 
     await post.save();
+
+    const staffSystemRole = await Role.findOne({ name: "STAFF_SYSTEM" }).lean();
+    const staffAccounts = staffSystemRole
+      ? await Account.find({
+          role_id: staffSystemRole._id,
+          status: "ACTIVE",
+        }).lean()
+      : [];
+
+    if (staffAccounts.length > 0) {
+      await Notification.insertMany(
+        staffAccounts.map((staff) => ({
+          account_id: staff._id,
+          title: "Bai post moi cho duyet!",
+          message: `CLB ${ownedClub.name || "moi"} vua dang bai viet moi va dang cho ban phe duyet.`,
+          is_read: false,
+        }))
+      );
+    }
+
     res.json(post);
   } catch (err) {
     res.status(500).json({ message: err.message });
