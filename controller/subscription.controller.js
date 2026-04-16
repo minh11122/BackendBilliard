@@ -1,8 +1,10 @@
 const Subscription = require("../models/subscription.model");
 const SubscriptionAccount = require("../models/subcription_account.model");
+const Notification = require("../models/notification.model");
 const paymentService = require("../services/payment.service");
 
 const ALLOWED_MONTHS = [1, 3, 6, 12];
+const EXPIRING_SOON_DAYS = 3;
 
 function getPlanTier(subscription) {
   const name = String(subscription?.name || "").toLowerCase();
@@ -10,6 +12,52 @@ function getPlanTier(subscription) {
   if (name.includes("basic")) return 1;
   return 0;
 }
+
+const notifySubscriptionExpiringSoon = async (subscriptionAccount) => {
+  if (!subscriptionAccount?.expire_date || !subscriptionAccount?.account_id) {
+    return;
+  }
+
+  const expireDate = new Date(subscriptionAccount.expire_date);
+  const now = new Date();
+  const msPerDay = 24 * 60 * 60 * 1000;
+  const daysRemaining = Math.ceil((expireDate.getTime() - now.getTime()) / msPerDay);
+
+  if (daysRemaining < 0 || daysRemaining > EXPIRING_SOON_DAYS) {
+    return;
+  }
+
+  const title = "Goi dich vu sap het han";
+  const expireDateText = expireDate.toLocaleDateString("vi-VN");
+  const planName = subscriptionAccount.subscription_id?.name || "goi dich vu";
+  const message = `Goi ${planName} cua quan se het han vao ${expireDateText}. Vui long gia han som.`;
+
+  const startOfDay = new Date(now);
+  startOfDay.setHours(0, 0, 0, 0);
+
+  const endOfDay = new Date(now);
+  endOfDay.setHours(23, 59, 59, 999);
+
+  const existingNotification = await Notification.findOne({
+    account_id: subscriptionAccount.account_id,
+    title,
+    message,
+    created_at: {
+      $gte: startOfDay,
+      $lte: endOfDay
+    }
+  });
+
+  if (existingNotification) {
+    return;
+  }
+
+  await Notification.create({
+    account_id: subscriptionAccount.account_id,
+    title,
+    message
+  });
+};
 
 //lay danh sach Subscription
 //Duc 6/3/2026
@@ -55,6 +103,10 @@ const getCurrentSubscription = async (req, res) => {
     })
       .populate("subscription_id")
       .sort({ purchase_date: -1 });
+
+    if (current) {
+      await notifySubscriptionExpiringSoon(current);
+    }
 
     return res.status(200).json({
       success: true,
