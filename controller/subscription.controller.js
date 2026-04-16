@@ -2,6 +2,15 @@ const Subscription = require("../models/subscription.model");
 const SubscriptionAccount = require("../models/subcription_account.model");
 const paymentService = require("../services/payment.service");
 
+const ALLOWED_MONTHS = [1, 3, 6, 12];
+
+function getPlanTier(subscription) {
+  const name = String(subscription?.name || "").toLowerCase();
+  if (name.includes("pro")) return 2;
+  if (name.includes("basic")) return 1;
+  return 0;
+}
+
 //lay danh sach Subscription
 //Duc 6/3/2026
 const getSubscriptions = async (req, res) => {
@@ -69,7 +78,7 @@ const getCurrentSubscription = async (req, res) => {
 const createSubscriptionPayment = async (req, res) => {
   try {
 
-    const { subscription_id, club_id, returnUrl, cancelUrl } = req.body;
+    const { subscription_id, club_id, returnUrl, cancelUrl, duration_months } = req.body;
 
     const accountId = req.user.accountId;
 
@@ -77,6 +86,14 @@ const createSubscriptionPayment = async (req, res) => {
       return res.status(400).json({
         success: false,
         message: "subscription_id và club_id là bắt buộc"
+      });
+    }
+
+    const months = Number(duration_months || 1);
+    if (!ALLOWED_MONTHS.includes(months)) {
+      return res.status(400).json({
+        success: false,
+        message: "duration_months chỉ chấp nhận: 1, 3, 6, 12"
       });
     }
 
@@ -89,9 +106,24 @@ const createSubscriptionPayment = async (req, res) => {
       });
     }
 
-    const price =
+    const activeSub = await SubscriptionAccount.findOne({
+      club_id,
+      status: { $in: ["active", "Active"] }
+    }).populate("subscription_id");
+
+    const currentTier = getPlanTier(activeSub?.subscription_id);
+    const targetTier = getPlanTier(subscription);
+    if (currentTier === 2 && targetTier === 1) {
+      return res.status(400).json({
+        success: false,
+        message: "Đang sử dụng gói Pro, không thể chuyển xuống Basic"
+      });
+    }
+
+    const unitPrice =
       subscription.price -
       (subscription.price * (subscription.discount_percent || 0)) / 100;
+    const price = Math.max(0, Math.round(unitPrice * months));
 
     const payment = await paymentService.createPayment({
       accountId,
@@ -126,7 +158,7 @@ const createSubscriptionPayment = async (req, res) => {
 const verifySubscriptionPayment = async (req, res) => {
   try {
 
-    const { orderCode, subscription_id, club_id } = req.body;
+    const { orderCode, subscription_id, club_id, duration_months } = req.body;
 
     const accountId = req.user.accountId;
 
@@ -134,6 +166,14 @@ const verifySubscriptionPayment = async (req, res) => {
       return res.status(400).json({
         success: false,
         message: "Thiếu thông tin thanh toán"
+      });
+    }
+
+    const months = Number(duration_months || 1);
+    if (!ALLOWED_MONTHS.includes(months)) {
+      return res.status(400).json({
+        success: false,
+        message: "duration_months chỉ chấp nhận: 1, 3, 6, 12"
       });
     }
 
@@ -148,14 +188,30 @@ const verifySubscriptionPayment = async (req, res) => {
       });
     }
 
+    const activeSub = await SubscriptionAccount.findOne({
+      club_id,
+      status: { $in: ["active", "Active"] }
+    }).populate("subscription_id");
+
+    const currentTier = getPlanTier(activeSub?.subscription_id);
+    const targetTier = getPlanTier(subscription);
+    if (currentTier === 2 && targetTier === 1) {
+      return res.status(400).json({
+        success: false,
+        message: "Đang sử dụng gói Pro, không thể chuyển xuống Basic"
+      });
+    }
+
     const purchaseDate = new Date();
 
     const expireDate = new Date();
-    expireDate.setDate(expireDate.getDate() + (subscription.duration_days || 30));
+    const baseDays = subscription.duration_days || 30;
+    expireDate.setDate(expireDate.getDate() + (baseDays * months));
 
-    const price =
+    const unitPrice =
       subscription.price -
       (subscription.price * (subscription.discount_percent || 0)) / 100;
+    const price = Math.max(0, Math.round(unitPrice * months));
 
     let clubSubscription = await SubscriptionAccount.findOne({
       club_id: club_id
