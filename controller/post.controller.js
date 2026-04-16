@@ -4,6 +4,33 @@ const Account = require("../models/account.model");
 const Role = require("../models/role.model");
 const Notification = require("../models/notification.model");
 
+const normalizeBlocks = (blocks) => {
+  if (!Array.isArray(blocks)) return [];
+  return blocks
+    .filter((b) => b && (b.type === "text" || b.type === "image"))
+    .map((b) => ({
+      type: b.type,
+      text: b.type === "text" ? String(b.text || "").trim() : "",
+      image_url: b.type === "image" ? String(b.image_url || "").trim() : "",
+      image_width: ["small", "normal", "wide", "full"].includes(b.image_width) ? b.image_width : "wide",
+      image_align: ["left", "center", "right"].includes(b.image_align) ? b.image_align : "center",
+    }))
+    .filter((b) => (b.type === "text" ? !!b.text : !!b.image_url));
+};
+
+const buildPlainContent = (content, blocks) => {
+  const normalized = normalizeBlocks(blocks);
+  if (normalized.length > 0) {
+    const text = normalized
+      .filter((b) => b.type === "text")
+      .map((b) => b.text)
+      .join("\n\n")
+      .trim();
+    return text || String(content || "").trim() || " ";
+  }
+  return String(content || "").trim() || " ";
+};
+
 //customer get approved posts
 //Duc
 exports.getApprovedPosts = async (req, res) => {
@@ -39,10 +66,12 @@ exports.createPost = async (req, res) => {
       return res.status(403).json({ message: "Bạn không có quyền thao tác bài đăng cho CLB này" });
     }
 
+    const content_blocks = normalizeBlocks(req.body.content_blocks);
     const post = new Post({
       club_id,
       title: req.body.title,
-      content: req.body.content,
+      content: buildPlainContent(req.body.content, content_blocks),
+      content_blocks,
       image_url: req.body.image_url,
       status: "Pending"
     });
@@ -121,6 +150,13 @@ exports.updatePost = async (req, res) => {
     }
 
     const { club_id: _ignoredClubId, ...restBody } = req.body || {};
+    if (Object.prototype.hasOwnProperty.call(restBody, "content_blocks")) {
+      restBody.content_blocks = normalizeBlocks(restBody.content_blocks);
+      restBody.content = buildPlainContent(restBody.content, restBody.content_blocks);
+    } else if (Object.prototype.hasOwnProperty.call(restBody, "content")) {
+      restBody.content = String(restBody.content || "").trim() || " ";
+    }
+
     const post = await Post.findOneAndUpdate(
       { _id: req.params.id, club_id },
       {
@@ -217,6 +253,18 @@ exports.reviewPost = async (req, res) => {
       return res.status(404).json({ message: "Post not found" });
     }
 
+    res.json(post);
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+};
+
+exports.getApprovedPostDetail = async (req, res) => {
+  try {
+    const post = await Post.findOne({ _id: req.params.id, status: "Approved" }).populate("club_id", "name address");
+    if (!post) {
+      return res.status(404).json({ message: "Không tìm thấy bài viết" });
+    }
     res.json(post);
   } catch (err) {
     res.status(500).json({ message: err.message });
