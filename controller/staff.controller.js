@@ -173,7 +173,7 @@ const rejectClub = async (req, res) => {
 
         const club = await Club.findByIdAndUpdate(
             req.params.id,
-            { status: "Rejected" },
+            { status: "Rejected", reject_reason: reason || "" },
             { new: true }
         );
         if (!club) return res.status(404).json({ success: false, message: "Không tìm thấy CLB" });
