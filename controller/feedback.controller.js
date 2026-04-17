@@ -87,8 +87,8 @@ exports.createFeedback = async (req, res) => {
     const club = await Club.findById(club_id).select("name").lean();
     await notifyClubStaff(
       club_id,
-      "Co danh gia moi",
-      `Khach hang vua gui danh gia moi cho CLB ${club?.name || ""}.`
+      "Có đánh giá mới",
+      `Khách hàng vừa gửi đánh giá mới cho CLB ${club?.name || ""}.`
     );
 
     res.status(201).json({
@@ -226,10 +226,22 @@ exports.replyFeedback = async (req, res) => {
     feedback.replied_at = new Date();
     await feedback.save();
 
+    const club = await Club.findById(activeClubId).select("name").lean();
+    const booking = await Booking.findById(feedback.booking_id).select("play_date start_time").lean();
+
+    let playDateStr = "";
+    if (booking && booking.play_date && booking.start_time) {
+      const d = new Date(booking.play_date);
+      const formattedDate = `${d.getDate().toString().padStart(2, "0")}/${(d.getMonth() + 1).toString().padStart(2, "0")}/${d.getFullYear()}`;
+      playDateStr = ` (ca chơi lúc ${booking.start_time} ngày ${formattedDate})`;
+    }
+
+    const clubName = club?.name ? `${club.name}` : "Câu lạc bộ";
+
     await Notification.create({
       account_id: feedback.account_id,
-      title: "Danh gia da duoc phan hoi",
-      message: "Nhan vien CLB da phan hoi danh gia cua ban.",
+      title: "Quán đã phản hồi đánh giá",
+      message: `Quán ${clubName} vừa phản hồi đánh giá của bạn${playDateStr}.`,
       is_read: false,
     });
 

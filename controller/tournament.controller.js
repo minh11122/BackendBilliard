@@ -53,10 +53,13 @@ const ensureTournamentApproved = async (tournamentId, accountId, feeAmount) => {
   if (!tournament) return;
 
   if (!existingRegistration) {
+    const playerAccount = await Account.findById(accountId).select("fullname phone").lean();
+    const playerName = playerAccount ? (playerAccount.fullname || playerAccount.phone || "Một người chơi") : "Một người chơi";
+
     await Notification.create({
       account_id: accountId,
-      title: "Dang ky giai dau thanh cong",
-      message: `Ban da dang ky thanh cong giai dau ${tournament.name || ""}.`,
+      title: "Đăng ký giải đấu thành công",
+      message: `Bạn đã đăng ký thành công giải đấu ${tournament.name || ""}.`,
       is_read: false,
     });
 
@@ -65,12 +68,19 @@ const ensureTournamentApproved = async (tournamentId, accountId, feeAmount) => {
       status: "ACTIVE",
     }).select("_id").lean();
 
-    if (clubStaffs.length > 0) {
+    const clubInfo = await Club.findById(tournament.club_id).select("account_id").lean();
+    
+    const targetIds = new Set(clubStaffs.map(staff => staff._id.toString()));
+    if (clubInfo?.account_id) {
+      targetIds.add(clubInfo.account_id.toString());
+    }
+
+    if (targetIds.size > 0) {
       await Notification.insertMany(
-        clubStaffs.map((staff) => ({
-          account_id: staff._id,
-          title: "Co nguoi dang ky giai dau",
-          message: `Giai dau ${tournament.name || ""} vua co nguoi choi dang ky moi.`,
+        Array.from(targetIds).map((targetId) => ({
+          account_id: targetId,
+          title: "Có người đăng ký giải đấu",
+          message: `Người chơi ${playerName} vừa đăng ký tham gia giải đấu ${tournament.name || ""}.`,
           is_read: false,
         })),
       );
@@ -1375,6 +1385,30 @@ const createTournament = async (req, res) => {
     });
 
     await tournament.save();
+
+    if (req.user && req.user.accountId) {
+      await Notification.create({
+        account_id: req.user.accountId,
+        title: "Tạo giải đấu thành công",
+        message: `Bạn đã tạo giải đấu ${tournament.name} thành công.`,
+        is_read: false,
+      });
+    }
+
+    const staffsToNotify = await Account.find({ club_id: tournament.club_id, status: "ACTIVE" }).select("_id").lean();
+    if (staffsToNotify.length > 0) {
+      const staffNotifications = staffsToNotify
+        .filter(s => String(s._id) !== String(req.user?.accountId))
+        .map(staff => ({
+          account_id: staff._id,
+          title: "Giải đấu mới được tạo",
+          message: `Chủ quán vừa tạo giải đấu mới: ${tournament.name} (Ngày đấu: ${play_date ? new Date(play_date).toLocaleDateString('vi-VN') : 'Sắp tới'}).`,
+          is_read: false,
+        }));
+      if (staffNotifications.length > 0) {
+        await Notification.insertMany(staffNotifications);
+      }
+    }
 
     return res.status(201).json({
       success: true,

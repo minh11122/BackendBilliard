@@ -90,8 +90,8 @@ exports.createPost = async (req, res) => {
       await Notification.insertMany(
         staffAccounts.map((staff) => ({
           account_id: staff._id,
-          title: "Bai post moi cho duyet!",
-          message: `CLB ${ownedClub.name || "moi"} vua dang bai viet moi va dang cho ban phe duyet.`,
+          title: "Bài đăng đợi duyệt!",
+          message: `CLB ${ownedClub.name || "mới"} vừa đăng bài viết mới và đang chờ bạn phê duyệt.`,
           is_read: false,
         }))
       );
