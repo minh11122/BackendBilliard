@@ -60,6 +60,7 @@ const ensureTournamentApproved = async (tournamentId, accountId, feeAmount) => {
       account_id: accountId,
       title: "Đăng ký giải đấu thành công",
       message: `Bạn đã đăng ký thành công giải đấu ${tournament.name || ""}.`,
+      link: `/my-tournaments?tournamentId=${tournamentId}`,
       is_read: false,
     });
 
@@ -81,6 +82,7 @@ const ensureTournamentApproved = async (tournamentId, accountId, feeAmount) => {
           account_id: targetId,
           title: "Có người đăng ký giải đấu",
           message: `Người chơi ${playerName} vừa đăng ký tham gia giải đấu ${tournament.name || ""}.`,
+          link: `/staff/tournaments/${tournamentId}/players`,
           is_read: false,
         })),
       );
@@ -1391,6 +1393,7 @@ const createTournament = async (req, res) => {
         account_id: req.user.accountId,
         title: "Tạo giải đấu thành công",
         message: `Bạn đã tạo giải đấu ${tournament.name} thành công.`,
+        link: `/owner/tournaments/${tournament._id}/detail`,
         is_read: false,
       });
     }
@@ -1403,6 +1406,7 @@ const createTournament = async (req, res) => {
           account_id: staff._id,
           title: "Giải đấu mới được tạo",
           message: `Chủ quán vừa tạo giải đấu mới: ${tournament.name} (Ngày đấu: ${play_date ? new Date(play_date).toLocaleDateString('vi-VN') : 'Sắp tới'}).`,
+          link: `/staff/tournaments/${tournament._id}/players`,
           is_read: false,
         }));
       if (staffNotifications.length > 0) {

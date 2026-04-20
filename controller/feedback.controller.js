@@ -5,7 +5,7 @@ const Account = require("../models/account.model");
 const Club = require("../models/club.model");
 const Notification = require("../models/notification.model");
 
-const notifyClubStaff = async (club_id, title, message) => {
+const notifyClubStaff = async (club_id, title, message, link = null) => {
   try {
     const staffs = await Account.find({ club_id, status: "ACTIVE" }).select("_id").lean();
     if (staffs.length === 0) return;
@@ -15,6 +15,7 @@ const notifyClubStaff = async (club_id, title, message) => {
         account_id: staff._id,
         title,
         message,
+        link,
         is_read: false,
       }))
     );
@@ -88,7 +89,8 @@ exports.createFeedback = async (req, res) => {
     await notifyClubStaff(
       club_id,
       "Có đánh giá mới",
-      `Khách hàng vừa gửi đánh giá mới cho CLB ${club?.name || ""}.`
+      `Khách hàng vừa gửi đánh giá mới cho CLB ${club?.name || ""}.`,
+      "/staff/reviews"
     );
 
     res.status(201).json({
@@ -242,6 +244,7 @@ exports.replyFeedback = async (req, res) => {
       account_id: feedback.account_id,
       title: "Quán đã phản hồi đánh giá",
       message: `Quán ${clubName} vừa phản hồi đánh giá của bạn${playDateStr}.`,
+      link: `/my-bookings?bookingId=${feedback.booking_id}`,
       is_read: false,
     });
 
