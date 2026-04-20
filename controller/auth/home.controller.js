@@ -51,6 +51,17 @@ const getFeaturedClubs = async (req, res) => {
           clubImages.find((img) => img.image_type === "Banner");
 
         club.avatar = mainImage ? mainImage.image_url : null;
+        
+        // Lấy rating 
+        const feedbacks = await Feedback.find({ club_id: club._id }).lean();
+        if (feedbacks.length > 0) {
+            const sum = feedbacks.reduce((acc, curr) => acc + (curr.rating || 0), 0);
+            club.rating = parseFloat((sum / feedbacks.length).toFixed(1));
+            club.reviewsCount = feedbacks.length;
+        } else {
+            club.rating = 0;
+            club.reviewsCount = 0;
+        }
 
         return club;
       })
