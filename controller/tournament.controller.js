@@ -7,6 +7,8 @@ const Booking = require("../models/booking.model");
 const TransactionHistory = require("../models/transiction_history.model");
 const ClubBank = require("../models/club_bank.model");
 const Club = require("../models/club.model");
+const Notification = require("../models/notification.model");
+const Account = require("../models/account.model");
 const payosService = require("../services/payos.service");
 
 const PAYOS_EXPIRE_MINUTES = 10;
@@ -28,6 +30,12 @@ const nextPowerOfTwo = (n) => {
 };
 
 const ensureTournamentApproved = async (tournamentId, accountId, feeAmount) => {
+  const existingRegistration = await TournamentPlayer.findOne({
+    tournament_id: tournamentId,
+    account_id: accountId,
+    status: "Approved",
+  }).lean();
+
   await TournamentPlayer.findOneAndUpdate(
     { tournament_id: tournamentId, account_id: accountId },
     {
@@ -41,8 +49,45 @@ const ensureTournamentApproved = async (tournamentId, accountId, feeAmount) => {
   );
 
   const tournament =
-    await Tournament.findById(tournamentId).select("max_players");
+    await Tournament.findById(tournamentId).select("max_players name club_id");
   if (!tournament) return;
+
+  if (!existingRegistration) {
+    const playerAccount = await Account.findById(accountId).select("fullname phone").lean();
+    const playerName = playerAccount ? (playerAccount.fullname || playerAccount.phone || "Một người chơi") : "Một người chơi";
+
+    await Notification.create({
+      account_id: accountId,
+      title: "Đăng ký giải đấu thành công",
+      message: `Bạn đã đăng ký thành công giải đấu ${tournament.name || ""}.`,
+      link: `/my-tournaments?tournamentId=${tournamentId}`,
+      is_read: false,
+    });
+
+    const clubStaffs = await Account.find({
+      club_id: tournament.club_id,
+      status: "ACTIVE",
+    }).select("_id").lean();
+
+    const clubInfo = await Club.findById(tournament.club_id).select("account_id").lean();
+    
+    const targetIds = new Set(clubStaffs.map(staff => staff._id.toString()));
+    if (clubInfo?.account_id) {
+      targetIds.add(clubInfo.account_id.toString());
+    }
+
+    if (targetIds.size > 0) {
+      await Notification.insertMany(
+        Array.from(targetIds).map((targetId) => ({
+          account_id: targetId,
+          title: "Có người đăng ký giải đấu",
+          message: `Người chơi ${playerName} vừa đăng ký tham gia giải đấu ${tournament.name || ""}.`,
+          link: `/staff/tournaments/${tournamentId}/players`,
+          is_read: false,
+        })),
+      );
+    }
+  }
 
   const approvedCount = await TournamentPlayer.countDocuments({
     tournament_id: tournamentId,
@@ -1342,6 +1387,32 @@ const createTournament = async (req, res) => {
     });
 
     await tournament.save();
+
+    if (req.user && req.user.accountId) {
+      await Notification.create({
+        account_id: req.user.accountId,
+        title: "Tạo giải đấu thành công",
+        message: `Bạn đã tạo giải đấu ${tournament.name} thành công.`,
+        link: `/owner/tournaments/${tournament._id}/detail`,
+        is_read: false,
+      });
+    }
+
+    const staffsToNotify = await Account.find({ club_id: tournament.club_id, status: "ACTIVE" }).select("_id").lean();
+    if (staffsToNotify.length > 0) {
+      const staffNotifications = staffsToNotify
+        .filter(s => String(s._id) !== String(req.user?.accountId))
+        .map(staff => ({
+          account_id: staff._id,
+          title: "Giải đấu mới được tạo",
+          message: `Chủ quán vừa tạo giải đấu mới: ${tournament.name} (Ngày đấu: ${play_date ? new Date(play_date).toLocaleDateString('vi-VN') : 'Sắp tới'}).`,
+          link: `/staff/tournaments/${tournament._id}/players`,
+          is_read: false,
+        }));
+      if (staffNotifications.length > 0) {
+        await Notification.insertMany(staffNotifications);
+      }
+    }
 
     return res.status(201).json({
       success: true,

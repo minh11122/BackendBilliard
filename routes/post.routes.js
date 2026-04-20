@@ -28,6 +28,9 @@ router.get(
   postController.getMyPosts
 );
 
+// Chi tiết bài post đã duyệt (đặt sau /my để tránh đụng route động)
+router.get("/:id", postController.getApprovedPostDetail);
+
 // Cập nhật bài post
 router.put(
   "/:id",

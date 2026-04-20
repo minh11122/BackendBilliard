@@ -13,7 +13,7 @@ const HOLD_MINUTES_OVERRIDE = 2;
 const PAYOS_EXPIRE_MINUTES = 2;
 
 // Helper to push notifications to all specific club staff
-const notifyStaff = async (club_id, title, message) => {
+const notifyStaff = async (club_id, title, message, link = null) => {
   try {
     const Account = require("../models/account.model");
     const Notification = require("../models/notification.model");
@@ -23,6 +23,7 @@ const notifyStaff = async (club_id, title, message) => {
         account_id: s._id,
         title,
         message,
+        link,
         is_read: false,
       }));
       await Notification.insertMany(notifs);
@@ -458,6 +459,16 @@ const checkInBooking = async (req, res) => {
     // Cập nhật trạng thái
     booking.status = "Playing";
     await booking.save();
+
+    if (booking.account_id) {
+      await require("../models/notification.model").create({
+        account_id: booking.account_id,
+        title: "Bắt đầu giờ chơi",
+        message: `Bàn ${booking.table_id?.table_number || ""} của bạn đã được check-in. Giờ chơi đã bắt đầu!`,
+        link: `/my-bookings?bookingId=${booking._id}`,
+        is_read: false,
+      });
+    }
 
     res.status(200).json({
       success: true,
@@ -908,10 +919,14 @@ const payosWebhook = async (req, res) => {
       booking.status = "Booked";
       await booking.save();
 
+      const clubPopulated1 = await Club.findById(table.club_id).lean();
+      const clubName1 = clubPopulated1 ? clubPopulated1.name : "Quán Billiards";
+
       await Notification.create({
         account_id: booking.account_id,
         title: "Thanh toán thành công",
-        message: `Bạn đã đặt bàn ${booking.table_id.table_number} thành công. Mã đơn: ${booking.code_number}`,
+        message: `Bạn đã đặt bàn ${booking.table_id.table_number} tại ${clubName1} thành công. Mã đơn: ${booking.code_number}`,
+        link: `/my-bookings?bookingId=${booking._id}`,
         is_read: false,
       });
 
@@ -928,6 +943,13 @@ const payosWebhook = async (req, res) => {
           held_by: null,
           held_until: null,
         },
+      );
+
+      notifyStaff(
+        clubId,
+        "Đơn đặt bàn online mới",
+        `Bàn ${booking.table_id.table_number} vừa được thanh toán thành công. Mã đơn: ${booking.code_number}`,
+        "/staff/bookings"
       );
 
       return res.status(200).json({
@@ -969,10 +991,14 @@ const payosWebhook = async (req, res) => {
       booking.status = "Completed";
       await booking.save();
 
+      const clubPopulated2 = await Club.findById(table.club_id).lean();
+      const clubName2 = clubPopulated2 ? clubPopulated2.name : "Quán Billiards";
+
       await Notification.create({
         account_id: booking.account_id,
         title: "Thanh toán hoàn tất",
-        message: `Bạn đã thanh toán xong bàn ${booking.table_id.table_number}. Tổng tiền: ${booking.total_bill}đ`,
+        message: `Bạn đã thanh toán xong bàn ${booking.table_id.table_number} tại ${clubName2}. Tổng tiền: ${booking.total_bill}đ`,
+        link: `/my-bookings?bookingId=${booking._id}`,
         is_read: false,
       });
     }
@@ -1081,6 +1107,17 @@ const verifyBookingPayOSPayment = async (req, res) => {
     booking.status = "Booked";
     await booking.save();
 
+    const clubInfo3 = await Club.findById(table.club_id).lean();
+    const clubName3 = clubInfo3 ? clubInfo3.name : "Quán Billiards";
+
+    await Notification.create({
+      account_id: booking.account_id,
+      title: "Đặt bàn đã được xác nhận",
+      message: `Thanh toán thành công, đơn đặt bàn ${booking.code_number} tại ${clubName3} đã được xác nhận.`,
+      link: `/my-bookings?bookingId=${booking._id}`,
+      is_read: false,
+    });
+
     await TransactionHistory.findOneAndUpdate(
       { order_code: orderCode },
       { status: "SUCCESS" },
@@ -1091,6 +1128,13 @@ const verifyBookingPayOSPayment = async (req, res) => {
       held_by: null,
       held_until: null,
     });
+
+    notifyStaff(
+      clubId,
+      "Đơn đặt bàn online mới",
+      `Bàn ${booking.table_id.table_number} vừa được thanh toán thành công. Mã đơn: ${booking.code_number}`,
+      "/staff/bookings"
+    );
 
     return res.status(200).json({
       success: true,
@@ -1168,10 +1212,14 @@ const checkOutBooking = async (req, res) => {
       booking.status = "Completed";
       await booking.save();
 
+      const clubInfo4 = await Club.findById(clubId).lean();
+      const clubName4 = clubInfo4 ? clubInfo4.name : "Quán Billiards";
+
       await Notification.create({
         account_id: booking.account_id,
         title: "Thanh toán hoàn tất",
-        message: `Bạn đã thanh toán xong bàn ${booking.table_id.table_number}. Tổng tiền: ${booking.total_bill}đ`,
+        message: `Bạn đã thanh toán xong bàn ${booking.table_id.table_number} tại ${clubName4}. Tổng tiền: ${booking.total_bill}đ`,
+        link: `/my-bookings?bookingId=${booking._id}`,
         is_read: false,
       });
     }
@@ -1583,10 +1631,14 @@ const verifyBookingCheckoutPayOSPayment = async (req, res) => {
       booking.status = "Completed";
       await booking.save();
 
+      const clubInfo5 = await Club.findById(clubId).lean();
+      const clubName5 = clubInfo5 ? clubInfo5.name : "Quán Billiards";
+
       await Notification.create({
         account_id: booking.account_id,
         title: "Thanh toán hoàn tất",
-        message: `Bạn đã thanh toán xong bàn ${booking.table_id.table_number}. Tổng tiền: ${booking.total_bill}đ`,
+        message: `Bạn đã thanh toán xong bàn ${booking.table_id.table_number} tại ${clubName5}. Tổng tiền: ${booking.total_bill}đ`,
+        link: `/my-bookings?bookingId=${booking._id}`,
         is_read: false,
       });
     }

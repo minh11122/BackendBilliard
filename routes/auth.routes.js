@@ -37,12 +37,12 @@ router.get("/getprofile", authenticate, authorize("CUSTOMER"),getInforById);
 router.post("/updateprofile", authenticate, authorize("CUSTOMER"),updateProfile);
 router.post("/updatepassword", authenticate, authorize("CUSTOMER"),updatePassword);
 
-router.get("/notifications", authenticate, authorize("CUSTOMER"), getNotifications);
-router.get("/notifications/unread/count", authenticate, authorize("CUSTOMER"), countUnread);
-router.patch("/notifications/:id/read", authenticate, authorize("CUSTOMER"), markAsRead);
-router.patch("/notifications/read-all", authenticate, authorize("CUSTOMER"), markAllAsRead);
-router.delete("/notifications/:id", authenticate, authorize("CUSTOMER"), deleteNotification);
-router.delete("/notifications", authenticate, authorize("CUSTOMER"), deleteAllNotifications);
+router.get("/notifications", authenticate, authorize("CUSTOMER", "OWNER"), getNotifications);
+router.get("/notifications/unread/count", authenticate, authorize("CUSTOMER", "OWNER"), countUnread);
+router.patch("/notifications/:id/read", authenticate, authorize("CUSTOMER", "OWNER"), markAsRead);
+router.patch("/notifications/read-all", authenticate, authorize("CUSTOMER", "OWNER"), markAllAsRead);
+router.delete("/notifications/:id", authenticate, authorize("CUSTOMER", "OWNER"), deleteNotification);
+router.delete("/notifications", authenticate, authorize("CUSTOMER", "OWNER"), deleteAllNotifications);
 
 router.get("/profile/check",authenticate,authorize("CUSTOMER"),checkProfileStatus);
 

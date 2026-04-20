@@ -173,7 +173,7 @@ const rejectClub = async (req, res) => {
 
         const club = await Club.findByIdAndUpdate(
             req.params.id,
-            { status: "Rejected" },
+            { status: "Rejected", reject_reason: reason || "" },
             { new: true }
         );
         if (!club) return res.status(404).json({ success: false, message: "Không tìm thấy CLB" });
@@ -352,6 +352,26 @@ const markNotificationRead = async (req, res) => {
     }
 };
 
+// ==================== CREATE TEST NOTIFICATION ====================
+const createTestNotification = async (req, res) => {
+    try {
+        const account_id = req.user.accountId;
+        if (!account_id) return res.status(401).json({ success: false, message: "Unauthorized" });
+
+        const notif = await Notification.create({
+            account_id,
+            title: "Thong bao test",
+            message: "Quan moi vua dang ky va dang cho ban phe duyet.",
+            is_read: false,
+        });
+
+        res.status(201).json({ success: true, data: notif, message: "Da tao thong bao test" });
+    } catch (error) {
+        console.error("Lỗi createTestNotification:", error);
+        res.status(500).json({ success: false, message: "Lỗi server" });
+    }
+};
+
 // ==================== GET POSTS (with optional status filter) ====================
 const getPosts = async (req, res) => {
     try {
@@ -381,5 +401,6 @@ module.exports = {
     getPosts,
     getNotifications,
     markAllNotificationsRead,
-    markNotificationRead
+    markNotificationRead,
+    createTestNotification
 };

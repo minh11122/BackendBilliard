@@ -1,5 +1,7 @@
 const express = require("express");
 const cors = require("cors");
+const http = require("http");
+const { Server } = require("socket.io");
 require("dotenv").config();
 const connectDB = require("./configs/db.connect");
 const routes = require("./routes/index");
@@ -7,6 +9,22 @@ require("./cron/bookingCron");
 
 
 const app = express();
+const server = http.createServer(app);
+const io = new Server(server, {
+  cors: { origin: "*" },
+});
+
+// Gán io vào global để các nơi khác trong app có thể emit event
+global.io = io;
+
+io.on("connection", (socket) => {
+  socket.on("join", (accountId) => {
+    if (accountId) {
+      socket.join(accountId.toString());
+    }
+  });
+});
+
 app.use(express.json());
 app.use(cors());
 app.use("/api", routes);
@@ -26,7 +44,7 @@ const HOST = process.env.HOSTNAME;
 
 const startServer = async () => {
     await connectDB();
-    app.listen(PORT, () => {
+    server.listen(PORT, () => {
         console.log(`Server is running on http://${HOST}:${PORT}`);
     });
 };

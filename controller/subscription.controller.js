@@ -1,6 +1,63 @@
 const Subscription = require("../models/subscription.model");
 const SubscriptionAccount = require("../models/subcription_account.model");
+const Notification = require("../models/notification.model");
 const paymentService = require("../services/payment.service");
+
+const ALLOWED_MONTHS = [1, 3, 6, 12];
+const EXPIRING_SOON_DAYS = 3;
+
+function getPlanTier(subscription) {
+  const name = String(subscription?.name || "").toLowerCase();
+  if (name.includes("pro")) return 2;
+  if (name.includes("basic")) return 1;
+  return 0;
+}
+
+const notifySubscriptionExpiringSoon = async (subscriptionAccount) => {
+  if (!subscriptionAccount?.expire_date || !subscriptionAccount?.account_id) {
+    return;
+  }
+
+  const expireDate = new Date(subscriptionAccount.expire_date);
+  const now = new Date();
+  const msPerDay = 24 * 60 * 60 * 1000;
+  const daysRemaining = Math.ceil((expireDate.getTime() - now.getTime()) / msPerDay);
+
+  if (daysRemaining < 0 || daysRemaining > EXPIRING_SOON_DAYS) {
+    return;
+  }
+
+  const title = "Goi dich vu sap het han";
+  const expireDateText = expireDate.toLocaleDateString("vi-VN");
+  const planName = subscriptionAccount.subscription_id?.name || "goi dich vu";
+  const message = `Goi ${planName} cua quan se het han vao ${expireDateText}. Vui long gia han som.`;
+
+  const startOfDay = new Date(now);
+  startOfDay.setHours(0, 0, 0, 0);
+
+  const endOfDay = new Date(now);
+  endOfDay.setHours(23, 59, 59, 999);
+
+  const existingNotification = await Notification.findOne({
+    account_id: subscriptionAccount.account_id,
+    title,
+    message,
+    created_at: {
+      $gte: startOfDay,
+      $lte: endOfDay
+    }
+  });
+
+  if (existingNotification) {
+    return;
+  }
+
+  await Notification.create({
+    account_id: subscriptionAccount.account_id,
+    title,
+    message
+  });
+};
 
 //lay danh sach Subscription
 //Duc 6/3/2026
@@ -47,6 +104,10 @@ const getCurrentSubscription = async (req, res) => {
       .populate("subscription_id")
       .sort({ purchase_date: -1 });
 
+    if (current) {
+      await notifySubscriptionExpiringSoon(current);
+    }
+
     return res.status(200).json({
       success: true,
       data: current
@@ -69,7 +130,7 @@ const getCurrentSubscription = async (req, res) => {
 const createSubscriptionPayment = async (req, res) => {
   try {
 
-    const { subscription_id, club_id, returnUrl, cancelUrl } = req.body;
+    const { subscription_id, club_id, returnUrl, cancelUrl, duration_months } = req.body;
 
     const accountId = req.user.accountId;
 
@@ -77,6 +138,14 @@ const createSubscriptionPayment = async (req, res) => {
       return res.status(400).json({
         success: false,
         message: "subscription_id và club_id là bắt buộc"
+      });
+    }
+
+    const months = Number(duration_months || 1);
+    if (!ALLOWED_MONTHS.includes(months)) {
+      return res.status(400).json({
+        success: false,
+        message: "duration_months chỉ chấp nhận: 1, 3, 6, 12"
       });
     }
 
@@ -89,9 +158,24 @@ const createSubscriptionPayment = async (req, res) => {
       });
     }
 
-    const price =
+    const activeSub = await SubscriptionAccount.findOne({
+      club_id,
+      status: { $in: ["active", "Active"] }
+    }).populate("subscription_id");
+
+    const currentTier = getPlanTier(activeSub?.subscription_id);
+    const targetTier = getPlanTier(subscription);
+    if (currentTier === 2 && targetTier === 1) {
+      return res.status(400).json({
+        success: false,
+        message: "Đang sử dụng gói Pro, không thể chuyển xuống Basic"
+      });
+    }
+
+    const unitPrice =
       subscription.price -
       (subscription.price * (subscription.discount_percent || 0)) / 100;
+    const price = Math.max(0, Math.round(unitPrice * months));
 
     const payment = await paymentService.createPayment({
       accountId,
@@ -126,7 +210,7 @@ const createSubscriptionPayment = async (req, res) => {
 const verifySubscriptionPayment = async (req, res) => {
   try {
 
-    const { orderCode, subscription_id, club_id } = req.body;
+    const { orderCode, subscription_id, club_id, duration_months } = req.body;
 
     const accountId = req.user.accountId;
 
@@ -134,6 +218,14 @@ const verifySubscriptionPayment = async (req, res) => {
       return res.status(400).json({
         success: false,
         message: "Thiếu thông tin thanh toán"
+      });
+    }
+
+    const months = Number(duration_months || 1);
+    if (!ALLOWED_MONTHS.includes(months)) {
+      return res.status(400).json({
+        success: false,
+        message: "duration_months chỉ chấp nhận: 1, 3, 6, 12"
       });
     }
 
@@ -148,14 +240,30 @@ const verifySubscriptionPayment = async (req, res) => {
       });
     }
 
+    const activeSub = await SubscriptionAccount.findOne({
+      club_id,
+      status: { $in: ["active", "Active"] }
+    }).populate("subscription_id");
+
+    const currentTier = getPlanTier(activeSub?.subscription_id);
+    const targetTier = getPlanTier(subscription);
+    if (currentTier === 2 && targetTier === 1) {
+      return res.status(400).json({
+        success: false,
+        message: "Đang sử dụng gói Pro, không thể chuyển xuống Basic"
+      });
+    }
+
     const purchaseDate = new Date();
 
     const expireDate = new Date();
-    expireDate.setDate(expireDate.getDate() + (subscription.duration_days || 30));
+    const baseDays = subscription.duration_days || 30;
+    expireDate.setDate(expireDate.getDate() + (baseDays * months));
 
-    const price =
+    const unitPrice =
       subscription.price -
       (subscription.price * (subscription.discount_percent || 0)) / 100;
+    const price = Math.max(0, Math.round(unitPrice * months));
 
     let clubSubscription = await SubscriptionAccount.findOne({
       club_id: club_id

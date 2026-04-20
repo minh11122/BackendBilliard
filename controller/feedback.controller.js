@@ -1,6 +1,28 @@
 const Feedback = require("../models/feedback.model");
 const Booking = require("../models/booking.model");
 const BilliardTable = require("../models/billiard_table.model");
+const Account = require("../models/account.model");
+const Club = require("../models/club.model");
+const Notification = require("../models/notification.model");
+
+const notifyClubStaff = async (club_id, title, message, link = null) => {
+  try {
+    const staffs = await Account.find({ club_id, status: "ACTIVE" }).select("_id").lean();
+    if (staffs.length === 0) return;
+
+    await Notification.insertMany(
+      staffs.map((staff) => ({
+        account_id: staff._id,
+        title,
+        message,
+        link,
+        is_read: false,
+      }))
+    );
+  } catch (error) {
+    console.error("Notify club staff error:", error);
+  }
+};
 
 // Khách hàng tạo đánh giá cho một booking đã hoàn thành
 exports.createFeedback = async (req, res) => {
@@ -62,6 +84,14 @@ exports.createFeedback = async (req, res) => {
       rating: Number(rating),
       comment: comment?.trim() || ""
     });
+
+    const club = await Club.findById(club_id).select("name").lean();
+    await notifyClubStaff(
+      club_id,
+      "Có đánh giá mới",
+      `Khách hàng vừa gửi đánh giá mới cho CLB ${club?.name || ""}.`,
+      "/staff/reviews"
+    );
 
     res.status(201).json({
       success: true,
@@ -197,6 +227,26 @@ exports.replyFeedback = async (req, res) => {
     feedback.reply_content = reply_content.trim();
     feedback.replied_at = new Date();
     await feedback.save();
+
+    const club = await Club.findById(activeClubId).select("name").lean();
+    const booking = await Booking.findById(feedback.booking_id).select("play_date start_time").lean();
+
+    let playDateStr = "";
+    if (booking && booking.play_date && booking.start_time) {
+      const d = new Date(booking.play_date);
+      const formattedDate = `${d.getDate().toString().padStart(2, "0")}/${(d.getMonth() + 1).toString().padStart(2, "0")}/${d.getFullYear()}`;
+      playDateStr = ` (ca chơi lúc ${booking.start_time} ngày ${formattedDate})`;
+    }
+
+    const clubName = club?.name ? `${club.name}` : "Câu lạc bộ";
+
+    await Notification.create({
+      account_id: feedback.account_id,
+      title: "Quán đã phản hồi đánh giá",
+      message: `Quán ${clubName} vừa phản hồi đánh giá của bạn${playDateStr}.`,
+      link: `/my-bookings?bookingId=${feedback.booking_id}`,
+      is_read: false,
+    });
 
     return res.status(200).json({
       success: true,
