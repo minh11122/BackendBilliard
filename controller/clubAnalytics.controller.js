@@ -92,8 +92,6 @@ const getClubAnalytics = async (req, res) => {
       }
     });
 
-    const revenueTimeline = Object.values(revenueByDateMap).sort((a, b) => a.date.localeCompare(b.date));
-
     // --- 2. TABLE PERFORMANCE (Bàn đắt khách) ---
     // Analyze bookings within date range
     const bookingsInRange = await Booking.find({
@@ -106,6 +104,7 @@ const getClubAnalytics = async (req, res) => {
     const tableTypeStatsMap = {};
     let totalPlayMinutes = 0;
     let totalBookingsCount = bookingsInRange.length;
+    let validPlayTimeCount = 0;
 
     bookingsInRange.forEach(b => {
        if (!b.table_id) return;
@@ -131,10 +130,16 @@ const getClubAnalytics = async (req, res) => {
            return h * 60 + m;
          };
          let mins = toMins(b.end_time) - toMins(b.start_time);
-         if (mins < 0) mins += 24 * 60; // Cross midnight
-         tableStatsMap[tId].playMinutes += mins;
-         tableTypeStatsMap[tType].playMinutes += mins;
-         totalPlayMinutes += mins;
+         // Prevent negative duration if crossing midnight, adjust by 24h
+         if (mins < 0) mins += 24 * 60;
+         
+         // Only add if duration is > 0
+         if (mins > 0) {
+            tableStatsMap[tId].playMinutes += mins;
+            tableTypeStatsMap[tType].playMinutes += mins;
+            totalPlayMinutes += mins;
+            validPlayTimeCount++;
+         }
        }
     });
 
@@ -226,14 +231,18 @@ const getClubAnalytics = async (req, res) => {
     let totalTournaments = tournaments.length;
     let totalTournamentRevenue = 0;
     let totalTournamentPlayers = 0;
-    
     tournaments.forEach(t => {
        // Only count revenue for some statuses or maybe all, but let's just use what's generated.
        const fee = t.fee || 0;
        const players = t.registered_player || 0;
-       totalTournamentRevenue += (fee * players);
+       const trv = fee * players;
+       totalTournamentRevenue += trv;
        totalTournamentPlayers += players;
     });
+
+    const revenueTimeline = Object.values(revenueByDateMap).sort((a, b) => a.date.localeCompare(b.date));
+    const finalTotalRevenue = totalTableRevenue + totalServiceRevenue;
+    const totalOrdersCount = invoices.length;
 
     const tournamentStats = {
        totalTournaments,
@@ -254,10 +263,10 @@ const getClubAnalytics = async (req, res) => {
       success: true,
       data: {
         kpi: {
-          totalRevenue: totalTableRevenue + totalServiceRevenue + totalTournamentRevenue,
+          totalRevenue: finalTotalRevenue,
           totalBookings: totalBookingsCount,
-          averageOrderValue: invoices.length > 0 ? Math.round((totalTableRevenue + totalServiceRevenue) / invoices.length) : 0,
-          averagePlayMinutes: totalBookingsCount > 0 ? Math.round(totalPlayMinutes / totalBookingsCount) : 0,
+          averageOrderValue: totalOrdersCount > 0 ? Math.round(finalTotalRevenue / totalOrdersCount) : 0,
+          averagePlayMinutes: validPlayTimeCount > 0 ? Math.round(totalPlayMinutes / validPlayTimeCount) : 0,
           unpaidCount: unpaidInvoices
         },
         revenue: {
