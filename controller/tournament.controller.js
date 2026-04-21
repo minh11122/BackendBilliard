@@ -2429,7 +2429,7 @@ const createTournamentPayOSPayment = async (req, res) => {
     const expiredAt = Math.floor(
       (Date.now() + PAYOS_EXPIRE_MINUTES * 60 * 1000) / 1000,
     );
-    const description = `Phi tham gia ${String(tournament.name || "giai dau").slice(0, 20)}`;
+    const description = `Phi tham gia ${String(tournament.name || "giai dau")}`.slice(0, 25);
     const returnUrl = `http://localhost:5173/tournament/${tournament._id}/payment`;
     const cancelUrl = `http://localhost:5173/tournament/${tournament._id}/payment`;
 
