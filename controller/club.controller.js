@@ -308,8 +308,15 @@ const getClubsByAccount = async (req, res) => {
 
     const result = await Promise.all(
       clubs.map(async (club) => {
-        const images = await Image.find({ club_id: club._id, image_type: "Banner" }).lean();
-        club.avatar = images.length > 0 ? images[0].image_url : null;
+        const clubImages = await Image.find({ 
+          club_id: club._id, 
+          image_type: { $in: ["Avatar", "Banner"] } 
+        }).lean();
+        
+        const mainImage = clubImages.find(img => img.image_type === "Avatar") || 
+                          clubImages.find(img => img.image_type === "Banner");
+                          
+        club.avatar = mainImage ? mainImage.image_url : null;
 
         // Tự động chữa lỗi đồng bộ plan_type nếu quán đã có gói khác free đang Active
         let realPlanType = "free";

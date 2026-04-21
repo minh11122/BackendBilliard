@@ -4,7 +4,7 @@ const billiardTableSchema = new mongoose.Schema(
     {
         club_id: { type: mongoose.Schema.Types.ObjectId, ref: "Club", required: true },
         table_type_id: { type: mongoose.Schema.Types.ObjectId, ref: "TableType", required: true },
-        table_number: { type: String, required: true, unique: true },
+        table_number: { type: String, required: true },
         images: { type: [String], default: [] },
         description: { type: String },
         price: { type: Number, required: true },
