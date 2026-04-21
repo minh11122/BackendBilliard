@@ -1904,6 +1904,31 @@ const extendBooking = async (req, res) => {
     const [h, m] = booking.end_time.split(":").map(Number);
     let totalMinutes = h * 60 + m + parseInt(minutes);
 
+    const checkClub = await Club.findById(clubId).select("opening_time closing_time").lean();
+    if (checkClub && checkClub.closing_time) {
+      const is24h = checkClub.opening_time === "00:00" && checkClub.closing_time === "00:00";
+      if (!is24h) {
+        let currentEndMin = h * 60 + m;
+        let cParts = checkClub.closing_time.split(":");
+        let closeMin = parseInt(cParts[0]) * 60 + parseInt(cParts[1]);
+        let oParts = (checkClub.opening_time || "08:00").split(":");
+        let openMin = parseInt(oParts[0]) * 60 + parseInt(oParts[1]);
+        
+        let durationSinceOpen = (currentEndMin - openMin + 24 * 60) % (24 * 60);
+        let newDurationSinceOpen = durationSinceOpen + parseInt(minutes);
+        let validDuration = (closeMin - openMin + 24 * 60) % (24 * 60);
+        
+        if (validDuration === 0) validDuration = 24 * 60;
+        
+        if (newDurationSinceOpen > validDuration) {
+          return res.status(400).json({
+            success: false,
+            message: `Không thể gia hạn. Giờ đóng cửa của quán là ${checkClub.closing_time}`
+          });
+        }
+      }
+    }
+
     // Format lại HH:mm (xử lý qua ngày nếu cần, nhưng booking model lưu String HH:mm)
     const newH = Math.floor(totalMinutes / 60) % 24;
     const newM = totalMinutes % 60;

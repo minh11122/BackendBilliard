@@ -666,7 +666,7 @@ const getClubStatistics = async (req, res) => {
 
     // 4. Tournament Stats (Ongoing or in requested month)
     const tourQuery = { club_id: club_id };
-    if (dateFilter.$gte) tourQuery.start_time = dateFilter; // Simplify logic just check if starts in that month.
+    if (dateFilter.$gte) tourQuery.play_date = dateFilter; // Simplify logic just check if starts in that month.
     const tournaments = await Tournament.find(tourQuery).lean();
 
     res.status(200).json({
@@ -686,7 +686,7 @@ const getClubStatistics = async (req, res) => {
           tournaments: tournaments.map(t => ({
              id: t._id,
              name: t.name,
-             start_time: t.start_time,
+             start_time: t.play_date || t.start_time || t.created_at,
              status: t.status,
              fee: t.fee,
              max_players: t.max_players
