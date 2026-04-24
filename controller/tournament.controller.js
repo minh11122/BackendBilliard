@@ -70,7 +70,7 @@ const ensureTournamentApproved = async (tournamentId, accountId, feeAmount) => {
     }).select("_id").lean();
 
     const clubInfo = await Club.findById(tournament.club_id).select("account_id").lean();
-    
+
     const targetIds = new Set(clubStaffs.map(staff => staff._id.toString()));
     if (clubInfo?.account_id) {
       targetIds.add(clubInfo.account_id.toString());
@@ -283,9 +283,9 @@ const canSlotReceiveParticipant = async (
   for (const source of sources) {
     const winnerFeedsTarget =
       String(source.winner_next_match_id || source.next_match_id || "") ===
-        String(targetMatchId) &&
+      String(targetMatchId) &&
       Number(source.winner_next_slot || source.next_slot || null) ===
-        Number(slot);
+      Number(slot);
 
     if (winnerFeedsTarget) {
       if (
@@ -836,7 +836,7 @@ const generateKnockoutBracket = async (tournament) => {
 const generateDoubleEliminationBracket = async (tournament) => {
   const approvedPlayers = await fetchApprovedPlayers(tournament._id);
   if (approvedPlayers.length < 2) {
-    throw new Error("Can it nhat 2 nguoi choi da duyet de tao nhanh dau");
+    throw new Error("Cần ít nhất 2 người chơi để tạo nhánh đấu");
   }
 
   await clearBracket(tournament._id);
@@ -2429,7 +2429,7 @@ const createTournamentPayOSPayment = async (req, res) => {
     const expiredAt = Math.floor(
       (Date.now() + PAYOS_EXPIRE_MINUTES * 60 * 1000) / 1000,
     );
-    const description = `Phi tham gia ${String(tournament.name || "giai dau").slice(0, 20)}`;
+    const description = `Phi tham gia ${String(tournament.name || "giai dau")}`.slice(0, 25);
     const returnUrl = `http://localhost:5173/tournament/${tournament._id}/payment`;
     const cancelUrl = `http://localhost:5173/tournament/${tournament._id}/payment`;
 

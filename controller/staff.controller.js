@@ -15,7 +15,7 @@ const getDashboard = async (req, res) => {
     try {
         let startOfDay, endOfDay;
         const { dateType, specificDate } = req.query;
-        
+
         if (dateType === "custom" && specificDate) {
             startOfDay = new Date(specificDate);
             startOfDay.setHours(0, 0, 0, 0);
@@ -146,8 +146,13 @@ const approveClub = async (req, res) => {
         const account = await Account.findById(club.account_id);
 
         if (account) {
-            // Nâng cấp role người dùng sang OWNER với ID cứng (từ Customer "65d1a1111111111111111112")
-            const ownerRoleId = "65d1a1111111111111111111";
+            // Nâng cấp role người dùng sang OWNER (tìm dynamic từ database thay vì fix cứng ID)
+            const ownerRole = await Role.findOne({ name: "OWNER" });
+            if (!ownerRole) {
+                console.error("Không tìm thấy Role OWNER trong database");
+                return res.status(500).json({ success: false, message: "Lỗi cấu hình phân quyền (thiếu role OWNER)" });
+            }
+            const ownerRoleId = ownerRole._id;
             await Account.findByIdAndUpdate(account._id, { role_id: ownerRoleId });
             console.log(`Đã chuyển role_id của tài khoản ${account.email} sang ${ownerRoleId} (OWNER)`);
 
@@ -304,7 +309,7 @@ const getNotifications = async (req, res) => {
         const notifications = await Notification.find({ account_id })
             .sort({ created_at: -1 })
             .lean();
-            
+
         res.status(200).json({ success: true, data: notifications });
     } catch (error) {
         console.error("Lỗi getNotifications:", error);
@@ -322,7 +327,7 @@ const markAllNotificationsRead = async (req, res) => {
             { account_id, is_read: false },
             { $set: { is_read: true } }
         );
-            
+
         res.status(200).json({ success: true, message: "Đã đánh dấu tất cả là đã đọc" });
     } catch (error) {
         console.error("Lỗi markAllNotificationsRead:", error);
@@ -342,9 +347,9 @@ const markNotificationRead = async (req, res) => {
             { $set: { is_read: true } },
             { new: true }
         );
-        
+
         if (!notif) return res.status(404).json({ success: false, message: "Không tìm thấy thông báo" });
-            
+
         res.status(200).json({ success: true, data: notif });
     } catch (error) {
         console.error("Lỗi markNotificationRead:", error);

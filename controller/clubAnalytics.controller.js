@@ -100,6 +100,10 @@ const getClubAnalytics = async (req, res) => {
       status: { $in: ["Completed", "Playing"] }
     }).populate('table_id').lean();
 
+    const completedBookingsCount = bookingsInRange.filter(
+      (booking) => booking.status === "Completed"
+    ).length;
+
     const tableStatsMap = {};
     const tableTypeStatsMap = {};
     let totalPlayMinutes = 0;
@@ -263,15 +267,17 @@ const getClubAnalytics = async (req, res) => {
       success: true,
       data: {
         kpi: {
-          totalRevenue: finalTotalRevenue,
+          totalRevenue: totalTableRevenue + totalServiceRevenue,
           totalBookings: totalBookingsCount,
-          averageOrderValue: totalOrdersCount > 0 ? Math.round(finalTotalRevenue / totalOrdersCount) : 0,
-          averagePlayMinutes: validPlayTimeCount > 0 ? Math.round(totalPlayMinutes / validPlayTimeCount) : 0,
+          averageOrderValue: completedBookingsCount > 0
+            ? Math.round((totalTableRevenue + totalServiceRevenue) / completedBookingsCount)
+            : 0,
+          averagePlayMinutes: totalBookingsCount > 0 ? Math.round(totalPlayMinutes / totalBookingsCount) : 0,
           unpaidCount: unpaidInvoices
         },
         revenue: {
           timeline: revenueTimeline,
-          breakdown: { table: totalTableRevenue, service: totalServiceRevenue, tournament: totalTournamentRevenue },
+          breakdown: { table: totalTableRevenue, service: totalServiceRevenue },
           paymentMix: paymentMixMap
         },
         tables: {
