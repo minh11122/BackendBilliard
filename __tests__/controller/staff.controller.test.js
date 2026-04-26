@@ -81,13 +81,19 @@ describe("Staff System Controller - Unit Tests", () => {
       const res = createRes();
 
       const clubMock = { _id: "c1", account_id: "u1", status: "Pending" };
+      const ownerRoleMock = { _id: "role_owner_id", name: "OWNER" };
+
+      const Role = require("../../models/role.model");
+      Role.findOne.mockResolvedValue(ownerRoleMock);
+
       Club.findByIdAndUpdate.mockResolvedValue(clubMock);
       Account.findById.mockResolvedValue({ _id: "u1", email: "owner@gmail.com" });
       Account.findByIdAndUpdate.mockResolvedValue({});
 
       await staffController.approveClub(req, res);
 
-      expect(Account.findByIdAndUpdate).toHaveBeenCalledWith("u1", { role_id: "65d1a1111111111111111111" });
+      expect(Role.findOne).toHaveBeenCalledWith({ name: "OWNER" });
+      expect(Account.findByIdAndUpdate).toHaveBeenCalledWith("u1", { role_id: "role_owner_id" });
       expect(mailService.sendClubApprovalEmail).toHaveBeenCalledWith("owner@gmail.com");
       expect(res.status).toHaveBeenCalledWith(200);
     });
