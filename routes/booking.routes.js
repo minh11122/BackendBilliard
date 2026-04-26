@@ -84,14 +84,6 @@ router.post(
   bookingController.createBookingPayOSPayment,
 );
 
-// Chủ quán / Nhân viên xác nhận thanh toán (chuyển Pending -> Booked)
-router.post(
-  "/:id/confirm-payment",
-  authenticate,
-  authorizeRole("OWNER", "STAFF_CLUB"),
-  bookingController.confirmPayment,
-);
-
 // PayOS webhook (no auth, signature verified in controller)
 router.post("/payos/webhook", bookingController.payosWebhook);
 
