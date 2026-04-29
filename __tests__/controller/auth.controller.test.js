@@ -422,10 +422,12 @@ describe("Auth Controller", () => {
       const req = { body: { tokenId: "valid-google-token" } };
       const res = createRes();
       __mockVerifyIdToken.mockResolvedValue({ getPayload: () => ({ email: "google.fan@gmail.com" }) });
-      Account.findOne.mockResolvedValue({ 
-        _id: "acc-google-001", 
-        status: "ACTIVE", 
-        role_id: "role-customer-id" 
+      Account.findOne.mockReturnValue({
+        populate: jest.fn().mockResolvedValue({ 
+          _id: "acc-google-001", 
+          status: "ACTIVE", 
+          role_id: { _id: "role-customer-id", name: "CUSTOMER" }
+        })
       });
       jwt.sign.mockReturnValue("jwt-token-google-user");
       await authController.loginGoogle(req, res);
@@ -436,7 +438,9 @@ describe("Auth Controller", () => {
       const req = { body: { tokenId: "unknown-google-token" } };
       const res = createRes();
       __mockVerifyIdToken.mockResolvedValue({ getPayload: () => ({ email: "stranger@gmail.com" }) });
-      Account.findOne.mockResolvedValue(null);
+      Account.findOne.mockReturnValue({
+        populate: jest.fn().mockResolvedValue(null)
+      });
       await authController.loginGoogle(req, res);
       expect(res.status).toHaveBeenCalledWith(404);
     });
@@ -445,7 +449,9 @@ describe("Auth Controller", () => {
       const req = { body: { tokenId: "banned-google-token" } };
       const res = createRes();
       __mockVerifyIdToken.mockResolvedValue({ getPayload: () => ({ email: "banned@gmail.com" }) });
-      Account.findOne.mockResolvedValue({ status: "BANNED" });
+      Account.findOne.mockReturnValue({
+        populate: jest.fn().mockResolvedValue({ status: "BANNED" })
+      });
       await authController.loginGoogle(req, res);
       expect(res.status).toHaveBeenCalledWith(403);
     });

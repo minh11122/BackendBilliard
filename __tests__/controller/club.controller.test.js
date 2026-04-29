@@ -26,6 +26,7 @@ jest.mock("../../models/notification.model");
 jest.mock("../../models/account.model");
 jest.mock("../../models/subcription_account.model");
 jest.mock("../../utils/geocoding");
+jest.mock("../../models/role.model");
 
 const createRes = () => {
   const res = {};
@@ -40,10 +41,12 @@ const mockQuery = (val) => ({
   sort: jest.fn().mockReturnThis(),
   skip: jest.fn().mockReturnThis(),
   limit: jest.fn().mockReturnThis(),
-  lean: jest.fn().mockReturnThis(),
+  lean: jest.fn().mockResolvedValue(val),
   then: jest.fn((resolve) => Promise.resolve(val).then(resolve)),
   catch: jest.fn((reject) => Promise.resolve(val).catch(reject)),
 });
+
+const Role = require("../../models/role.model");
 
 describe("Club Controller - Unit Tests", () => {
   beforeEach(() => {
@@ -52,6 +55,10 @@ describe("Club Controller - Unit Tests", () => {
     jest.spyOn(console, "warn").mockImplementation(() => {});
     Province.findOne.mockReturnValue(mockQuery({ name: "Hà Nội", code: "01" }));
     District.findOne.mockReturnValue(mockQuery({ name: "Cầu Giấy", code: "01" }));
+    // Prevent timeout on registerClub's inline Role require + Account.find
+    Role.findOne.mockReturnValue({ lean: jest.fn().mockResolvedValue(null) });
+    Account.find.mockReturnValue({ lean: jest.fn().mockResolvedValue([]) });
+    Notification.insertMany = jest.fn().mockResolvedValue([]);
   });
 
   afterEach(() => {
@@ -278,7 +285,9 @@ describe("Club Controller - Unit Tests", () => {
       geocodeAddress.mockResolvedValue({ lat: 21.0, lng: 105.8, district: "Đống Đa" });
       Club.create.mockResolvedValue({ _id: "c2", name: "NewClub" });
       Club.findById.mockReturnValue(mockQuery({ _id: "c2", name: "NewClub" }));
-      Account.find.mockReturnValue(mockQuery([{ _id: "staff1" }])); // staff exists
+      // Role found → Account.find returns staff
+      Role.findOne.mockReturnValue({ lean: jest.fn().mockResolvedValue({ _id: "role1", name: "STAFF_SYSTEM" }) });
+      Account.find.mockReturnValue({ lean: jest.fn().mockResolvedValue([{ _id: "staff1" }]) });
       Image.insertMany = jest.fn().mockResolvedValue([]);
       Notification.insertMany = jest.fn().mockResolvedValue([]);
 

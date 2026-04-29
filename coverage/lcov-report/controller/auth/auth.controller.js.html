@@ -23,16 +23,16 @@
         <div class='clearfix'>
             
             <div class='fl pad1y space-right2'>
-                <span class="strong">89.97% </span>
+                <span class="strong">92.2% </span>
                 <span class="quiet">Statements</span>
-                <span class='fraction'>646/718</span>
+                <span class='fraction'>662/718</span>
             </div>
         
             
             <div class='fl pad1y space-right2'>
-                <span class="strong">76.78% </span>
+                <span class="strong">76.72% </span>
                 <span class="quiet">Branches</span>
-                <span class='fraction'>86/112</span>
+                <span class='fraction'>89/116</span>
             </div>
         
             
@@ -44,9 +44,9 @@
         
             
             <div class='fl pad1y space-right2'>
-                <span class="strong">89.97% </span>
+                <span class="strong">92.2% </span>
                 <span class="quiet">Lines</span>
-                <span class='fraction'>646/718</span>
+                <span class='fraction'>662/718</span>
             </div>
         
             
@@ -1077,24 +1077,24 @@
 <span class="cline-any cline-yes">3x</span>
 <span class="cline-any cline-yes">3x</span>
 <span class="cline-any cline-yes">3x</span>
-<span class="cline-any cline-no">&nbsp;</span>
-<span class="cline-any cline-no">&nbsp;</span>
-<span class="cline-any cline-no">&nbsp;</span>
-<span class="cline-any cline-no">&nbsp;</span>
-<span class="cline-any cline-no">&nbsp;</span>
-<span class="cline-any cline-no">&nbsp;</span>
-<span class="cline-any cline-no">&nbsp;</span>
-<span class="cline-any cline-no">&nbsp;</span>
-<span class="cline-any cline-no">&nbsp;</span>
-<span class="cline-any cline-no">&nbsp;</span>
-<span class="cline-any cline-no">&nbsp;</span>
-<span class="cline-any cline-no">&nbsp;</span>
-<span class="cline-any cline-no">&nbsp;</span>
-<span class="cline-any cline-no">&nbsp;</span>
-<span class="cline-any cline-no">&nbsp;</span>
-<span class="cline-any cline-no">&nbsp;</span>
-<span class="cline-any cline-no">&nbsp;</span>
-<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-yes">3x</span>
+<span class="cline-any cline-yes">3x</span>
+<span class="cline-any cline-yes">1x</span>
+<span class="cline-any cline-yes">1x</span>
+<span class="cline-any cline-yes">1x</span>
+<span class="cline-any cline-yes">1x</span>
+<span class="cline-any cline-yes">2x</span>
+<span class="cline-any cline-yes">3x</span>
+<span class="cline-any cline-yes">1x</span>
+<span class="cline-any cline-yes">1x</span>
+<span class="cline-any cline-yes">1x</span>
+<span class="cline-any cline-yes">1x</span>
+<span class="cline-any cline-yes">1x</span>
+<span class="cline-any cline-yes">1x</span>
+<span class="cline-any cline-yes">1x</span>
+<span class="cline-any cline-yes">1x</span>
+<span class="cline-any cline-yes">1x</span>
+<span class="cline-any cline-yes">1x</span>
 <span class="cline-any cline-yes">3x</span>
 <span class="cline-any cline-yes">3x</span>
 <span class="cline-any cline-yes">3x</span>
@@ -1108,8 +1108,8 @@
 <span class="cline-any cline-yes">3x</span>
 <span class="cline-any cline-yes">3x</span>
 <span class="cline-any cline-yes">3x</span>
-<span class="cline-any cline-yes">3x</span>
-<span class="cline-any cline-yes">3x</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
 <span class="cline-any cline-yes">3x</span>
 <span class="cline-any cline-yes">1x</span>
 <span class="cline-any cline-yes">1x</span>
@@ -1794,26 +1794,26 @@ const loginGoogle = async (req, res) =&gt; {
     const { email } = payload;
 &nbsp;
     let account = await Account.findOne({ email })
-      .populate("role_id", "name");<span class="branch-0 cbranch-no" title="branch not covered" > // ✅ THÊM</span>
-<span class="cstat-no" title="statement not covered" ></span>
-<span class="cstat-no" title="statement not covered" >    if (!account) {</span>
-<span class="cstat-no" title="statement not covered" >      return res</span>
-<span class="cstat-no" title="statement not covered" >        .status(404)</span>
-<span class="cstat-no" title="statement not covered" >        .json({ message: "Tài khoản Google chưa được đăng ký" });</span>
-<span class="cstat-no" title="statement not covered" >    }</span>
-<span class="cstat-no" title="statement not covered" ></span>
-<span class="cstat-no" title="statement not covered" >    if (account.status !== "ACTIVE") {</span>
-<span class="cstat-no" title="statement not covered" >      return res.status(403).json({ message: "Tài khoản chưa được kích hoạt" });</span>
-<span class="cstat-no" title="statement not covered" >    }</span>
-<span class="cstat-no" title="statement not covered" ></span>
-<span class="cstat-no" title="statement not covered" >    const roleName = account.role_id.name; // ✅ THÊM</span>
-<span class="cstat-no" title="statement not covered" ></span>
-<span class="cstat-no" title="statement not covered" >    const token = jwt.sign(</span>
-<span class="cstat-no" title="statement not covered" >      {</span>
-<span class="cstat-no" title="statement not covered" >        accountId: account._id,</span>
-<span class="cstat-no" title="statement not covered" >        roleId: account.role_id._id,</span>
-<span class="cstat-no" title="statement not covered" >        role: roleName,                 // ✅ THÊM</span>
-        ...(account.club_id &amp;&amp; { club_id: account.club_id }),
+      .populate("role_id", "name"); // ✅ THÊM
+&nbsp;
+    if (!account) {
+      return res
+        .status(404)
+        .json({ message: "Tài khoản Google chưa được đăng ký" });
+    }
+&nbsp;
+    if (account.status !== "ACTIVE") {
+      return res.status(403).json({ message: "Tài khoản chưa được kích hoạt" });
+    }
+&nbsp;
+    const roleName = account.role_id.name; // ✅ THÊM
+&nbsp;
+    const token = jwt.sign(
+      {
+        accountId: account._id,
+        roleId: account.role_id._id,
+        role: roleName,                 // ✅ THÊM
+        ...(account.club_id<span class="branch-0 cbranch-no" title="branch not covered" > &amp;&amp; { club_id: account.club_id })</span>,
       },
       process.env.JWT_SECRET,
       { expiresIn: "7d" },
@@ -1825,9 +1825,9 @@ const loginGoogle = async (req, res) =&gt; {
       role: roleName,                  // ✅ QUAN TRỌNG
       fullname: account.fullname,      // (nên thêm luôn)
     });
-  } catch (error) {
-    res.status(500).json({ message: error.message });
-  }
+  } <span class="branch-0 cbranch-no" title="branch not covered" >catch (error) {</span>
+<span class="cstat-no" title="statement not covered" >    res.status(500).json({ message: error.message });</span>
+<span class="cstat-no" title="statement not covered" >  }</span>
 };
 &nbsp;
 const getRoleNameById = async (req, res) =&gt; {
@@ -2224,7 +2224,7 @@ module.exports = {
             <div class='footer quiet pad2 space-top1 center small'>
                 Code coverage generated by
                 <a href="https://istanbul.js.org/" target="_blank" rel="noopener noreferrer">istanbul</a>
-                at 2026-04-24T14:42:53.490Z
+                at 2026-04-25T19:34:35.105Z
             </div>
         <script src="../../prettify.js"></script>
         <script>

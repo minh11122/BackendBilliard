@@ -2,10 +2,16 @@ const feedbackController = require("../../controller/feedback.controller");
 const Feedback = require("../../models/feedback.model");
 const Booking = require("../../models/booking.model");
 const BilliardTable = require("../../models/billiard_table.model");
+const Club = require("../../models/club.model");
+const Account = require("../../models/account.model");
+const Notification = require("../../models/notification.model");
 
 jest.mock("../../models/feedback.model");
 jest.mock("../../models/booking.model");
 jest.mock("../../models/billiard_table.model");
+jest.mock("../../models/club.model");
+jest.mock("../../models/account.model");
+jest.mock("../../models/notification.model");
 
 const createRes = () => {
     const res = {};
@@ -31,12 +37,15 @@ describe("Feedback Controller - Unit Tests", () => {
                 _id: "b1",
                 account_id: "u1",
                 status: "Completed",
-                table_id: { _id: "t1", club_id: "c1" }, // Giả lập đã có club_id để tránh vào nhánh BilliardTable
-                populate: jest.fn().mockReturnThis()
+                table_id: { _id: "t1", club_id: "c1" },
+                populate: jest.fn().mockResolvedValue(undefined)
             };
+            // After populate(), booking.table_id.club_id is already set above
             Booking.findById.mockResolvedValue(mockBooking);
             Feedback.findOne.mockResolvedValue(null);
             Feedback.create.mockResolvedValue({ _id: "f1", ...req.body, club_id: "c1" });
+            Club.findById.mockReturnValue({ select: jest.fn().mockReturnValue({ lean: jest.fn().mockResolvedValue({ name: "CLB Test" }) }) });
+            Account.find.mockReturnValue({ select: jest.fn().mockReturnValue({ lean: jest.fn().mockResolvedValue([]) }) });
 
             await feedbackController.createFeedback(req, res);
 
@@ -109,9 +118,14 @@ describe("Feedback Controller - Unit Tests", () => {
             const mockFeedback = {
                 _id: "f1",
                 club_id: "c1",
+                account_id: "u1",
+                booking_id: "b1",
                 save: jest.fn().mockResolvedValue(true)
             };
             Feedback.findById.mockResolvedValue(mockFeedback);
+            Club.findById.mockReturnValue({ select: jest.fn().mockReturnValue({ lean: jest.fn().mockResolvedValue({ name: "CLB Test" }) }) });
+            Booking.findById.mockReturnValue({ select: jest.fn().mockReturnValue({ lean: jest.fn().mockResolvedValue(null) }) });
+            Notification.create.mockResolvedValue({});
 
             await feedbackController.replyFeedback(req, res);
 

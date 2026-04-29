@@ -7,9 +7,15 @@
 const postController = require("../../controller/post.controller");
 const Post = require("../../models/post.model");
 const Club = require("../../models/club.model");
+const Account = require("../../models/account.model");
+const Role = require("../../models/role.model");
+const Notification = require("../../models/notification.model");
 
 jest.mock("../../models/post.model");
 jest.mock("../../models/club.model");
+jest.mock("../../models/account.model");
+jest.mock("../../models/role.model");
+jest.mock("../../models/notification.model");
 
 const makeRes = () => {
     const res = {};
@@ -37,6 +43,10 @@ describe("Post Controller - Branch Coverage Suite", () => {
 
     beforeEach(() => {
         jest.clearAllMocks();
+        // Default mocks for Role/Account/Notification called after post.save()
+        Role.findOne.mockReturnValue({ lean: jest.fn().mockResolvedValue(null) });
+        Account.find.mockReturnValue({ lean: jest.fn().mockResolvedValue([]) });
+        Notification.insertMany = jest.fn().mockResolvedValue([]);
     });
 
     // ══════════════════════════════════════════════════════════════

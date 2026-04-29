@@ -23,16 +23,16 @@
         <div class='clearfix'>
             
             <div class='fl pad1y space-right2'>
-                <span class="strong">86.26% </span>
+                <span class="strong">88.8% </span>
                 <span class="quiet">Statements</span>
-                <span class='fraction'>647/750</span>
+                <span class='fraction'>666/750</span>
             </div>
         
             
             <div class='fl pad1y space-right2'>
-                <span class="strong">67.25% </span>
+                <span class="strong">69.14% </span>
                 <span class="quiet">Branches</span>
-                <span class='fraction'>115/171</span>
+                <span class='fraction'>121/175</span>
             </div>
         
             
@@ -44,9 +44,9 @@
         
             
             <div class='fl pad1y space-right2'>
-                <span class="strong">86.26% </span>
+                <span class="strong">88.8% </span>
                 <span class="quiet">Lines</span>
-                <span class='fraction'>647/750</span>
+                <span class='fraction'>666/750</span>
             </div>
         
             
@@ -1278,31 +1278,31 @@
 <span class="cline-any cline-yes">4x</span>
 <span class="cline-any cline-yes">4x</span>
 <span class="cline-any cline-yes">4x</span>
-<span class="cline-any cline-no">&nbsp;</span>
-<span class="cline-any cline-no">&nbsp;</span>
-<span class="cline-any cline-no">&nbsp;</span>
-<span class="cline-any cline-no">&nbsp;</span>
-<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-yes">4x</span>
+<span class="cline-any cline-yes">1x</span>
+<span class="cline-any cline-yes">1x</span>
+<span class="cline-any cline-yes">1x</span>
+<span class="cline-any cline-yes">1x</span>
 <span class="cline-any cline-yes">8x</span>
 <span class="cline-any cline-yes">8x</span>
-<span class="cline-any cline-no">&nbsp;</span>
-<span class="cline-any cline-no">&nbsp;</span>
-<span class="cline-any cline-no">&nbsp;</span>
-<span class="cline-any cline-no">&nbsp;</span>
-<span class="cline-any cline-no">&nbsp;</span>
-<span class="cline-any cline-no">&nbsp;</span>
-<span class="cline-any cline-no">&nbsp;</span>
-<span class="cline-any cline-no">&nbsp;</span>
-<span class="cline-any cline-no">&nbsp;</span>
-<span class="cline-any cline-no">&nbsp;</span>
-<span class="cline-any cline-no">&nbsp;</span>
-<span class="cline-any cline-no">&nbsp;</span>
-<span class="cline-any cline-no">&nbsp;</span>
-<span class="cline-any cline-no">&nbsp;</span>
-<span class="cline-any cline-yes">8x</span>
+<span class="cline-any cline-yes">1x</span>
+<span class="cline-any cline-yes">1x</span>
+<span class="cline-any cline-yes">1x</span>
+<span class="cline-any cline-yes">1x</span>
+<span class="cline-any cline-yes">1x</span>
+<span class="cline-any cline-yes">1x</span>
+<span class="cline-any cline-yes">1x</span>
+<span class="cline-any cline-yes">1x</span>
 <span class="cline-any cline-yes">4x</span>
 <span class="cline-any cline-yes">4x</span>
 <span class="cline-any cline-yes">4x</span>
+<span class="cline-any cline-yes">4x</span>
+<span class="cline-any cline-yes">4x</span>
+<span class="cline-any cline-yes">4x</span>
+<span class="cline-any cline-yes">8x</span>
+<span class="cline-any cline-yes">1x</span>
+<span class="cline-any cline-yes">1x</span>
+<span class="cline-any cline-yes">1x</span>
 <span class="cline-any cline-yes">8x</span>
 <span class="cline-any cline-yes">1x</span>
 <span class="cline-any cline-yes">1x</span>
@@ -2027,28 +2027,28 @@ const registerClub = async (req, res) =&gt; {
 &nbsp;
     // Create notifications for STAFF_SYSTEM
     const Role = require("../models/role.model");
-    const staffSystemRole = await Role.findOne({ name: "STAFF_SYSTEM" }).lean()<span class="branch-0 cbranch-no" title="branch not covered" >;</span>
-<span class="cstat-no" title="statement not covered" >    const staffAccounts = staffSystemRole</span>
-<span class="cstat-no" title="statement not covered" >      ? await Account.find({</span>
-<span class="cstat-no" title="statement not covered" >          role_id: staffSystemRole._id,</span>
-<span class="cstat-no" title="statement not covered" >          status: "ACTIVE",</span>
-<span class="cstat-no" title="statement not covered" >        }).lean()</span>
+    const staffSystemRole = await Role.findOne({ name: "STAFF_SYSTEM" }).lean();
+    const staffAccounts = staffSystemRole
+      ? await Account.find({
+          role_id: staffSystemRole._id,
+          status: "ACTIVE",
+        }).lean()
       : [];
-    if (staffAccounts<span class="branch-0 cbranch-no" title="branch not covered" > &amp;&amp; staffAccounts.length &gt; 0)</span> <span class="branch-0 cbranch-no" title="branch not covered" >{</span>
-<span class="cstat-no" title="statement not covered" >      const notifications = staffAccounts.map(staff =&gt; ({</span>
-<span class="cstat-no" title="statement not covered" >        account_id: staff._id,</span>
-<span class="cstat-no" title="statement not covered" >        title: "CLB mới chờ duyệt!",</span>
-<span class="cstat-no" title="statement not covered" >        message: `Câu lạc bộ ${createdClub.name || "mới"} vừa đăng ký và đang chờ bạn phê duyệt.`,</span>
-<span class="cstat-no" title="statement not covered" >        is_read: false</span>
-<span class="cstat-no" title="statement not covered" >      }));</span>
-<span class="cstat-no" title="statement not covered" >      await Notification.insertMany(notifications);</span>
-<span class="cstat-no" title="statement not covered" >    }</span>
-<span class="cstat-no" title="statement not covered" ></span>
-<span class="cstat-no" title="statement not covered" >    return res.status(201).json({</span>
-<span class="cstat-no" title="statement not covered" >      success: true,</span>
-<span class="cstat-no" title="statement not covered" >      message: "Đăng ký câu lạc bộ thành công, vui lòng chờ duyệt",</span>
-<span class="cstat-no" title="statement not covered" >      data: createdClub</span>
-<span class="cstat-no" title="statement not covered" >    });</span>
+    if (staffAccounts &amp;&amp; staffAccounts.length &gt; 0) {
+      const notifications = staffAccounts.map(staff =&gt; ({
+        account_id: staff._id,
+        title: "CLB mới chờ duyệt!",
+        message: `Câu lạc bộ ${createdClub.name<span class="branch-0 cbranch-no" title="branch not covered" > || "mới"}</span> vừa đăng ký và đang chờ bạn phê duyệt.`,
+        is_read: false
+      }));
+      await Notification.insertMany(notifications);
+    }
+&nbsp;
+    return res.status(201).json({
+      success: true,
+      message: "Đăng ký câu lạc bộ thành công, vui lòng chờ duyệt",
+      data: createdClub
+    });
   } catch (error) {
     console.error("Lỗi khi đăng ký CLB:", error);
     return res.status(500).json({ success: false, message: "Lỗi Server" });
@@ -2320,7 +2320,7 @@ module.exports = {
             <div class='footer quiet pad2 space-top1 center small'>
                 Code coverage generated by
                 <a href="https://istanbul.js.org/" target="_blank" rel="noopener noreferrer">istanbul</a>
-                at 2026-04-24T14:42:53.490Z
+                at 2026-04-25T19:34:35.105Z
             </div>
         <script src="../prettify.js"></script>
         <script>

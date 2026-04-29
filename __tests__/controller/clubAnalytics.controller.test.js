@@ -7,6 +7,7 @@ const Service = require("../../models/service.model");
 const BookingService = require("../../models/booking_service.model");
 const Feedback = require("../../models/feedback.model");
 const Club = require("../../models/club.model");
+const Tournament = require("../../models/tournament.model");
 
 jest.mock("../../models/invoice.model");
 jest.mock("../../models/booking.model");
@@ -16,6 +17,7 @@ jest.mock("../../models/service.model");
 jest.mock("../../models/booking_service.model");
 jest.mock("../../models/feedback.model");
 jest.mock("../../models/club.model");
+jest.mock("../../models/tournament.model");
 
 const createRes = () => {
   const res = {};
@@ -27,6 +29,8 @@ const createRes = () => {
 describe("Club Analytics Controller - Unit Tests", () => {
   beforeEach(() => {
     jest.clearAllMocks();
+    // Default safe mock for Tournament (called at end of controller)
+    Tournament.find.mockReturnValue({ lean: jest.fn().mockResolvedValue([]) });
   });
 
   describe("getClubAnalytics", () => {
