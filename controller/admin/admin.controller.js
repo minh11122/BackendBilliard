@@ -227,13 +227,30 @@ const deleteAccount = async (req, res) => {
 
 const createSubscription = async (req, res) => {
   try {
-    const { name, price, description, discount_percent } = req.body;
+    const {
+      name,
+      price,
+      description,
+      discount_percent,
+      duration_days,
+      post_limit,
+      features,
+      is_active
+    } = req.body;
 
     const newSub = new Subscription({
       name,
       price,
       description,
       discount_percent,
+      duration_days,
+      post_limit,
+      features: {
+        allow_priority_post: !!features?.allow_priority_post,
+        allow_highlight: !!features?.allow_highlight,
+        allow_pin_post: !!features?.allow_pin_post
+      },
+      is_active: typeof is_active === "boolean" ? is_active : true,
       created_at: new Date(),
       created_by: req.user?._id // nếu có auth
     });
@@ -277,7 +294,16 @@ const getSubscriptionById = async (req, res) => {
 const updateSubscription = async (req, res) => {
   try {
     const { id } = req.params;
-    const { name, price, description, discount_percent } = req.body;
+    const {
+      name,
+      price,
+      description,
+      discount_percent,
+      duration_days,
+      post_limit,
+      features,
+      is_active
+    } = req.body;
 
     const updated = await Subscription.findByIdAndUpdate(
       id,
@@ -286,6 +312,14 @@ const updateSubscription = async (req, res) => {
         price,
         description,
         discount_percent,
+        duration_days,
+        post_limit,
+        features: {
+          allow_priority_post: !!features?.allow_priority_post,
+          allow_highlight: !!features?.allow_highlight,
+          allow_pin_post: !!features?.allow_pin_post
+        },
+        is_active: typeof is_active === "boolean" ? is_active : true
       },
       { new: true }
     );
