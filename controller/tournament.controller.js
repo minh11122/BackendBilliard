@@ -2211,6 +2211,13 @@ const updateMatchResult = async (req, res) => {
           message: `Điểm số không được vượt quá số điểm chạm (${currentRaceTo})`,
         });
       }
+      const maxScore = Math.max(p1Score, p2Score);
+      if (maxScore < currentRaceTo) {
+        return res.status(400).json({
+          success: false,
+          message: `Trận Race To ${currentRaceTo}: người thắng phải đạt đúng ${currentRaceTo} điểm (điểm cao nhất hiện tại là ${maxScore})`,
+        });
+      }
     }
     if (!match.player1_id || !match.player2_id) {
       return res
