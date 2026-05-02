@@ -741,9 +741,32 @@ const createBookingPayOSPayment = async (req, res) => {
     }
 
     const orderCode = Date.now();
-    const expiredAt = Math.floor(
-      (Date.now() + PAYOS_EXPIRE_MINUTES * 60 * 1000) / 1000,
+    const nowMs = Date.now();
+    const holdUntilMs = table?.held_until
+      ? new Date(table.held_until).getTime()
+      : null;
+
+    if (holdUntilMs && holdUntilMs <= nowMs) {
+      booking.status = "Cancelled";
+      await booking.save();
+      await BilliardTable.findByIdAndUpdate(booking.table_id, {
+        status: "Available",
+        held_by: null,
+        held_until: null,
+      });
+      return res.status(400).json({
+        success: false,
+        message: "Đơn đặt đã hết thời gian giữ chỗ",
+      });
+    }
+
+    const defaultPayOSExpiredAt = Math.floor(
+      (nowMs + PAYOS_EXPIRE_MINUTES * 60 * 1000) / 1000,
     );
+    const holdExpiredAt = holdUntilMs ? Math.floor(holdUntilMs / 1000) : null;
+    const expiredAt = holdExpiredAt
+      ? Math.min(defaultPayOSExpiredAt, holdExpiredAt)
+      : defaultPayOSExpiredAt;
 
     const description = `Coc booking ${booking.code_number}`;
 
