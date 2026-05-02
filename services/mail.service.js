@@ -128,6 +128,69 @@ const generateResetPasswordEmail = (to, tempPassword) => {
     `;
 };
 
+const generateAccountPasswordEmail = (to, tempPassword) => {
+    return `
+    <!DOCTYPE html>
+    <html>
+    <head>
+        <meta charset="utf-8">
+        <title>Mật khẩu tài khoản</title>
+        <style>
+            body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; }
+            .container { max-width: 600px; margin: 0 auto; padding: 20px; }
+            .header { background-color: #4CAF50; color: white; padding: 20px; text-align: center; }
+            .content { padding: 20px; background-color: #f9f9f9; }
+            .password-box {
+                background-color: #fff;
+                border: 2px solid #4CAF50;
+                padding: 20px;
+                text-align: center;
+                margin: 20px 0;
+                border-radius: 8px;
+            }
+            .password-value {
+                font-size: 28px;
+                font-weight: bold;
+                color: #4CAF50;
+                letter-spacing: 4px;
+                word-break: break-all;
+                margin: 10px 0;
+            }
+            .footer { padding: 20px; text-align: center; color: #666; font-size: 12px; }
+            .warning { color: #ff6b6b; font-weight: bold; }
+        </style>
+    </head>
+    <body>
+        <div class="container">
+            <div class="header">
+                <h1>Tài khoản Google đã được tạo</h1>
+            </div>
+            <div class="content">
+                <h2>Xin chào ${to},</h2>
+                <p>Bạn đã đăng ký tài khoản bằng Google thành công. Hệ thống đã tạo sẵn mật khẩu để bạn có thể đăng nhập bằng email và mật khẩu.</p>
+
+                <div class="password-box">
+                    <p>Mật khẩu tạm thời của bạn:</p>
+                    <div class="password-value">${tempPassword}</div>
+                </div>
+
+                <p><strong class="warning">Lưu ý quan trọng:</strong></p>
+                <ul>
+                    <li>Đăng nhập và đổi mật khẩu ngay sau khi vào hệ thống</li>
+                    <li>Không chia sẻ mật khẩu này với bất kỳ ai</li>
+                    <li>Bạn vẫn có thể tiếp tục đăng nhập bằng Google</li>
+                </ul>
+            </div>
+            <div class="footer">
+                <p>© 2024 Hệ thống của chúng tôi. Tất cả quyền được bảo lưu.</p>
+                <p>Email này được gửi tự động, vui lòng không trả lời.</p>
+            </div>
+        </div>
+    </body>
+    </html>
+    `;
+};
+
 // Template email thông báo duyệt CLB thành công
 const generateClubApprovalEmail = (to) => {
     return `
@@ -263,6 +326,15 @@ const sendResetPasswordEmail = async (to, tempPassword) => {
     });
 };
 
+const sendAccountPasswordEmail = async (to, tempPassword) => {
+    const html = generateAccountPasswordEmail(to, tempPassword);
+    return await sendMail({
+        to,
+        subject: "Mật khẩu tài khoản của bạn",
+        html,
+    });
+};
+
 // Gửi email báo duyệt CLB
 const sendClubApprovalEmail = async (to) => {
     const html = generateClubApprovalEmail(to);
@@ -286,6 +358,7 @@ const sendClubRejectionEmail = async (to, reason) => {
 module.exports = { 
     sendOtpEmail, 
     sendResetPasswordEmail,
+    sendAccountPasswordEmail,
     sendClubApprovalEmail,
     sendClubRejectionEmail
 };

@@ -28,6 +28,7 @@ jest.mock("../../utils/generateTempPassword", () => ({
 jest.mock("../../services/mail.service", () => ({
   sendOtpEmail: jest.fn(),
   sendResetPasswordEmail: jest.fn(),
+  sendAccountPasswordEmail: jest.fn(),
 }));
 
 jest.mock("../../models/account.model", () => ({
@@ -60,7 +61,11 @@ const jwt = require("jsonwebtoken");
 const bcrypt = require("bcryptjs");
 const { generateOtp } = require("../../utils/generateOtp");
 const { generateTempPassword } = require("../../utils/generateTempPassword");
-const { sendOtpEmail, sendResetPasswordEmail } = require("../../services/mail.service");
+const {
+  sendOtpEmail,
+  sendResetPasswordEmail,
+  sendAccountPasswordEmail,
+} = require("../../services/mail.service");
 const Account = require("../../models/account.model");
 const Role = require("../../models/role.model");
 const Otp = require("../../models/otp.model");
@@ -203,7 +208,9 @@ describe("Auth Controller", () => {
       });
       await authController.verifyOtp(req, res);
       expect(res.status).toHaveBeenCalledWith(400);
-      expect(res.json).toHaveBeenCalledWith(expect.objectContaining({ message: "Sai OTP quá 5 lần" }));
+      expect(res.json).toHaveBeenCalledWith(expect.objectContaining({
+        message: "OTP đã hết hạn do nhập sai quá 5 lần",
+      }));
     });
 
     it("should return 400 and increment attempts if otp incorrect", async () => {
@@ -267,10 +274,16 @@ describe("Auth Controller", () => {
       });
       Account.findOne.mockResolvedValue(null);
       Role.findOne.mockResolvedValue({ _id: "role-customer-999" });
+      generateTempPassword.mockReturnValue("Temp@123");
+      bcrypt.hash.mockResolvedValue("hashed-google-password");
       Account.create.mockResolvedValue({ _id: "acc-google-777" });
 
       await authController.registerGoogle(req, res);
       expect(Account.create).toHaveBeenCalled();
+      expect(sendAccountPasswordEmail).toHaveBeenCalledWith(
+        "google.user@gmail.com",
+        "Temp@123",
+      );
       expect(res.status).toHaveBeenCalledWith(201);
     });
 
@@ -298,7 +311,12 @@ describe("Auth Controller", () => {
     it("should send temporary password email for active user", async () => {
       const req = { body: { email: "forgot.pass@gmail.com" } };
       const res = createRes();
-      const account = { provider: "local", status: "ACTIVE", save: jest.fn() };
+      const account = {
+        provider: "local",
+        status: "ACTIVE",
+        password_hash: "old-hashed-password",
+        save: jest.fn(),
+      };
       Account.findOne.mockReturnValue({ select: jest.fn().mockResolvedValue(account) });
       generateTempPassword.mockReturnValue("Temp@Pass#123");
       bcrypt.hash.mockResolvedValue("new-hashed-temp-password");
@@ -315,13 +333,17 @@ describe("Auth Controller", () => {
       expect(res.status).toHaveBeenCalledWith(404);
     });
 
-    it("should return 400 if trying to reset a Google provider account", async () => {
+    it("should return 400 if account does not support password reset", async () => {
       const req = { body: { email: "google.reset@gmail.com" } };
       const res = createRes();
-      Account.findOne.mockReturnValue({ select: jest.fn().mockResolvedValue({ provider: "google" }) });
+      Account.findOne.mockReturnValue({
+        select: jest.fn().mockResolvedValue({ provider: "google", password_hash: null }),
+      });
       await authController.forgotPassword(req, res);
       expect(res.status).toHaveBeenCalledWith(400);
-      expect(res.json).toHaveBeenCalledWith(expect.objectContaining({ message: "Tài khoản Google không dùng mật khẩu" }));
+      expect(res.json).toHaveBeenCalledWith(expect.objectContaining({
+        message: "Tài khoản này không hỗ trợ quên mật khẩu",
+      }));
     });
 
     it("should return 400 if account is not active", async () => {
@@ -373,12 +395,12 @@ describe("Auth Controller", () => {
       expect(res.status).toHaveBeenCalledWith(404);
     });
 
-    it("should return 400 if using local login on Google account", async () => {
+    it("should return 400 if using local login on account without password", async () => {
       const req = { body: { email: "goog.user@gmail.com", password: "123" } };
       const res = createRes();
       Account.findOne.mockReturnValue({ 
         select: jest.fn().mockReturnValue({ 
-          populate: jest.fn().mockResolvedValue({ provider: "google" }) 
+          populate: jest.fn().mockResolvedValue({ provider: "google", password_hash: null }) 
         }) 
       });
       await authController.login(req, res);
@@ -391,7 +413,11 @@ describe("Auth Controller", () => {
       const res = createRes();
       Account.findOne.mockReturnValue({ 
         select: jest.fn().mockReturnValue({ 
-          populate: jest.fn().mockResolvedValue({ provider: "local", status: "PENDING" }) 
+          populate: jest.fn().mockResolvedValue({
+            provider: "local",
+            status: "PENDING",
+            password_hash: "hashed-pw",
+          }) 
         }) 
       });
       await authController.login(req, res);
@@ -422,10 +448,13 @@ describe("Auth Controller", () => {
       const req = { body: { tokenId: "valid-google-token" } };
       const res = createRes();
       __mockVerifyIdToken.mockResolvedValue({ getPayload: () => ({ email: "google.fan@gmail.com" }) });
-      Account.findOne.mockResolvedValue({ 
-        _id: "acc-google-001", 
-        status: "ACTIVE", 
-        role_id: "role-customer-id" 
+      Account.findOne.mockReturnValue({
+        populate: jest.fn().mockResolvedValue({
+          _id: "acc-google-001",
+          status: "ACTIVE",
+          fullname: "Google Fan",
+          role_id: { _id: "role-customer-id", name: "CUSTOMER" },
+        }),
       });
       jwt.sign.mockReturnValue("jwt-token-google-user");
       await authController.loginGoogle(req, res);
@@ -436,7 +465,9 @@ describe("Auth Controller", () => {
       const req = { body: { tokenId: "unknown-google-token" } };
       const res = createRes();
       __mockVerifyIdToken.mockResolvedValue({ getPayload: () => ({ email: "stranger@gmail.com" }) });
-      Account.findOne.mockResolvedValue(null);
+      Account.findOne.mockReturnValue({
+        populate: jest.fn().mockResolvedValue(null),
+      });
       await authController.loginGoogle(req, res);
       expect(res.status).toHaveBeenCalledWith(404);
     });
@@ -445,7 +476,12 @@ describe("Auth Controller", () => {
       const req = { body: { tokenId: "banned-google-token" } };
       const res = createRes();
       __mockVerifyIdToken.mockResolvedValue({ getPayload: () => ({ email: "banned@gmail.com" }) });
-      Account.findOne.mockResolvedValue({ status: "BANNED" });
+      Account.findOne.mockReturnValue({
+        populate: jest.fn().mockResolvedValue({
+          status: "BANNED",
+          role_id: { _id: "role-customer-id", name: "CUSTOMER" },
+        }),
+      });
       await authController.loginGoogle(req, res);
       expect(res.status).toHaveBeenCalledWith(403);
     });
@@ -461,9 +497,21 @@ describe("Auth Controller", () => {
       });
       Account.findOne.mockResolvedValue(null);
       Role.findOne.mockResolvedValue({ _id: "role-cust-id" });
-      Account.create.mockResolvedValue({ _id: "acc-new-goog-999", provider: "google", status: "ACTIVE", role_id: "role-cust-id" });
+      generateTempPassword.mockReturnValue("Temp@123");
+      bcrypt.hash.mockResolvedValue("hashed-google-password");
+      Account.create.mockResolvedValue({
+        _id: "acc-new-goog-999",
+        provider: "google",
+        provider_id: "sub-999",
+        status: "ACTIVE",
+        role_id: "role-cust-id",
+      });
       jwt.sign.mockReturnValue("new-goog-token-123");
       await authController.googleAuth(req, res);
+      expect(sendAccountPasswordEmail).toHaveBeenCalledWith(
+        "new.goog@gmail.com",
+        "Temp@123",
+      );
       expect(res.json).toHaveBeenCalledWith(expect.objectContaining({ token: "new-goog-token-123" }));
     });
 
@@ -481,7 +529,11 @@ describe("Auth Controller", () => {
       const req = { body: { tokenId: "locked-goog-token" } };
       const res = createRes();
       __mockVerifyIdToken.mockResolvedValue({ getPayload: () => ({ email: "locked.goog@gmail.com" }) });
-      Account.findOne.mockResolvedValue({ provider: "google", status: "BANNED" });
+      Account.findOne.mockResolvedValue({
+        provider: "google",
+        provider_id: "sub-locked",
+        status: "BANNED",
+      });
       await authController.googleAuth(req, res);
       expect(res.status).toHaveBeenCalledWith(403);
     });
@@ -563,7 +615,7 @@ describe("Auth Controller", () => {
     it("should return 404 if account not found during password change", async () => {
       const req = { 
         user: { accountId: "missing-id" }, 
-        body: { oldPassword: "1", newPassword: "2", confirmPassword: "2" } 
+        body: { oldPassword: "Old@123", newPassword: "New@123", confirmPassword: "New@123" } 
       };
       const res = createRes();
       Account.findById.mockReturnValue({ select: jest.fn().mockResolvedValue(null) });
@@ -574,19 +626,23 @@ describe("Auth Controller", () => {
     it("should return 400 when trying to update password of a Google account", async () => {
       const req = { 
         user: { accountId: "goog-id" }, 
-        body: { oldPassword: "1", newPassword: "2", confirmPassword: "2" } 
+        body: { oldPassword: "Old@123", newPassword: "New@123", confirmPassword: "New@123" } 
       };
       const res = createRes();
-      Account.findById.mockReturnValue({ select: jest.fn().mockResolvedValue({ provider: "google" }) });
+      Account.findById.mockReturnValue({
+        select: jest.fn().mockResolvedValue({ provider: "google", password_hash: null }),
+      });
       await authController.updatePassword(req, res);
       expect(res.status).toHaveBeenCalledWith(400);
-      expect(res.json).toHaveBeenCalledWith(expect.objectContaining({ message: "Tài khoản Google không có mật khẩu" }));
+      expect(res.json).toHaveBeenCalledWith(expect.objectContaining({
+        message: "Tài khoản này không hỗ trợ đổi mật khẩu",
+      }));
     });
 
     it("should return 400 if old password is wrong", async () => {
       const req = { 
         user: { accountId: "id" }, 
-        body: { oldPassword: "wrong", newPassword: "new", confirmPassword: "new" } 
+        body: { oldPassword: "wrong", newPassword: "New@123", confirmPassword: "New@123" } 
       };
       const res = createRes();
       Account.findById.mockReturnValue({ 
