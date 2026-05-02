@@ -15,10 +15,6 @@ const Otp = require("../../models/otp.model");
 const Notification = require("../../models/notification.model");
 
 const client = new OAuth2Client(process.env.VITE_GOOGLE_CLIENT_ID);
-const passwordRegex =
-  /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[@$!%*?&]).{6,}$/;
-const passwordPolicyMessage =
-  "Mật khẩu ≥6 ký tự, gồm chữ hoa, chữ thường, số và ký tự đặc biệt";
 
 // Đăng ký (tạo account + gửi OTP)
 const register = async (req, res) => {
@@ -35,12 +31,6 @@ const register = async (req, res) => {
     if (password !== confirmPassword) {
       return res.status(400).json({
         message: "Mật khẩu xác nhận không khớp",
-      });
-    }
-
-    if (!passwordRegex.test(password)) {
-      return res.status(400).json({
-        message: passwordPolicyMessage,
       });
     }
 
@@ -216,7 +206,13 @@ const registerGoogle = async (req, res) => {
       role_id: role._id,
     });
 
-    await sendAccountPasswordEmail(email, tempPassword);
+    const mailResult = await sendAccountPasswordEmail(email, tempPassword);
+    if (!mailResult?.success) {
+      return res.status(500).json({
+        message: "Tạo tài khoản Google thành công nhưng gửi mật khẩu qua email thất bại",
+        error: mailResult?.error,
+      });
+    }
 
     return res.status(201).json({
       message: "Đăng ký Google thành công. Mật khẩu đã được gửi về email.",
@@ -238,10 +234,10 @@ const forgotPassword = async (req, res) => {
     if (!account)
       return res.status(404).json({ message: "Không tìm thấy account" });
 
-    if (!account.password_hash)
+    if (account.provider !== "local")
       return res
         .status(400)
-        .json({ message: "Tài khoản này không hỗ trợ quên mật khẩu" });
+        .json({ message: "Tài khoản Google không dùng mật khẩu" });
 
     if (account.status !== "ACTIVE")
       return res.status(400).json({ message: "Tài khoản chưa kích hoạt" });
@@ -272,7 +268,7 @@ const login = async (req, res) => {
     if (!account)
       return res.status(404).json({ message: "Email không tồn tại" });
 
-    if (!account.password_hash)
+    if (account.provider !== "local")
       return res
         .status(400)
         .json({ message: "Vui lòng đăng nhập bằng Google" });
@@ -367,7 +363,7 @@ const getRoleNameById = async (req, res) => {
     if (!role) return res.status(404).json({ message: "Role not found" });
     res.json({ name: role.name });
   } catch (err) {
-    console.error(err); // in lỗi ra để debug
+    console.error(err); // in lá»—i ra Ä‘á»ƒ debug
     res.status(500).json({ message: "Server error" });
   }
 };
@@ -389,7 +385,7 @@ const googleAuth = async (req, res) => {
     if (!account) {
       const role = await Role.findOne({ name: "CUSTOMER" });
       if (!role)
-        return res.status(500).json({ message: "Role CUSTOMER chưa được tạo" });
+        return res.status(500).json({ message: "Role CUSTOMER chÆ°a Ä‘Æ°á»£c táº¡o" });
 
       const tempPassword = generateTempPassword();
       const hashedPassword = await bcrypt.hash(tempPassword, 10);
@@ -404,14 +400,20 @@ const googleAuth = async (req, res) => {
         role_id: role._id,
       });
 
-      await sendAccountPasswordEmail(email, tempPassword);
+      const mailResult = await sendAccountPasswordEmail(email, tempPassword);
+      if (!mailResult?.success) {
+        return res.status(500).json({
+          message: "Tạo tài khoản Google thành công nhưng gửi mật khẩu qua email thất bại",
+          error: mailResult?.error,
+        });
+      }
     }
 
-    if (!account.provider_id)
-      return res.status(400).json({ message: "Email đã đăng ký bằng local" });
+    if (account.provider !== "google")
+      return res.status(400).json({ message: "Email Ä‘Ã£ Ä‘Äƒng kÃ½ báº±ng local" });
 
     if (account.status !== "ACTIVE")
-      return res.status(403).json({ message: "Tài khoản bị khóa" });
+      return res.status(403).json({ message: "TÃ i khoáº£n bá»‹ khÃ³a" });
 
     const token = jwt.sign(
       { accountId: account._id, roleId: account.role_id },
@@ -419,7 +421,7 @@ const googleAuth = async (req, res) => {
       { expiresIn: "7d" },
     );
 
-    res.json({ message: "Đăng nhập Google thành công", token });
+    res.json({ message: "ÄÄƒng nháº­p Google thÃ nh cÃ´ng", token });
   } catch (error) {
     res.status(500).json({ message: error.message });
   }
@@ -427,11 +429,11 @@ const googleAuth = async (req, res) => {
 
 const getInforById = async (req, res) => {
   try {
-    const accountId = req.user.accountId; // lấy từ token
+    const accountId = req.user.accountId;
 
     const account = await Account.findById(accountId)
-      .populate("role_id", "name") // nếu muốn lấy tên role
-      .select("-password_hash"); // ẩn password
+      .populate("role_id", "name") 
+      .select("-password_hash"); 
 
     if (!account) {
       return res.status(404).json({
@@ -461,7 +463,7 @@ const updateProfile = async (req, res) => {
 
     if (phone && !phoneRegex.test(phone)) {
       return res.status(400).json({
-        message: "Số điện thoại không hợp lệ",
+        message: "Sá»‘ Ä‘iá»‡n thoáº¡i khÃ´ng há»£p lá»‡",
       });
     }
 
@@ -485,7 +487,7 @@ const updateProfile = async (req, res) => {
       .select("-password_hash");
 
     res.json({
-      message: "Cập nhật profile thành công",
+      message: "Cáº­p nháº­t profile thÃ nh cÃ´ng",
       data: result,
     });
   } catch (error) {
@@ -502,13 +504,13 @@ const updatePassword = async (req, res) => {
 
     if (!oldPassword || !newPassword || !confirmPassword) {
       return res.status(400).json({
-        message: "Vui lòng nhập đầy đủ thông tin",
+        message: "Vui lÃ²ng nháº­p Ä‘áº§y Ä‘á»§ thÃ´ng tin",
       });
     }
 
     if (newPassword !== confirmPassword) {
       return res.status(400).json({
-        message: "Mật khẩu xác nhận không khớp",
+        message: "Máº­t kháº©u xÃ¡c nháº­n khÃ´ng khá»›p",
       });
     }
 
@@ -516,13 +518,13 @@ const updatePassword = async (req, res) => {
 
     if (!account) {
       return res.status(404).json({
-        message: "Account không tồn tại",
+        message: "Account khÃ´ng tá»“n táº¡i",
       });
     }
 
-    if (!account.password_hash) {
+    if (account.provider !== "local") {
       return res.status(400).json({
-        message: "Tài khoản này không hỗ trợ đổi mật khẩu",
+        message: "TÃ i khoáº£n Google khÃ´ng cÃ³ máº­t kháº©u",
       });
     }
 
@@ -530,13 +532,7 @@ const updatePassword = async (req, res) => {
 
     if (!isMatch) {
       return res.status(400).json({
-        message: "Mật khẩu cũ không đúng",
-      });
-    }
-
-    if (!passwordRegex.test(newPassword)) {
-      return res.status(400).json({
-        message: passwordPolicyMessage,
+        message: "Máº­t kháº©u cÅ© khÃ´ng Ä‘Ãºng",
       });
     }
 
@@ -546,7 +542,7 @@ const updatePassword = async (req, res) => {
     await account.save();
 
     res.json({
-      message: "Đổi mật khẩu thành công",
+      message: "Äá»•i máº­t kháº©u thÃ nh cÃ´ng",
     });
   } catch (error) {
     res.status(500).json({
@@ -555,7 +551,7 @@ const updatePassword = async (req, res) => {
   }
 };
 
-// Lấy danh sách notification (có phân trang)
+//  Láº¥y danh sÃ¡ch notification (cÃ³ phÃ¢n trang)
 const getNotifications = async (req, res) => {
   try {
     const accountId = req.user.accountId;
@@ -577,7 +573,7 @@ const getNotifications = async (req, res) => {
     });
 
     res.json({
-      message: "Lấy danh sách notification thành công",
+      message: "Láº¥y danh sÃ¡ch notification thÃ nh cÃ´ng",
       data: notifications,
       pagination: {
         total,
@@ -591,7 +587,7 @@ const getNotifications = async (req, res) => {
   }
 };
 
-// // Tạo notification (dùng nội bộ hoặc test)
+// // Táº¡o notification (dÃ¹ng ná»™i bá»™ hoáº·c test)
 // const createNotification = async (req, res) => {
 //   try {
 //     const { account_id, title, message } = req.body;
@@ -603,7 +599,7 @@ const getNotifications = async (req, res) => {
 //     });
 
 //     res.status(201).json({
-//       message: "Tạo notification thành công",
+//       message: "Táº¡o notification thÃ nh cÃ´ng",
 //       data: notification,
 //     });
 //   } catch (error) {
@@ -611,7 +607,7 @@ const getNotifications = async (req, res) => {
 //   }
 // };
 
-// Mark 1 notification là đã đọc
+// Mark 1 notification lÃ  Ä‘Ã£ Ä‘á»c
 const markAsRead = async (req, res) => {
   try {
     const { id } = req.params;
@@ -623,11 +619,11 @@ const markAsRead = async (req, res) => {
     );
 
     if (!notification) {
-      return res.status(404).json({ message: "Không tìm thấy notification" });
+      return res.status(404).json({ message: "KhÃ´ng tÃ¬m tháº¥y notification" });
     }
 
     res.json({
-      message: "Đã đánh dấu đã đọc",
+      message: "ÄÃ£ Ä‘Ã¡nh dáº¥u Ä‘Ã£ Ä‘á»c",
       data: notification,
     });
   } catch (error) {
@@ -635,7 +631,7 @@ const markAsRead = async (req, res) => {
   }
 };
 
-// Mark tất cả là đã đọc
+// Mark táº¥t cáº£ lÃ  Ä‘Ã£ Ä‘á»c
 const markAllAsRead = async (req, res) => {
   try {
     const accountId = req.user.accountId;
@@ -646,14 +642,14 @@ const markAllAsRead = async (req, res) => {
     );
 
     res.json({
-      message: "Đã đánh dấu tất cả là đã đọc",
+      message: "ÄÃ£ Ä‘Ã¡nh dáº¥u táº¥t cáº£ lÃ  Ä‘Ã£ Ä‘á»c",
     });
   } catch (error) {
     res.status(500).json({ message: error.message });
   }
 };
 
-// Xóa 1 notification
+// XÃ³a 1 notification
 const deleteNotification = async (req, res) => {
   try {
     const { id } = req.params;
@@ -661,18 +657,18 @@ const deleteNotification = async (req, res) => {
     const notification = await Notification.findByIdAndDelete(id);
 
     if (!notification) {
-      return res.status(404).json({ message: "Không tìm thấy notification" });
+      return res.status(404).json({ message: "KhÃ´ng tÃ¬m tháº¥y notification" });
     }
 
     res.json({
-      message: "Xóa notification thành công",
+      message: "XÃ³a notification thÃ nh cÃ´ng",
     });
   } catch (error) {
     res.status(500).json({ message: error.message });
   }
 };
 
-// Xóa tất cả notification của user
+// XÃ³a táº¥t cáº£ notification cá»§a user
 const deleteAllNotifications = async (req, res) => {
   try {
     const accountId = req.user.accountId;
@@ -680,14 +676,14 @@ const deleteAllNotifications = async (req, res) => {
     await Notification.deleteMany({ account_id: accountId });
 
     res.json({
-      message: "Đã xóa tất cả notification",
+      message: "ÄÃ£ xÃ³a táº¥t cáº£ notification",
     });
   } catch (error) {
     res.status(500).json({ message: error.message });
   }
 };
 
-// Đếm số chưa đọc
+// Äáº¿m sá»‘ chÆ°a Ä‘á»c
 const countUnread = async (req, res) => {
   try {
     const accountId = req.user.accountId;
@@ -705,7 +701,7 @@ const countUnread = async (req, res) => {
   }
 };
 
-// CHECK PROFILE RIÊNG
+// ðŸ”¥ CHECK PROFILE RIÃŠNG
 const checkProfileStatus = async (req, res) => {
   try {
     const accountId = req.user.accountId;
