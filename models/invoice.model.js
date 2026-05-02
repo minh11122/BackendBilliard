@@ -5,6 +5,7 @@ const invoiceSchema = new mongoose.Schema(
     booking_id: { type: mongoose.Schema.Types.ObjectId, ref: "Booking", required: true },
     table_cost: { type: Number, required: true },
     total_service: { type: Number, required: true },
+    carry_over_amount: { type: Number, default: 0 },
     invoice_number: { type: String, required: true, unique: true },
     invoice_date: { type: Date, required: true },
     payment_method: { type: String, enum: ["payOS", "Cash"], required: true },
