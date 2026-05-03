@@ -2144,11 +2144,18 @@ const startRoundMatch = async (req, res) => {
       const localToday = new Date(todayStr);
       localToday.setHours(0, 0, 0, 0);
 
+      const vnTimeStr = new Date().toLocaleTimeString("vi-VN", {
+        timeZone: "Asia/Ho_Chi_Minh",
+        hour: "2-digit",
+        minute: "2-digit",
+        hour12: false,
+      });
+
       await Booking.create({
         guest_name: `Trận giải đấu: ${match.match_name}`,
         table_id: match.table_id,
         play_date: localToday,
-        start_time: new Date().toTimeString().slice(0, 5),
+        start_time: vnTimeStr,
         end_time: "23:59",
         code_number: `TOUR_${match._id.toString().slice(-6)}_${Date.now().toString().slice(-4)}`,
         deposit: 0,
@@ -2211,6 +2218,13 @@ const updateMatchResult = async (req, res) => {
           message: `Điểm số không được vượt quá số điểm chạm (${currentRaceTo})`,
         });
       }
+      const maxScore = Math.max(p1Score, p2Score);
+      if (maxScore < currentRaceTo) {
+        return res.status(400).json({
+          success: false,
+          message: `Trận Race To ${currentRaceTo}: người thắng phải đạt đúng ${currentRaceTo} điểm (điểm cao nhất hiện tại là ${maxScore})`,
+        });
+      }
     }
     if (!match.player1_id || !match.player2_id) {
       return res
@@ -2262,11 +2276,18 @@ const updateMatchResult = async (req, res) => {
     await match.save();
 
     if (match.table_id) {
+      const vnTimeStr = new Date().toLocaleTimeString("vi-VN", {
+        timeZone: "Asia/Ho_Chi_Minh",
+        hour: "2-digit",
+        minute: "2-digit",
+        hour12: false,
+      });
       await Booking.updateMany(
         { note: `TournamentMatch:${match._id}`, status: "Playing" },
         {
           status: "Completed",
-          end_time: new Date().toTimeString().slice(0, 5),
+          end_time: vnTimeStr,
+          actual_end_time: vnTimeStr,
         },
       );
     }

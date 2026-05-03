@@ -55,10 +55,10 @@ const getAllClubs = async (req, res) => {
         if (!club.lat || !club.lng) {
           const province = club.province_code ? await Province.findOne({ code: club.province_code }).lean() : null;
           const districtDoc = club.district_code ? await District.findOne({ code: club.district_code }).lean() : null;
-          
+
           const geoData = await geocodeAddress(
-            club.address, 
-            province ? province.name : "", 
+            club.address,
+            province ? province.name : "",
             districtDoc ? (districtDoc.name_with_type || districtDoc.name) : ""
           );
 
@@ -72,14 +72,14 @@ const getAllClubs = async (req, res) => {
         }
 
         // Lấy ảnh bìa (Ưu tiên Avatar, sau đó đến Banner)
-        const clubImages = await Image.find({ 
-          club_id: club._id, 
-          image_type: { $in: ["Avatar", "Banner"] } 
+        const clubImages = await Image.find({
+          club_id: club._id,
+          image_type: { $in: ["Avatar", "Banner"] }
         }).lean();
-        
-        const mainImage = clubImages.find(img => img.image_type === "Avatar") || 
-                          clubImages.find(img => img.image_type === "Banner");
-                          
+
+        const mainImage = clubImages.find(img => img.image_type === "Avatar") ||
+          clubImages.find(img => img.image_type === "Banner");
+
         club.avatar = mainImage ? mainImage.image_url : null;
 
         // Lấy danh sách loại bàn
@@ -88,9 +88,9 @@ const getAllClubs = async (req, res) => {
           club.priceFrom = Math.min(...tables.map((t) => t.price));
           const types = new Set();
           tables.forEach(t => {
-             if (t.table_type_id && t.table_type_id.name) {
-                 types.add(t.table_type_id.name);
-             }
+            if (t.table_type_id && t.table_type_id.name) {
+              types.add(t.table_type_id.name);
+            }
           });
           club.tableTypes = Array.from(types);
         } else {
@@ -100,18 +100,18 @@ const getAllClubs = async (req, res) => {
 
         // Lấy rating 
         const feedbacks = await Feedback.find({ club_id: club._id }).lean();
-        
+
         if (feedbacks.length > 0) {
-            const sum = feedbacks.reduce((acc, curr) => acc + (curr.rating || 0), 0);
-            club.rating = parseFloat((sum / feedbacks.length).toFixed(1));
-            club.reviewsCount = feedbacks.length;
+          const sum = feedbacks.reduce((acc, curr) => acc + (curr.rating || 0), 0);
+          club.rating = parseFloat((sum / feedbacks.length).toFixed(1));
+          club.reviewsCount = feedbacks.length;
         } else {
-            club.rating = 0;
-            club.reviewsCount = 0;
+          club.rating = 0;
+          club.reviewsCount = 0;
         }
 
         club.distance = null; // Distance will be calculated on frontend
-        
+
         return club;
       })
     );
@@ -135,7 +135,7 @@ const getClubById = async (req, res) => {
   try {
     const { id } = req.params;
     const { play_date, startTime, duration } = req.query;
-    
+
     const club = await Club.findById(id).lean();
 
     if (!club) {
@@ -170,18 +170,18 @@ const getClubById = async (req, res) => {
 
     // Lấy danh sách bàn
     const tables = await BilliardTable.find({ club_id: id }).populate("table_type_id").lean();
-    
+
     // Nếu có query thời gian, tính toán trạng thái khả dụng thực tế
     if (play_date && startTime) {
       const Booking = require("../models/booking.model");
-      
+
       const openMin = timeToMinutes(club.opening_time || "08:00");
       const is24h = club.opening_time === "00:00" && club.closing_time === "00:00";
-      
+
       const reqStartMin = timeToMinutes(startTime);
       const reqDuration = parseInt(duration) || 2;
       const reqEndMin = reqStartMin + reqDuration * 60;
-      
+
       const targetDate = new Date(play_date);
       targetDate.setHours(0, 0, 0, 0);
 
@@ -207,25 +207,25 @@ const getClubById = async (req, res) => {
         for (const b of bookings) {
           const bDate = new Date(b.play_date);
           bDate.setHours(0, 0, 0, 0);
-          
+
           let bStart = timeToMinutes(b.start_time);
           let bEnd = timeToMinutes(b.end_time);
 
           // Normalize times relative to targetDate
           if (bDate < targetDate) {
-             // If booking started yesterday, shift its times by -1440 minutes relative to today's midnight?
-             // Actually, it's easier to think: does yesterday's booking end after 24:00?
-             // If yesterday's end < yesterday's start, it cross midnight.
-             if (bEnd <= bStart) {
-                // It ends today at bEnd minutes past midnight.
-                // Current query time is [reqStartMin, reqEndMin] relative to today's midnight.
-                // Overlap if: reqStartMin < bEnd
-                if (reqStartMin < bEnd) {
-                   if (b.status === "Booked" || b.status === "Playing") isOccupied = true;
-                   else isHolding = true;
-                }
-             }
-             continue; // Done with yesterday's booking
+            // If booking started yesterday, shift its times by -1440 minutes relative to today's midnight?
+            // Actually, it's easier to think: does yesterday's booking end after 24:00?
+            // If yesterday's end < yesterday's start, it cross midnight.
+            if (bEnd <= bStart) {
+              // It ends today at bEnd minutes past midnight.
+              // Current query time is [reqStartMin, reqEndMin] relative to today's midnight.
+              // Overlap if: reqStartMin < bEnd
+              if (reqStartMin < bEnd) {
+                if (b.status === "Booked" || b.status === "Playing") isOccupied = true;
+                else isHolding = true;
+              }
+            }
+            continue; // Done with yesterday's booking
           }
 
           // Case: Booking is today
@@ -237,7 +237,7 @@ const getClubById = async (req, res) => {
             if (b.status === "Booked" || b.status === "Playing") isOccupied = true;
             else isHolding = true;
           }
-          
+
           if (isOccupied) break;
         }
 
@@ -255,34 +255,34 @@ const getClubById = async (req, res) => {
     } else {
       club.priceFrom = 0;
     }
-    
+
     // Lấy gói cước hiện tại
     const activeSub = await SubscriptionAccount.findOne({
       club_id: id,
       status: { $in: ["active", "Active"] }
     }).populate("subscription_id").lean();
     if (activeSub && activeSub.subscription_id) {
-        club.subscription_name = activeSub.subscription_id.name;
+      club.subscription_name = activeSub.subscription_id.name;
     }
 
     // Lấy rating thực tế cho detail
     const feedbacks = await Feedback.find({ club_id: id }).populate("account_id").sort({ created_at: -1 }).lean();
-    
+
     if (feedbacks.length > 0) {
-        const sum = feedbacks.reduce((acc, curr) => acc + (curr.rating || 0), 0);
-        club.rating = parseFloat((sum / feedbacks.length).toFixed(1));
-        club.reviewsCount = feedbacks.length;
-        club.feedbacks = feedbacks.map(f => ({
-            id: f._id,
-            rating: f.rating,
-            comment: f.comment,
-            reply: f.reply_content,
-            created_at: f.created_at,
-            user: f.account_id ? { name: f.account_id.fullname || f.account_id.username, avatar: f.account_id.avatar } : { name: "Người dùng ẩn danh" }
-        }));
+      const sum = feedbacks.reduce((acc, curr) => acc + (curr.rating || 0), 0);
+      club.rating = parseFloat((sum / feedbacks.length).toFixed(1));
+      club.reviewsCount = feedbacks.length;
+      club.feedbacks = feedbacks.map(f => ({
+        id: f._id,
+        rating: f.rating,
+        comment: f.comment,
+        reply: f.reply_content,
+        created_at: f.created_at,
+        user: f.account_id ? { name: f.account_id.fullname || f.account_id.username, avatar: f.account_id.avatar } : { name: "Người dùng ẩn danh" }
+      }));
     } else {
-        club.rating = 0;
-        club.reviewsCount = 0;
+      club.rating = 0;
+      club.reviewsCount = 0;
     }
 
     res.status(200).json({ success: true, data: club });
@@ -308,14 +308,14 @@ const getClubsByAccount = async (req, res) => {
 
     const result = await Promise.all(
       clubs.map(async (club) => {
-        const clubImages = await Image.find({ 
-          club_id: club._id, 
-          image_type: { $in: ["Avatar", "Banner"] } 
+        const clubImages = await Image.find({
+          club_id: club._id,
+          image_type: { $in: ["Avatar", "Banner"] }
         }).lean();
-        
-        const mainImage = clubImages.find(img => img.image_type === "Avatar") || 
-                          clubImages.find(img => img.image_type === "Banner");
-                          
+
+        const mainImage = clubImages.find(img => img.image_type === "Avatar") ||
+          clubImages.find(img => img.image_type === "Banner");
+
         club.avatar = mainImage ? mainImage.image_url : null;
 
         // Tự động chữa lỗi đồng bộ plan_type nếu quán đã có gói khác free đang Active
@@ -325,25 +325,25 @@ const getClubsByAccount = async (req, res) => {
           status: { $in: ["active", "Active"] }
         }).populate("subscription_id");
         if (activeSub && activeSub.subscription_id) {
-           const subName = activeSub.subscription_id.name.toLowerCase();
-           if (subName.includes("basic")) realPlanType = "basic";
-           if (subName.includes("pro")) realPlanType = "pro";
+          const subName = activeSub.subscription_id.name.toLowerCase();
+          if (subName.includes("basic")) realPlanType = "basic";
+          if (subName.includes("pro")) realPlanType = "pro";
         }
 
         if (club.plan_type !== realPlanType) {
-           await Club.updateOne({ _id: club._id }, { $set: { plan_type: realPlanType } });
-           club.plan_type = realPlanType;
+          await Club.updateOne({ _id: club._id }, { $set: { plan_type: realPlanType } });
+          club.plan_type = realPlanType;
         }
 
         return club;
       })
     );
 
-    res.status(200).json({ 
-      success: true, 
+    res.status(200).json({
+      success: true,
       message: "Lấy danh sách quán thành công",
-      count: result.length, 
-      data: result 
+      count: result.length,
+      data: result
     });
   } catch (error) {
     console.error("Lỗi khi lấy danh sách CLB của chủ quán:", error);
@@ -356,14 +356,14 @@ const getClubsByAccount = async (req, res) => {
 //4/3/2026
 const registerClub = async (req, res) => {
   try {
-    const { 
-      name, 
-      address, 
-      phone, 
-      tax_code, 
-      description, 
-      legalDocuments, 
-      opening_time, 
+    const {
+      name,
+      address,
+      phone,
+      tax_code,
+      description,
+      legalDocuments,
+      opening_time,
       closing_time,
       lat: frontendLat,
       lng: frontendLng,
@@ -405,8 +405,8 @@ const registerClub = async (req, res) => {
         const districtDoc = await District.findOne({ code: district_code }).lean();
 
         const geoData = await geocodeAddress(
-          address, 
-          province ? province.name : "", 
+          address,
+          province ? province.name : "",
           districtDoc ? (districtDoc.name_with_type || districtDoc.name) : ""
         );
 
@@ -419,9 +419,9 @@ const registerClub = async (req, res) => {
         console.warn("Lỗi geocode khi đăng ký:", err.message);
       }
     } else {
-        // If we have coordinates but no district text, try to get it for backward compatibility
-        const districtDoc = await District.findOne({ code: district_code }).lean();
-        districtNameField = districtDoc ? (districtDoc.name_with_type || districtDoc.name) : "";
+      // If we have coordinates but no district text, try to get it for backward compatibility
+      const districtDoc = await District.findOne({ code: district_code }).lean();
+      districtNameField = districtDoc ? (districtDoc.name_with_type || districtDoc.name) : "";
     }
 
     const club = await Club.create({
@@ -465,9 +465,9 @@ const registerClub = async (req, res) => {
     const staffSystemRole = await Role.findOne({ name: "STAFF_SYSTEM" }).lean();
     const staffAccounts = staffSystemRole
       ? await Account.find({
-          role_id: staffSystemRole._id,
-          status: "ACTIVE",
-        }).lean()
+        role_id: staffSystemRole._id,
+        status: "ACTIVE",
+      }).lean()
       : [];
     if (staffAccounts && staffAccounts.length > 0) {
       const notifications = staffAccounts.map(staff => ({
@@ -589,7 +589,7 @@ const updateClub = async (req, res) => {
             image_url: url,
             image_type: "legal documents"
           }));
-        
+
         if (legalImages.length > 0) {
           await Image.insertMany(legalImages);
         }
@@ -607,37 +607,37 @@ const updateClub = async (req, res) => {
 const getClubStatistics = async (req, res) => {
   try {
     const { month, year } = req.query;
-    
+
     // Lấy club_id quản lý của staff/owner
     let club_id;
     if (req.user.role === "STAFF_CLUB") {
-       club_id = req.user.club_id;
+      club_id = req.user.club_id;
     } else if (req.user.role === "OWNER") {
-       // Tạm thời lấy club đầu tiên của Owner nếu họ gọi API chung. (Tuỳ logic)
-       const club = await Club.findOne({ account_id: req.user.accountId }).lean();
-       if (!club) {
-         return res.status(404).json({ success: false, message: "Chủ quán chưa có câu lạc bộ" });
-       }
-       club_id = club._id;
+      // Tạm thời lấy club đầu tiên của Owner nếu họ gọi API chung. (Tuỳ logic)
+      const club = await Club.findOne({ account_id: req.user.accountId }).lean();
+      if (!club) {
+        return res.status(404).json({ success: false, message: "Chủ quán chưa có câu lạc bộ" });
+      }
+      club_id = club._id;
     } else {
-       return res.status(403).json({ success: false, message: "Không có quyền truy cập" });
+      return res.status(403).json({ success: false, message: "Không có quyền truy cập" });
     }
 
     const currentClub = await Club.findById(club_id).lean();
     if (!currentClub) {
-        return res.status(404).json({ success: false, message: "Không tìm thấy câu lạc bộ" });
+      return res.status(404).json({ success: false, message: "Không tìm thấy câu lạc bộ" });
     }
 
     if (currentClub.plan_type === "free") {
-        return res.status(403).json({ success: false, message: "Tính năng Thống kê theo ngày chỉ dành cho gói Basic hoặc Pro." });
+      return res.status(403).json({ success: false, message: "Tính năng thống kê chỉ dành cho gói Basic hoặc Pro." });
     }
 
     // Prepare date range if month and year are provided
     let dateFilter = {};
     if (month && year) {
-       const startDate = new Date(year, month - 1, 1);
-       const endDate = new Date(year, month, 0, 23, 59, 59, 999); // last day of month
-       dateFilter = { $gte: startDate, $lte: endDate };
+      const startDate = new Date(year, month - 1, 1);
+      const endDate = new Date(year, month, 0, 23, 59, 59, 999); // last day of month
+      dateFilter = { $gte: startDate, $lte: endDate };
     }
 
     // 1. Lấy danh sách bàn thuộc club
@@ -647,9 +647,9 @@ const getClubStatistics = async (req, res) => {
     // 2. Booking Stats
     const bookingQuery = { table_id: { $in: tableIds } };
     if (dateFilter.$gte) bookingQuery.created_at = dateFilter;
-    
+
     const bookings = await Booking.find(bookingQuery).lean();
-    
+
     const totalBookings = bookings.length;
     // Doanh thu chỉ tính các booking Completed
     const completedBookings = bookings.filter(b => b.status === "Completed");
@@ -658,11 +658,11 @@ const getClubStatistics = async (req, res) => {
     // 3. Review Stats
     const feedbackQuery = { club_id: club_id };
     if (dateFilter.$gte) feedbackQuery.created_at = dateFilter;
-    
+
     const feedbacks = await Feedback.find(feedbackQuery)
-        .populate("account_id", "fullname username avatar")
-        .sort({ created_at: -1 })
-        .lean();
+      .populate("account_id", "fullname username avatar")
+      .sort({ created_at: -1 })
+      .lean();
 
     // 4. Tournament Stats (Ongoing or in requested month)
     const tourQuery = { club_id: club_id };
@@ -672,25 +672,25 @@ const getClubStatistics = async (req, res) => {
     res.status(200).json({
       success: true,
       data: {
-          clubName: currentClub.name,
-          totalBookings,
-          totalRevenue,
-          feedbacks: feedbacks.map(f => ({
-             id: f._id,
-             rating: f.rating,
-             comment: f.comment,
-             reply: f.reply_content,
-             created_at: f.created_at,
-             user: f.account_id ? { name: f.account_id.fullname || f.account_id.username, avatar: f.account_id.avatar } : { name: "Ẩn danh" }
-          })),
-          tournaments: tournaments.map(t => ({
-             id: t._id,
-             name: t.name,
-             start_time: t.play_date || t.start_time || t.created_at,
-             status: t.status,
-             fee: t.fee,
-             max_players: t.max_players
-          }))
+        clubName: currentClub.name,
+        totalBookings,
+        totalRevenue,
+        feedbacks: feedbacks.map(f => ({
+          id: f._id,
+          rating: f.rating,
+          comment: f.comment,
+          reply: f.reply_content,
+          created_at: f.created_at,
+          user: f.account_id ? { name: f.account_id.fullname || f.account_id.username, avatar: f.account_id.avatar } : { name: "Ẩn danh" }
+        })),
+        tournaments: tournaments.map(t => ({
+          id: t._id,
+          name: t.name,
+          start_time: t.play_date || t.start_time || t.created_at,
+          status: t.status,
+          fee: t.fee,
+          max_players: t.max_players
+        }))
       }
     });
 
@@ -719,9 +719,9 @@ const completeOnboarding = async (req, res) => {
       .sort({ purchase_date: -1 });
 
     if (activeSub && activeSub.subscription_id) {
-       const subName = activeSub.subscription_id.name.toLowerCase();
-       if (subName.includes("basic")) realPlanType = "basic";
-       if (subName.includes("pro")) realPlanType = "pro";
+      const subName = activeSub.subscription_id.name.toLowerCase();
+      if (subName.includes("basic")) realPlanType = "basic";
+      if (subName.includes("pro")) realPlanType = "pro";
     }
 
     club.onboarding_completed = true;

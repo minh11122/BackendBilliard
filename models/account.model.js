@@ -40,6 +40,12 @@ const accountSchema = new mongoose.Schema(
       default: "local",
     },
 
+    provider_id: {
+      type: String,
+      default: null,
+      trim: true,
+    },
+
     role_id: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "Role",

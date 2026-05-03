@@ -56,6 +56,7 @@ const ensureInvoiceForBooking = async ({
     booking_id: booking._id,
     table_cost: Number(tableCost || 0),
     total_service: Number(totalService || 0),
+    carry_over_amount: Number(booking.carry_over_amount || 0),
     invoice_number,
     invoice_date,
     payment_method: paymentMethod, // "payOS" | "Cash"
@@ -740,9 +741,32 @@ const createBookingPayOSPayment = async (req, res) => {
     }
 
     const orderCode = Date.now();
-    const expiredAt = Math.floor(
-      (Date.now() + PAYOS_EXPIRE_MINUTES * 60 * 1000) / 1000,
+    const nowMs = Date.now();
+    const holdUntilMs = table?.held_until
+      ? new Date(table.held_until).getTime()
+      : null;
+
+    if (holdUntilMs && holdUntilMs <= nowMs) {
+      booking.status = "Cancelled";
+      await booking.save();
+      await BilliardTable.findByIdAndUpdate(booking.table_id, {
+        status: "Available",
+        held_by: null,
+        held_until: null,
+      });
+      return res.status(400).json({
+        success: false,
+        message: "Đơn đặt đã hết thời gian giữ chỗ",
+      });
+    }
+
+    const defaultPayOSExpiredAt = Math.floor(
+      (nowMs + PAYOS_EXPIRE_MINUTES * 60 * 1000) / 1000,
     );
+    const holdExpiredAt = holdUntilMs ? Math.floor(holdUntilMs / 1000) : null;
+    const expiredAt = holdExpiredAt
+      ? Math.min(defaultPayOSExpiredAt, holdExpiredAt)
+      : defaultPayOSExpiredAt;
 
     const description = `Coc booking ${booking.code_number}`;
 
@@ -1168,7 +1192,8 @@ const checkOutBooking = async (req, res) => {
 
     booking.actual_end_time = realEndTimeStr; // Lưu giờ khách về thực tế
     if (booking.status !== "Completed") {
-      booking.total_bill = playCost + serviceTotal;
+      const carryOver = Number(booking.carry_over_amount || 0);
+      booking.total_bill = playCost + serviceTotal + carryOver;
       booking.status = "Completed";
       await booking.save();
 
@@ -1584,7 +1609,8 @@ const verifyBookingCheckoutPayOSPayment = async (req, res) => {
 
     const durationHours = (endMin - startMin) / 60;
     const playCost = Math.round(durationHours * (booking.hour_price || 0));
-    const totalBill = Number(playCost || 0) + Number(serviceTotal || 0);
+    const carryOver = Number(booking.carry_over_amount || 0);
+    const totalBill = Number(playCost || 0) + Number(serviceTotal || 0) + carryOver;
 
     if (booking.status !== "Completed") {
       booking.total_bill = totalBill;
@@ -1861,20 +1887,70 @@ const extendBooking = async (req, res) => {
     }
 
     // Tính toán end_time mới
-    const [h, m] = booking.end_time.split(":").map(Number);
-    let totalMinutes = h * 60 + m + parseInt(minutes);
+    let startA = timeToMinutes(booking.start_time);
+    let currentEndA = timeToMinutes(booking.end_time);
+    if (currentEndA <= startA) currentEndA += 24 * 60;
+    
+    let endA = currentEndA + parseInt(minutes);
+
+    // Kiểm tra trùng lịch với các đơn đặt bàn khác
+    const targetDate = new Date(booking.play_date);
+    targetDate.setHours(0, 0, 0, 0);
+
+    const prevDay = new Date(targetDate);
+    prevDay.setDate(prevDay.getDate() - 1);
+
+    const nextTwoDays = new Date(targetDate);
+    nextTwoDays.setDate(nextTwoDays.getDate() + 2);
+
+    const otherBookings = await Booking.find({
+      table_id: booking.table_id._id || booking.table_id,
+      _id: { $ne: booking._id },
+      play_date: { $gte: prevDay, $lt: nextTwoDays },
+      status: { $in: ["Pending", "Booked", "Playing"] },
+    }).lean();
+
+    for (const b of otherBookings) {
+      const bDate = new Date(b.play_date);
+      bDate.setHours(0, 0, 0, 0);
+
+      let startB = timeToMinutes(b.start_time);
+      let endB = timeToMinutes(b.end_time);
+
+      if (bDate.getTime() < targetDate.getTime()) {
+        // yesterday
+        startB -= 24 * 60;
+        endB -= 24 * 60;
+        if (endB <= startB) endB += 24 * 60;
+      } else if (bDate.getTime() > targetDate.getTime()) {
+        // tomorrow
+        startB += 24 * 60;
+        endB += 24 * 60;
+        if (endB <= startB) endB += 24 * 60;
+      } else {
+        // today
+        if (endB <= startB) endB += 24 * 60;
+      }
+
+      // Check overlap
+      if (startA < endB && endA > startB) {
+        return res.status(409).json({
+          success: false,
+          message: `Không thể gia hạn vì bị trùng với đơn đặt bàn lúc ${b.start_time}. Khách sau sắp tới.`,
+        });
+      }
+    }
 
     const checkClub = await Club.findById(clubId).select("opening_time closing_time").lean();
     if (checkClub && checkClub.closing_time) {
       const is24h = checkClub.opening_time === "00:00" && checkClub.closing_time === "00:00";
       if (!is24h) {
-        let currentEndMin = h * 60 + m;
         let cParts = checkClub.closing_time.split(":");
         let closeMin = parseInt(cParts[0]) * 60 + parseInt(cParts[1]);
         let oParts = (checkClub.opening_time || "08:00").split(":");
         let openMin = parseInt(oParts[0]) * 60 + parseInt(oParts[1]);
         
-        let durationSinceOpen = (currentEndMin - openMin + 24 * 60) % (24 * 60);
+        let durationSinceOpen = (currentEndA - openMin + 24 * 60) % (24 * 60);
         let newDurationSinceOpen = durationSinceOpen + parseInt(minutes);
         let validDuration = (closeMin - openMin + 24 * 60) % (24 * 60);
         
@@ -1890,8 +1966,8 @@ const extendBooking = async (req, res) => {
     }
 
     // Format lại HH:mm (xử lý qua ngày nếu cần, nhưng booking model lưu String HH:mm)
-    const newH = Math.floor(totalMinutes / 60) % 24;
-    const newM = totalMinutes % 60;
+    const newH = Math.floor(endA / 60) % 24;
+    const newM = endA % 60;
     const newEndTime = `${String(newH).padStart(2, "0")}:${String(newM).padStart(2, "0")}`;
 
     // Cập nhật tổng tiền (tính thêm tiền cho phần gia hạn)
@@ -1999,11 +2075,17 @@ const changeTable = async (req, res) => {
     );
 
     oldBooking.actual_end_time = realEndTimeStr;
-    oldBooking.total_bill = playCost + serviceTotal;
+    const computedTotalOld = playCost + serviceTotal;
+    const oldCarryOver = Number(oldBooking.carry_over_amount || 0);
+    const totalToTransfer = computedTotalOld + oldCarryOver;
+    const depositToTransfer = Number(oldBooking.deposit || 0);
+
+    oldBooking.total_bill = 0; // Để tránh tính doanh thu 2 lần
+    oldBooking.deposit = 0;
     oldBooking.status = "Completed";
     oldBooking.note =
       (oldBooking.note || "") +
-      ` [Đã chuyển sang bàn ${newTable.table_number}]`;
+      ` [Chuyển bàn: Đã chuyển ${totalToTransfer}đ và cọc ${depositToTransfer}đ sang bàn ${newTable.table_number}]`;
     await oldBooking.save();
 
     await BilliardTable.findByIdAndUpdate(oldBooking.table_id._id, {
@@ -2023,10 +2105,11 @@ const changeTable = async (req, res) => {
       start_time: realEndTimeStr,
       end_time: computedEndTime,
       code_number: codeNumber,
-      deposit: 0,
+      deposit: depositToTransfer,
       hour_price: newTable.price || 0,
       total_bill: 0,
-      note: `Đổi đến từ bàn ${oldBooking.table_id.table_number}`,
+      carry_over_amount: totalToTransfer,
+      note: `Đổi đến từ bàn ${oldBooking.table_id.table_number}. Mang theo ${totalToTransfer}đ từ bàn cũ.`,
       status: "Playing",
     });
 

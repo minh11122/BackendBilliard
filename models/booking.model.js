@@ -13,6 +13,7 @@ const bookingSchema = new mongoose.Schema(
     deposit: { type: Number, required: true },
     hour_price: { type: Number, required: true },
     total_bill: { type: Number },
+    carry_over_amount: { type: Number, default: 0 },
     note: { type: String },
     status: {
       type: String,
