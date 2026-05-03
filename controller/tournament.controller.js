@@ -2113,10 +2113,25 @@ const startRoundMatch = async (req, res) => {
         .json({ success: false, message: "Trận đấu đã kết thúc" });
     }
 
-    match.table_id = table_id || match.table_id;
+    const targetTableId = table_id || match.table_id;
+
+    if (targetTableId) {
+      const activeBooking = await Booking.findOne({
+        table_id: targetTableId,
+        status: { $in: ["Playing"] },
+      });
+      if (activeBooking) {
+        return res.status(400).json({
+          success: false,
+          message: "Bàn này đang có khách chơi. Vui lòng chọn bàn khác!",
+        });
+      }
+    }
+
+    match.table_id = targetTableId;
     if (race_to) match.race_to = Number(race_to);
     match.scheduled_at = scheduled_at
-      ? new Date(scheduled_at)
+      ? new Date(scheduled_at)  
       : match.scheduled_at || new Date();
     match.started_at = new Date();
     match.status = "Playing";
@@ -2127,17 +2142,6 @@ const startRoundMatch = async (req, res) => {
     });
 
     if (match.table_id) {
-      const activeBooking = await Booking.findOne({
-        table_id: match.table_id,
-        status: { $in: ["Playing"] },
-      });
-      if (activeBooking) {
-        return res.status(400).json({
-          success: false,
-          message: "Bàn này đang có khách chơi. Vui lòng chọn bàn khác!",
-        });
-      }
-
       const todayStr = new Date().toLocaleString("en-US", {
         timeZone: "Asia/Ho_Chi_Minh",
       });
