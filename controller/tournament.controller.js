@@ -710,7 +710,7 @@ const checkAndCompleteTournament = async (tournamentId) => {
 const generateKnockoutBracket = async (tournament) => {
   const approvedPlayers = await fetchApprovedPlayers(tournament._id);
   if (approvedPlayers.length < 2) {
-    throw new Error("Cần ít nhất 2 người chơi đã duyệt để tạo nhánh đấu");
+    throw new Error("Cần ít nhất 2 người chơi để tạo nhánh đấu");
   }
 
   await clearBracket(tournament._id);
@@ -1164,7 +1164,7 @@ const generateDoubleEliminationBracket = async (tournament) => {
 const generateRoundRobinBracket = async (tournament, groupSizeInput) => {
   const approvedPlayers = await fetchApprovedPlayers(tournament._id);
   if (approvedPlayers.length < 2) {
-    throw new Error("Cần ít nhất 2 người chơi đã duyệt để tạo bảng đấu");
+    throw new Error("Cần ít nhất 2 người chơi để tạo bảng đấu");
   }
 
   await clearBracket(tournament._id);
@@ -1621,7 +1621,7 @@ const closeTournamentRegistration = async (req, res) => {
     if (approvedPlayers.length < 2) {
       return res
         .status(400)
-        .json({ success: false, message: "Cần ít nhất 2 người chơi đã duyệt" });
+        .json({ success: false, message: "Cần ít nhất 2 người chơi" });
     }
 
     tournament.status = "Closed";
@@ -1864,7 +1864,7 @@ const generateTournamentBracket = async (req, res) => {
     if (approvedPlayers.length < 2) {
       return res
         .status(400)
-        .json({ success: false, message: "Cần ít nhất 2 người chơi đã duyệt" });
+        .json({ success: false, message: "Cần ít nhất 2 người chơi" });
     }
 
     const targetFormat = format || tournament.format;
@@ -2131,7 +2131,7 @@ const startRoundMatch = async (req, res) => {
     match.table_id = targetTableId;
     if (race_to) match.race_to = Number(race_to);
     match.scheduled_at = scheduled_at
-      ? new Date(scheduled_at)  
+      ? new Date(scheduled_at)
       : match.scheduled_at || new Date();
     match.started_at = new Date();
     match.status = "Playing";

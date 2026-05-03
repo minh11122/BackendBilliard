@@ -2050,14 +2050,23 @@ const changeTable = async (req, res) => {
         .json({ success: false, message: "Bàn mới đang không trống" });
     }
 
-    // 1. Chốt đơn bàn cũ
+    const oldTableId = oldBooking.table_id._id;
+    const oldTableNumber = oldBooking.table_id.table_number;
+
+    if (oldBooking.table_id.table_type_id.toString() !== newTable.table_type_id.toString()) {
+      return res
+        .status(400)
+        .json({ success: false, message: "Chỉ được phép đổi sang bàn cùng loại" });
+    }
+
+    // 1. Chốt đơn bàn cũ tại thời điểm hiện tại
     const now = new Date();
     const endH = now.getHours();
     const endM = now.getMinutes();
     const realEndTimeStr = `${String(endH).padStart(2, "0")}:${String(endM).padStart(2, "0")}`;
 
     const scheduledEndStr = oldBooking.end_time;
-    let endMin = timeToMinutes(scheduledEndStr);
+    let endMin = timeToMinutes(realEndTimeStr); // Tính tiền bàn cũ theo giờ thực tế chuyển
     const startMin = timeToMinutes(oldBooking.start_time);
     if (endMin <= startMin) endMin += 24 * 60;
 
@@ -2088,35 +2097,33 @@ const changeTable = async (req, res) => {
       ` [Chuyển bàn: Đã chuyển ${totalToTransfer}đ và cọc ${depositToTransfer}đ sang bàn ${newTable.table_number}]`;
     await oldBooking.save();
 
-    await BilliardTable.findByIdAndUpdate(oldBooking.table_id._id, {
+    await BilliardTable.findByIdAndUpdate(oldTableId, {
       status: "Available",
     });
 
     // 2. Tạo đơn bàn mới
     const codeNumber = "WI" + Date.now().toString().slice(-8);
-    const computedEndH = (endH + 1) % 24;
-    const computedEndTime = `${String(computedEndH).padStart(2, "0")}:${String(endM).padStart(2, "0")}`;
 
     const newBooking = await Booking.create({
       account_id: oldBooking.account_id,
       guest_name: oldBooking.guest_name,
       table_id: newTable._id,
       play_date: now,
-      start_time: realEndTimeStr,
-      end_time: computedEndTime,
+      start_time: realEndTimeStr, // Bắt đầu từ giờ chuyển bàn
+      end_time: scheduledEndStr, // Kết thúc bằng đúng giờ kết thúc ban đầu
       code_number: codeNumber,
       deposit: depositToTransfer,
-      hour_price: newTable.price || 0,
+      hour_price: newTable.price || 0, // <-- Lấy giá của bàn mới
       total_bill: 0,
       carry_over_amount: totalToTransfer,
-      note: `Đổi đến từ bàn ${oldBooking.table_id.table_number}. Mang theo ${totalToTransfer}đ từ bàn cũ.`,
+      note: `Đổi đến từ bàn ${oldTableNumber}. Mang theo ${totalToTransfer}đ từ bàn cũ.`,
       status: "Playing",
     });
 
     notifyStaff(
       clubId,
       "Đổi bàn",
-      `Bàn ${oldBooking.table_id.table_number} đã chuyển sang Bàn ${newTable.table_number}`,
+      `Bàn ${oldTableNumber} đã chuyển sang Bàn ${newTable.table_number}`,
     );
 
     res.status(200).json({
