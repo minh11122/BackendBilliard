@@ -1,6 +1,7 @@
 const tableService = require("../services/billiardTable.service");
 const BilliardTable = require("../models/billiard_table.model");
 const cloudinary = require("../configs/cloudinary.config");
+const Booking = require("../models/booking.model");
 
 const getBilliardTables = async (req, res) => {
     try {
@@ -195,6 +196,19 @@ const updateBilliardTable = async (req, res) => {
         // Ưu tiên status gửi trực tiếp, fallback sang isActive
         const tableStatus = status || (isActive === "false" ? "Maintenance" : "Available");
 
+        if (tableStatus === "Maintenance") {
+            const activeBookings = await Booking.countDocuments({
+                table_id: id,
+                status: { $in: ["Booked", "Playing"] }
+            });
+            if (activeBookings > 0) {
+                return res.status(400).json({
+                    success: false,
+                    message: "Không thể chuyển bàn sang trạng thái bảo trì vì đang có lịch đặt hoặc đang được chơi."
+                });
+            }
+        }
+
         const updateData = {
             club_id,
             table_type_id,
@@ -241,6 +255,17 @@ const deleteBilliardTable = async (req, res) => {
 
         if (!id) {
             return res.status(400).json({ success: false, message: "Thiếu ID bàn" });
+        }
+
+        const activeBookings = await Booking.countDocuments({
+            table_id: id,
+            status: { $in: ["Booked", "Playing"] }
+        });
+        if (activeBookings > 0) {
+            return res.status(400).json({
+                success: false,
+                message: "Không thể xóa bàn vì đang có lịch đặt hoặc đang được chơi."
+            });
         }
 
         // Xóa ảnh Cloudinary trước khi xóa bàn

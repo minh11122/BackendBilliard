@@ -42,74 +42,74 @@ const getClubAnalytics = async (req, res) => {
 
     const clubObjectId = new mongoose.Types.ObjectId(club_id);
 
-    // --- 1. REVENUE OVER TIME (Biểu đồ doanh thu theo ngày) ---
-    // Cần join Invoice -> Booking -> Table để biết club_id, hoặc lấy tất cả booking của club
+    // --- 1. REVENUE & TRANSACTIONS ---
     const clubTables = await BilliardTable.find({ club_id: clubObjectId }).select("_id").lean();
     const tableIds = clubTables.map(t => t._id);
 
     const clubBookings = await Booking.find({ table_id: { $in: tableIds } }).select("_id").lean();
     const bookingIds = clubBookings.map(b => b._id);
 
-    // Lọc Invoices đã thanh toán và thuộc khoảng thời gian
-    const invoices = await Invoice.find({
+    const TransactionHistory = require("../models/transiction_history.model");
+
+    const successfulTransactions = await TransactionHistory.find({
       booking_id: { $in: bookingIds },
-      status: "Paid",
-      invoice_date: dateFilter
-    }).populate({
-      path: 'booking_id',
-      select: 'table_id status'
+      status: "SUCCESS",
+      transaction_time: dateFilter
     }).lean();
 
-    // Grouping by Date (YYYY-MM-DD)
     const revenueByDateMap = {};
-    let totalTableRevenue = 0;
-    let totalServiceRevenue = 0;
-    
-    // Grouping Payment Methods
+    let totalRevenue = 0;
     const paymentMixMap = { cash: 0, bank: 0 };
-    
-    invoices.forEach(inv => {
-      const dateStr = new Date(inv.invoice_date).toISOString().split('T')[0];
+    const validBookingIds = new Set();
+
+    successfulTransactions.forEach(tx => {
+      const dateStr = new Date(tx.transaction_time).toISOString().split('T')[0];
+      const amount = tx.amount || 0;
       
       if (!revenueByDateMap[dateStr]) {
-        revenueByDateMap[dateStr] = { date: dateStr, table: 0, service: 0 };
+        revenueByDateMap[dateStr] = { date: dateStr, total: 0 };
       }
       
-      const tCost = inv.table_cost || 0;
-      const sCost = inv.total_service || 0;
+      revenueByDateMap[dateStr].total += amount;
+      totalRevenue += amount;
       
-      revenueByDateMap[dateStr].table += tCost;
-      revenueByDateMap[dateStr].service += sCost;
-      
-      totalTableRevenue += tCost;
-      totalServiceRevenue += sCost;
-
-      // Payment method
-      if (inv.payment_method === 'Cash') {
-         paymentMixMap.cash += (tCost + sCost);
+      if (tx.transaction_type === "BOOKING_FINAL_PAYMENT_CASH") {
+         paymentMixMap.cash += amount;
       } else {
-         paymentMixMap.bank += (tCost + sCost);
+         paymentMixMap.bank += amount;
+      }
+
+      if (tx.booking_id) {
+         validBookingIds.add(tx.booking_id.toString());
       }
     });
 
     const revenueTimeline = Object.values(revenueByDateMap).sort((a, b) => a.date.localeCompare(b.date));
+    const validInvoiceCount = validBookingIds.size;
+    let totalBookingsCount = validBookingIds.size; // Chỉ tính những đơn có giao dịch thành công là đơn hợp lệ
+
+    // Tính tổng tiền dịch vụ từ các đơn hợp lệ
+    const validBookingIdsArray = Array.from(validBookingIds);
+    const validBookingServices = await BookingService.find({
+      booking_id: { $in: validBookingIdsArray }
+    }).lean();
+
+    let totalServiceRevenue = 0;
+    validBookingServices.forEach(s => {
+      totalServiceRevenue += (s.unit_price * s.quantity);
+    });
+    let totalTableRevenue = totalRevenue - totalServiceRevenue;
+    if (totalTableRevenue < 0) totalTableRevenue = 0;
 
     // --- 2. TABLE PERFORMANCE (Bàn đắt khách) ---
-    // Analyze bookings within date range
+    // Analyze bookings within date range (Only valid bookings)
     const bookingsInRange = await Booking.find({
-      table_id: { $in: tableIds },
-      created_at: dateFilter,
-      status: { $in: ["Completed", "Playing"] }
+      _id: { $in: validBookingIdsArray }
     }).populate('table_id').lean();
-
-    const completedBookingsCount = bookingsInRange.filter(
-      (booking) => booking.status === "Completed"
-    ).length;
 
     const tableStatsMap = {};
     const tableTypeStatsMap = {};
     let totalPlayMinutes = 0;
-    let totalBookingsCount = bookingsInRange.length;
 
     bookingsInRange.forEach(b => {
        if (!b.table_id) return;
@@ -124,12 +124,12 @@ const getClubAnalytics = async (req, res) => {
          tableTypeStatsMap[tType] = { id: tType, revenue: 0, playMinutes: 0 };
        }
 
-       const rev = b.total_bill || 0;
+       const rev = b.status === "Cancelled" ? (b.deposit || 0) : (b.total_bill || 0);
        tableStatsMap[tId].revenue += rev;
        tableTypeStatsMap[tType].revenue += rev;
 
        // Calculate play duration in minutes
-       if (b.start_time && b.end_time) {
+       if (b.start_time && b.end_time && b.status !== "Cancelled") {
          const toMins = (timeStr) => {
            const [h, m] = timeStr.split(':').map(Number);
            return h * 60 + m;
@@ -258,10 +258,10 @@ const getClubAnalytics = async (req, res) => {
       success: true,
       data: {
         kpi: {
-          totalRevenue: totalTableRevenue + totalServiceRevenue,
+          totalRevenue: totalRevenue,
           totalBookings: totalBookingsCount,
-          averageOrderValue: completedBookingsCount > 0
-            ? Math.round((totalTableRevenue + totalServiceRevenue) / completedBookingsCount)
+          averageOrderValue: validInvoiceCount > 0
+            ? Math.round(totalRevenue / validInvoiceCount)
             : 0,
           averagePlayMinutes: totalBookingsCount > 0 ? Math.round(totalPlayMinutes / totalBookingsCount) : 0,
           unpaidCount: unpaidInvoices
