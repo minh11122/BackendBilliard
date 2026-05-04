@@ -1324,6 +1324,7 @@ const createTournament = async (req, res) => {
       play_date,
       auto_bracket,
       banner,
+      table_type_id,
     } = req.body;
 
     if (!name || !max_players) {
@@ -1381,6 +1382,7 @@ const createTournament = async (req, res) => {
       play_date: play_date ? new Date(play_date) : null,
       auto_bracket: auto_bracket !== undefined ? auto_bracket : true,
       banner: req.file ? req.file.path : banner || "",
+      table_type_id: table_type_id || null,
       status: "Draft",
       created_by: req.user?.accountId || null,
       created_at: new Date(),
@@ -1506,6 +1508,7 @@ const getTournamentById = async (req, res) => {
     const { id } = req.params;
     const tournament = await Tournament.findById(id)
       .populate("club_id", "name address")
+      .populate("table_type_id", "name")
       .lean();
     if (!tournament) {
       return res
@@ -2082,7 +2085,7 @@ const startRoundMatch = async (req, res) => {
     const { table_id, scheduled_at, race_to } = req.body || {};
 
     const tournament = await Tournament.findById(id)
-      .select("status format")
+      .select("status format table_type_id")
       .lean();
     if (!tournament) {
       return res
@@ -2116,6 +2119,20 @@ const startRoundMatch = async (req, res) => {
     const targetTableId = table_id || match.table_id;
 
     if (targetTableId) {
+      const BilliardTable = require("../models/billiard_table.model");
+      const table = await BilliardTable.findById(targetTableId).lean();
+      
+      if (!table) {
+        return res.status(404).json({ success: false, message: "Không tìm thấy bàn thi đấu" });
+      }
+
+      if (tournament.table_type_id && String(table.table_type_id) !== String(tournament.table_type_id)) {
+        return res.status(400).json({
+          success: false,
+          message: "Loại bàn không khớp với quy định của giải đấu",
+        });
+      }
+
       const activeBooking = await Booking.findOne({
         table_id: targetTableId,
         status: { $in: ["Playing"] },

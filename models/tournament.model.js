@@ -5,6 +5,7 @@ const tournamentSchema = new mongoose.Schema(
     club_id: { type: mongoose.Schema.Types.ObjectId, ref: "Club", required: true },
     name: { type: String, required: true },
     description: { type: String, default: "" },
+    table_type_id: { type: mongoose.Schema.Types.ObjectId, ref: "TableType", default: null },
     format: {
       type: String,
       enum: ["Knockout", "Round Robin", "Double Elimination"],
