@@ -23,16 +23,16 @@
         <div class='clearfix'>
             
             <div class='fl pad1y space-right2'>
-                <span class="strong">86.26% </span>
+                <span class="strong">88.8% </span>
                 <span class="quiet">Statements</span>
-                <span class='fraction'>647/750</span>
+                <span class='fraction'>666/750</span>
             </div>
         
             
             <div class='fl pad1y space-right2'>
-                <span class="strong">67.25% </span>
+                <span class="strong">68.39% </span>
                 <span class="quiet">Branches</span>
-                <span class='fraction'>115/171</span>
+                <span class='fraction'>119/174</span>
             </div>
         
             
@@ -44,9 +44,9 @@
         
             
             <div class='fl pad1y space-right2'>
-                <span class="strong">86.26% </span>
+                <span class="strong">88.8% </span>
                 <span class="quiet">Lines</span>
-                <span class='fraction'>647/750</span>
+                <span class='fraction'>666/750</span>
             </div>
         
             
@@ -1278,31 +1278,31 @@
 <span class="cline-any cline-yes">4x</span>
 <span class="cline-any cline-yes">4x</span>
 <span class="cline-any cline-yes">4x</span>
-<span class="cline-any cline-no">&nbsp;</span>
-<span class="cline-any cline-no">&nbsp;</span>
-<span class="cline-any cline-no">&nbsp;</span>
-<span class="cline-any cline-no">&nbsp;</span>
-<span class="cline-any cline-no">&nbsp;</span>
-<span class="cline-any cline-yes">8x</span>
-<span class="cline-any cline-yes">8x</span>
-<span class="cline-any cline-no">&nbsp;</span>
-<span class="cline-any cline-no">&nbsp;</span>
-<span class="cline-any cline-no">&nbsp;</span>
-<span class="cline-any cline-no">&nbsp;</span>
-<span class="cline-any cline-no">&nbsp;</span>
-<span class="cline-any cline-no">&nbsp;</span>
-<span class="cline-any cline-no">&nbsp;</span>
-<span class="cline-any cline-no">&nbsp;</span>
-<span class="cline-any cline-no">&nbsp;</span>
-<span class="cline-any cline-no">&nbsp;</span>
-<span class="cline-any cline-no">&nbsp;</span>
-<span class="cline-any cline-no">&nbsp;</span>
-<span class="cline-any cline-no">&nbsp;</span>
-<span class="cline-any cline-no">&nbsp;</span>
-<span class="cline-any cline-yes">8x</span>
 <span class="cline-any cline-yes">4x</span>
 <span class="cline-any cline-yes">4x</span>
 <span class="cline-any cline-yes">4x</span>
+<span class="cline-any cline-yes">4x</span>
+<span class="cline-any cline-yes">4x</span>
+<span class="cline-any cline-yes">8x</span>
+<span class="cline-any cline-yes">8x</span>
+<span class="cline-any cline-yes">1x</span>
+<span class="cline-any cline-yes">1x</span>
+<span class="cline-any cline-yes">1x</span>
+<span class="cline-any cline-yes">1x</span>
+<span class="cline-any cline-yes">1x</span>
+<span class="cline-any cline-yes">1x</span>
+<span class="cline-any cline-yes">1x</span>
+<span class="cline-any cline-yes">1x</span>
+<span class="cline-any cline-yes">4x</span>
+<span class="cline-any cline-yes">4x</span>
+<span class="cline-any cline-yes">4x</span>
+<span class="cline-any cline-yes">4x</span>
+<span class="cline-any cline-yes">4x</span>
+<span class="cline-any cline-yes">4x</span>
+<span class="cline-any cline-yes">8x</span>
+<span class="cline-any cline-yes">1x</span>
+<span class="cline-any cline-yes">1x</span>
+<span class="cline-any cline-yes">1x</span>
 <span class="cline-any cline-yes">8x</span>
 <span class="cline-any cline-yes">1x</span>
 <span class="cline-any cline-yes">1x</span>
@@ -1620,10 +1620,10 @@ const getAllClubs = async (req, res) =&gt; {
         if (!club.lat<span class="branch-0 cbranch-no" title="branch not covered" > || !club.lng)</span> {
           const province = club.province_code<span class="branch-0 cbranch-no" title="branch not covered" > ? await Province.findOne({ code: club.province_code }).lean() : n</span>ull;
           const districtDoc = club.district_code<span class="branch-0 cbranch-no" title="branch not covered" > ? await District.findOne({ code: club.district_code }).lean() : n</span>ull;
-          
+&nbsp;
           const geoData = await geocodeAddress(
-            club.address, 
-            province<span class="branch-0 cbranch-no" title="branch not covered" > ? province.name </span>: "", 
+            club.address,
+            province<span class="branch-0 cbranch-no" title="branch not covered" > ? province.name </span>: "",
             districtDoc<span class="branch-0 cbranch-no" title="branch not covered" > ? (districtDoc.name_with_type || districtDoc.name)</span> : ""
           );
 &nbsp;
@@ -1637,14 +1637,14 @@ const getAllClubs = async (req, res) =&gt; {
         }
 &nbsp;
         // Lấy ảnh bìa (Ưu tiên Avatar, sau đó đến Banner)
-        const clubImages = await Image.find({ 
-          club_id: club._id, 
-          image_type: { $in: ["Avatar", "Banner"] } 
+        const clubImages = await Image.find({
+          club_id: club._id,
+          image_type: { $in: ["Avatar", "Banner"] }
         }).lean();
-        
-        const mainImage = clubImages.find(img =&gt; img.image_type === "Avatar") || 
-                          clubImages.find(img =&gt; img.image_type === "Banner");
-                          
+&nbsp;
+        const mainImage = clubImages.find(img =&gt; img.image_type === "Avatar") ||
+          clubImages.find(img =&gt; img.image_type === "Banner");
+&nbsp;
         club.avatar = mainImage<span class="branch-0 cbranch-no" title="branch not covered" > ? mainImage.image_url </span>: null;
 &nbsp;
         // Lấy danh sách loại bàn
@@ -1653,9 +1653,9 @@ const getAllClubs = async (req, res) =&gt; {
 <span class="cstat-no" title="statement not covered" >          club.priceFrom = Math.min(...tables.map((t) =&gt; t.price));</span>
 <span class="cstat-no" title="statement not covered" >          const types = new Set();</span>
 <span class="cstat-no" title="statement not covered" >          tables.forEach(t =&gt; {</span>
-<span class="cstat-no" title="statement not covered" >             if (t.table_type_id &amp;&amp; t.table_type_id.name) {</span>
-<span class="cstat-no" title="statement not covered" >                 types.add(t.table_type_id.name);</span>
-<span class="cstat-no" title="statement not covered" >             }</span>
+<span class="cstat-no" title="statement not covered" >            if (t.table_type_id &amp;&amp; t.table_type_id.name) {</span>
+<span class="cstat-no" title="statement not covered" >              types.add(t.table_type_id.name);</span>
+<span class="cstat-no" title="statement not covered" >            }</span>
 <span class="cstat-no" title="statement not covered" >          });</span>
 <span class="cstat-no" title="statement not covered" >          club.tableTypes = Array.from(types);</span>
         } else {
@@ -1665,18 +1665,18 @@ const getAllClubs = async (req, res) =&gt; {
 &nbsp;
         // Lấy rating 
         const feedbacks = await Feedback.find({ club_id: club._id }).lean();
-        
+&nbsp;
         if (feedbacks.length &gt; 0) <span class="branch-0 cbranch-no" title="branch not covered" >{</span>
-<span class="cstat-no" title="statement not covered" >            const sum = feedbacks.reduce((acc, curr) =&gt; acc + (curr.rating || 0), 0);</span>
-<span class="cstat-no" title="statement not covered" >            club.rating = parseFloat((sum / feedbacks.length).toFixed(1));</span>
-<span class="cstat-no" title="statement not covered" >            club.reviewsCount = feedbacks.length;</span>
+<span class="cstat-no" title="statement not covered" >          const sum = feedbacks.reduce((acc, curr) =&gt; acc + (curr.rating || 0), 0);</span>
+<span class="cstat-no" title="statement not covered" >          club.rating = parseFloat((sum / feedbacks.length).toFixed(1));</span>
+<span class="cstat-no" title="statement not covered" >          club.reviewsCount = feedbacks.length;</span>
         } else {
-            club.rating = 0;
-            club.reviewsCount = 0;
+          club.rating = 0;
+          club.reviewsCount = 0;
         }
 &nbsp;
         club.distance = null; // Distance will be calculated on frontend
-        
+&nbsp;
         return club;
       })
     );
@@ -1700,7 +1700,7 @@ const getClubById = async (req, res) =&gt; {
   try {
     const { id } = req.params;
     const { play_date, startTime, duration } = req.query;
-    
+&nbsp;
     const club = await Club.findById(id).lean();
 &nbsp;
     if (!club) <span class="branch-0 cbranch-no" title="branch not covered" >{</span>
@@ -1735,18 +1735,18 @@ const getClubById = async (req, res) =&gt; {
 &nbsp;
     // Lấy danh sách bàn
     const tables = await BilliardTable.find({ club_id: id }).populate("table_type_id").lean();
-    
+&nbsp;
     // Nếu có query thời gian, tính toán trạng thái khả dụng thực tế
     if (play_date &amp;&amp; startTime) {
       const Booking = require("../models/booking.model");
-      
+&nbsp;
       const openMin = timeToMinutes(club.opening_time<span class="branch-0 cbranch-no" title="branch not covered" > || "08:00")</span>;
       const is24h = club.opening_time === "00:00" &amp;&amp; club.closing_time === "00:00";
-      
+&nbsp;
       const reqStartMin = timeToMinutes(startTime);
       const reqDuration = parseInt(duration)<span class="branch-0 cbranch-no" title="branch not covered" > || 2;</span>
       const reqEndMin = reqStartMin + reqDuration * 60;
-      
+&nbsp;
       const targetDate = new Date(play_date);
       targetDate.setHours(0, 0, 0, 0);
 &nbsp;
@@ -1772,25 +1772,25 @@ const getClubById = async (req, res) =&gt; {
         for (const b of bookings) {
           const bDate = new Date(b.play_date);
           bDate.setHours(0, 0, 0, 0);
-          
+&nbsp;
           let bStart = timeToMinutes(b.start_time);
           let bEnd = timeToMinutes(b.end_time);
 &nbsp;
           // Normalize times relative to targetDate
           if (bDate &lt; targetDate) {
-             // If booking started yesterday, shift its times by -1440 minutes relative to today's midnight?
-             // Actually, it's easier to think: does yesterday's booking end after 24:00?
-             // If yesterday's end &lt; yesterday's start, it cross midnight.
-             if (bEnd &lt;= bStart) {
-                // It ends today at bEnd minutes past midnight.
-                // Current query time is [reqStartMin, reqEndMin] relative to today's midnight.
-                // Overlap if: reqStartMin &lt; bEnd
-                if (reqStartMin &lt; bEnd) {
-                   if (b.status === "Booked"<span class="branch-0 cbranch-no" title="branch not covered" > || b.status === "Playing")</span> isOccupied = true;
-<span class="cstat-no" title="statement not covered" ><span class="branch-0 cbranch-no" title="branch not covered" >                   else isHolding = true;</span></span>
-                }
-             }
-             continue; // Done with yesterday's booking
+            // If booking started yesterday, shift its times by -1440 minutes relative to today's midnight?
+            // Actually, it's easier to think: does yesterday's booking end after 24:00?
+            // If yesterday's end &lt; yesterday's start, it cross midnight.
+            if (bEnd &lt;= bStart) {
+              // It ends today at bEnd minutes past midnight.
+              // Current query time is [reqStartMin, reqEndMin] relative to today's midnight.
+              // Overlap if: reqStartMin &lt; bEnd
+              if (reqStartMin &lt; bEnd) {
+                if (b.status === "Booked"<span class="branch-0 cbranch-no" title="branch not covered" > || b.status === "Playing")</span> isOccupied = true;
+<span class="cstat-no" title="statement not covered" ><span class="branch-0 cbranch-no" title="branch not covered" >                else isHolding = true;</span></span>
+              }
+            }
+            continue; // Done with yesterday's booking
 <span class="branch-0 cbranch-no" title="branch not covered" >          }</span>
 <span class="cstat-no" title="statement not covered" ></span>
 <span class="cstat-no" title="statement not covered" >          // Case: Booking is today</span>
@@ -1802,7 +1802,7 @@ const getClubById = async (req, res) =&gt; {
 <span class="cstat-no" title="statement not covered" >            if (b.status === "Booked" || b.status === "Playing") isOccupied = true;</span>
 <span class="cstat-no" title="statement not covered" >            else isHolding = true;</span>
 <span class="cstat-no" title="statement not covered" >          }</span>
-<span class="cstat-no" title="statement not covered" >          </span>
+<span class="cstat-no" title="statement not covered" ></span>
 <span class="cstat-no" title="statement not covered" >          if (isOccupied) break;</span>
         }
 &nbsp;
@@ -1820,34 +1820,34 @@ const getClubById = async (req, res) =&gt; {
     }<span class="branch-0 cbranch-no" title="branch not covered" > else {</span>
 <span class="cstat-no" title="statement not covered" >      club.priceFrom = 0;</span>
 <span class="cstat-no" title="statement not covered" >    }</span>
-    
+&nbsp;
     // Lấy gói cước hiện tại
     const activeSub = await SubscriptionAccount.findOne({
       club_id: id,
       status: { $in: ["active", "Active"] }
     }).populate("subscription_id").lean();
     if (activeSub<span class="branch-0 cbranch-no" title="branch not covered" > &amp;&amp; activeSub.subscription_id)</span> <span class="branch-0 cbranch-no" title="branch not covered" >{</span>
-<span class="cstat-no" title="statement not covered" >        club.subscription_name = activeSub.subscription_id.name;</span>
+<span class="cstat-no" title="statement not covered" >      club.subscription_name = activeSub.subscription_id.name;</span>
 <span class="cstat-no" title="statement not covered" >    }</span>
 &nbsp;
     // Lấy rating thực tế cho detail
     const feedbacks = await Feedback.find({ club_id: id }).populate("account_id").sort({ created_at: -1 }).lean();
-    
+&nbsp;
     if (feedbacks.length &gt; 0) <span class="branch-0 cbranch-no" title="branch not covered" >{</span>
-<span class="cstat-no" title="statement not covered" >        const sum = feedbacks.reduce((acc, curr) =&gt; acc + (curr.rating || 0), 0);</span>
-<span class="cstat-no" title="statement not covered" >        club.rating = parseFloat((sum / feedbacks.length).toFixed(1));</span>
-<span class="cstat-no" title="statement not covered" >        club.reviewsCount = feedbacks.length;</span>
-<span class="cstat-no" title="statement not covered" >        club.feedbacks = feedbacks.map(f =&gt; ({</span>
-<span class="cstat-no" title="statement not covered" >            id: f._id,</span>
-<span class="cstat-no" title="statement not covered" >            rating: f.rating,</span>
-<span class="cstat-no" title="statement not covered" >            comment: f.comment,</span>
-<span class="cstat-no" title="statement not covered" >            reply: f.reply_content,</span>
-<span class="cstat-no" title="statement not covered" >            created_at: f.created_at,</span>
-<span class="cstat-no" title="statement not covered" >            user: f.account_id ? { name: f.account_id.fullname || f.account_id.username, avatar: f.account_id.avatar } : { name: "Người dùng ẩn danh" }</span>
-<span class="cstat-no" title="statement not covered" >        }));</span>
+<span class="cstat-no" title="statement not covered" >      const sum = feedbacks.reduce((acc, curr) =&gt; acc + (curr.rating || 0), 0);</span>
+<span class="cstat-no" title="statement not covered" >      club.rating = parseFloat((sum / feedbacks.length).toFixed(1));</span>
+<span class="cstat-no" title="statement not covered" >      club.reviewsCount = feedbacks.length;</span>
+<span class="cstat-no" title="statement not covered" >      club.feedbacks = feedbacks.map(f =&gt; ({</span>
+<span class="cstat-no" title="statement not covered" >        id: f._id,</span>
+<span class="cstat-no" title="statement not covered" >        rating: f.rating,</span>
+<span class="cstat-no" title="statement not covered" >        comment: f.comment,</span>
+<span class="cstat-no" title="statement not covered" >        reply: f.reply_content,</span>
+<span class="cstat-no" title="statement not covered" >        created_at: f.created_at,</span>
+<span class="cstat-no" title="statement not covered" >        user: f.account_id ? { name: f.account_id.fullname || f.account_id.username, avatar: f.account_id.avatar } : { name: "Người dùng ẩn danh" }</span>
+<span class="cstat-no" title="statement not covered" >      }));</span>
     } else {
-        club.rating = 0;
-        club.reviewsCount = 0;
+      club.rating = 0;
+      club.reviewsCount = 0;
     }
 &nbsp;
     res.status(200).json({ success: true, data: club });
@@ -1873,14 +1873,14 @@ const getClubsByAccount = async (req, res) =&gt; {
 &nbsp;
     const result = await Promise.all(
       clubs.map(async (club) =&gt; {
-        const clubImages = await Image.find({ 
-          club_id: club._id, 
-          image_type: { $in: ["Avatar", "Banner"] } 
+        const clubImages = await Image.find({
+          club_id: club._id,
+          image_type: { $in: ["Avatar", "Banner"] }
         }).lean();
-        
-        const mainImage = clubImages.find(img =&gt; img.image_type === "Avatar") || 
-                          clubImages.find(img =&gt; img.image_type === "Banner");
-                          
+&nbsp;
+        const mainImage = clubImages.find(img =&gt; img.image_type === "Avatar") ||
+          clubImages.find(img =&gt; img.image_type === "Banner");
+&nbsp;
         club.avatar = mainImage<span class="branch-0 cbranch-no" title="branch not covered" > ? mainImage.image_url </span>: null;
 &nbsp;
         // Tự động chữa lỗi đồng bộ plan_type nếu quán đã có gói khác free đang Active
@@ -1890,25 +1890,25 @@ const getClubsByAccount = async (req, res) =&gt; {
           status: { $in: ["active", "Active"] }
         }).populate("subscription_id");
         if (activeSub &amp;&amp; activeSub.subscription_id) {
-           const subName = activeSub.subscription_id.name.toLowerCase();
-           if (subName.includes("basic")) realPlanType = "basic";
-           if (subName.includes("pro")) realPlanType = "pro";
+          const subName = activeSub.subscription_id.name.toLowerCase();
+          if (subName.includes("basic")) realPlanType = "basic";
+          if (subName.includes("pro")) realPlanType = "pro";
         }
 &nbsp;
         if (club.plan_type !== realPlanType) {
-           await Club.updateOne({ _id: club._id }, { $set: { plan_type: realPlanType } });
-           club.plan_type = realPlanType;
+          await Club.updateOne({ _id: club._id }, { $set: { plan_type: realPlanType } });
+          club.plan_type = realPlanType;
         }
 &nbsp;
         return club;
       })
     );
 &nbsp;
-    res.status(200).json({ 
-      success: true, 
+    res.status(200).json({
+      success: true,
       message: "Lấy danh sách quán thành công",
-      count: result.length, 
-      data: result 
+      count: result.length,
+      data: result
     });
   } catch (error) {
     console.error("Lỗi khi lấy danh sách CLB của chủ quán:", error);
@@ -1921,14 +1921,14 @@ const getClubsByAccount = async (req, res) =&gt; {
 //4/3/2026
 const registerClub = async (req, res) =&gt; {
   try {
-    const { 
-      name, 
-      address, 
-      phone, 
-      tax_code, 
-      description, 
-      legalDocuments, 
-      opening_time, 
+    const {
+      name,
+      address,
+      phone,
+      tax_code,
+      description,
+      legalDocuments,
+      opening_time,
       closing_time,
       lat: frontendLat,
       lng: frontendLng,
@@ -1970,8 +1970,8 @@ const registerClub = async (req, res) =&gt; {
         const districtDoc = await District.findOne({ code: district_code }).lean();
 &nbsp;
         const geoData = await geocodeAddress(
-          address, 
-          province ? province.name<span class="branch-0 cbranch-no" title="branch not covered" > : "", </span>
+          address,
+          province ? province.name<span class="branch-0 cbranch-no" title="branch not covered" > : "",</span>
           districtDoc ? (districtDoc.name_with_type || districtDoc.name<span class="branch-0 cbranch-no" title="branch not covered" >) : ""</span>
         );
 &nbsp;
@@ -1984,9 +1984,9 @@ const registerClub = async (req, res) =&gt; {
         console.warn("Lỗi geocode khi đăng ký:", err.message);
       }
     } else {
-        // If we have coordinates but no district text, try to get it for backward compatibility
-        const districtDoc = await District.findOne({ code: district_code }).lean();
-        districtNameField = districtDoc ? (districtDoc.name_with_type<span class="branch-0 cbranch-no" title="branch not covered" > || districtDoc.name<span class="branch-0 cbranch-no" title="branch not covered" >)</span> : "";</span>
+      // If we have coordinates but no district text, try to get it for backward compatibility
+      const districtDoc = await District.findOne({ code: district_code }).lean();
+      districtNameField = districtDoc ? (districtDoc.name_with_type<span class="branch-0 cbranch-no" title="branch not covered" > || districtDoc.name<span class="branch-0 cbranch-no" title="branch not covered" >)</span> : "";</span>
     }
 &nbsp;
     const club = await Club.create({
@@ -2027,28 +2027,28 @@ const registerClub = async (req, res) =&gt; {
 &nbsp;
     // Create notifications for STAFF_SYSTEM
     const Role = require("../models/role.model");
-    const staffSystemRole = await Role.findOne({ name: "STAFF_SYSTEM" }).lean()<span class="branch-0 cbranch-no" title="branch not covered" >;</span>
-<span class="cstat-no" title="statement not covered" >    const staffAccounts = staffSystemRole</span>
-<span class="cstat-no" title="statement not covered" >      ? await Account.find({</span>
-<span class="cstat-no" title="statement not covered" >          role_id: staffSystemRole._id,</span>
-<span class="cstat-no" title="statement not covered" >          status: "ACTIVE",</span>
-<span class="cstat-no" title="statement not covered" >        }).lean()</span>
-      : [];
-    if (staffAccounts<span class="branch-0 cbranch-no" title="branch not covered" > &amp;&amp; staffAccounts.length &gt; 0)</span> <span class="branch-0 cbranch-no" title="branch not covered" >{</span>
-<span class="cstat-no" title="statement not covered" >      const notifications = staffAccounts.map(staff =&gt; ({</span>
-<span class="cstat-no" title="statement not covered" >        account_id: staff._id,</span>
-<span class="cstat-no" title="statement not covered" >        title: "CLB mới chờ duyệt!",</span>
-<span class="cstat-no" title="statement not covered" >        message: `Câu lạc bộ ${createdClub.name || "mới"} vừa đăng ký và đang chờ bạn phê duyệt.`,</span>
-<span class="cstat-no" title="statement not covered" >        is_read: false</span>
-<span class="cstat-no" title="statement not covered" >      }));</span>
-<span class="cstat-no" title="statement not covered" >      await Notification.insertMany(notifications);</span>
-<span class="cstat-no" title="statement not covered" >    }</span>
-<span class="cstat-no" title="statement not covered" ></span>
-<span class="cstat-no" title="statement not covered" >    return res.status(201).json({</span>
-<span class="cstat-no" title="statement not covered" >      success: true,</span>
-<span class="cstat-no" title="statement not covered" >      message: "Đăng ký câu lạc bộ thành công, vui lòng chờ duyệt",</span>
-<span class="cstat-no" title="statement not covered" >      data: createdClub</span>
-<span class="cstat-no" title="statement not covered" >    });</span>
+    const staffSystemRole = await Role.findOne({ name: "STAFF_SYSTEM" }).lean();
+    const staffAccounts = staffSystemRole
+      ? await Account.find({
+        role_id: staffSystemRole._id,
+        status: "ACTIVE",
+      }).lean()
+<span class="branch-0 cbranch-no" title="branch not covered" >      : [];</span>
+    if (staffAccounts &amp;&amp; staffAccounts.length &gt; 0) {
+      const notifications = staffAccounts.map(staff =&gt; ({
+        account_id: staff._id,
+        title: "CLB mới chờ duyệt!",
+        message: `Câu lạc bộ ${createdClub.name<span class="branch-0 cbranch-no" title="branch not covered" > || "mới"}</span> vừa đăng ký và đang chờ bạn phê duyệt.`,
+        is_read: false
+      }));
+      await Notification.insertMany(notifications);
+    }
+&nbsp;
+    return res.status(201).json({
+      success: true,
+      message: "Đăng ký câu lạc bộ thành công, vui lòng chờ duyệt",
+      data: createdClub
+    });
   } catch (error) {
     console.error("Lỗi khi đăng ký CLB:", error);
     return res.status(500).json({ success: false, message: "Lỗi Server" });
@@ -2154,7 +2154,7 @@ const updateClub = async (req, res) =&gt; {
             image_url: url,
             image_type: "legal documents"
           }));
-        
+&nbsp;
         if (legalImages.length &gt; 0) {
           await Image.insertMany(legalImages);
         }
@@ -2172,37 +2172,37 @@ const updateClub = async (req, res) =&gt; {
 const getClubStatistics = async (req, res) =&gt; {
   try {
     const { month, year } = req.query;
-    
+&nbsp;
     // Lấy club_id quản lý của staff/owner
     let club_id;
     if (req.user.role === "STAFF_CLUB") {
-       club_id = req.user.club_id;
+      club_id = req.user.club_id;
     } else if (req.user.role === "OWNER") {
-       // Tạm thời lấy club đầu tiên của Owner nếu họ gọi API chung. (Tuỳ logic)
-       const club = await Club.findOne({ account_id: req.user.accountId }).lean();
-       if (!club) {
-         return res.status(404).json({ success: false, message: "Chủ quán chưa có câu lạc bộ" });
-       }
-       club_id = club._id;
+      // Tạm thời lấy club đầu tiên của Owner nếu họ gọi API chung. (Tuỳ logic)
+      const club = await Club.findOne({ account_id: req.user.accountId }).lean();
+      if (!club) {
+        return res.status(404).json({ success: false, message: "Chủ quán chưa có câu lạc bộ" });
+      }
+      club_id = club._id;
     } else {
-       return res.status(403).json({ success: false, message: "Không có quyền truy cập" });
+      return res.status(403).json({ success: false, message: "Không có quyền truy cập" });
     }
 &nbsp;
     const currentClub = await Club.findById(club_id).lean();
     if (!currentClub) {
-        return res.status(404).json({ success: false, message: "Không tìm thấy câu lạc bộ" });
+      return res.status(404).json({ success: false, message: "Không tìm thấy câu lạc bộ" });
     }
 &nbsp;
     if (currentClub.plan_type === "free") {
-        return res.status(403).json({ success: false, message: "Tính năng Thống kê theo ngày chỉ dành cho gói Basic hoặc Pro." });
+      return res.status(403).json({ success: false, message: "Tính năng thống kê chỉ dành cho gói Basic hoặc Pro." });
     }
 &nbsp;
     // Prepare date range if month and year are provided
     let dateFilter = {};
     if (month &amp;&amp; year) {
-       const startDate = new Date(year, month - 1, 1);
-       const endDate = new Date(year, month, 0, 23, 59, 59, 999); // last day of month
-       dateFilter = { $gte: startDate, $lte: endDate };
+      const startDate = new Date(year, month - 1, 1);
+      const endDate = new Date(year, month, 0, 23, 59, 59, 999); // last day of month
+      dateFilter = { $gte: startDate, $lte: endDate };
     }
 &nbsp;
     // 1. Lấy danh sách bàn thuộc club
@@ -2212,9 +2212,9 @@ const getClubStatistics = async (req, res) =&gt; {
     // 2. Booking Stats
     const bookingQuery = { table_id: { $in: tableIds } };
     if (dateFilter.$gte) bookingQuery.created_at = dateFilter;
-    
+&nbsp;
     const bookings = await Booking.find(bookingQuery).lean();
-    
+&nbsp;
     const totalBookings = bookings.length;
     // Doanh thu chỉ tính các booking Completed
     const completedBookings = bookings.filter(b =&gt; b.status === "Completed");
@@ -2223,11 +2223,11 @@ const getClubStatistics = async (req, res) =&gt; {
     // 3. Review Stats
     const feedbackQuery = { club_id: club_id };
     if (dateFilter.$gte) feedbackQuery.created_at = dateFilter;
-    
+&nbsp;
     const feedbacks = await Feedback.find(feedbackQuery)
-        .populate("account_id", "fullname username avatar")
-        .sort({ created_at: -1 })
-        .lean();
+      .populate("account_id", "fullname username avatar")
+      .sort({ created_at: -1 })
+      .lean();
 &nbsp;
     // 4. Tournament Stats (Ongoing or in requested month)
     const tourQuery = { club_id: club_id };
@@ -2237,25 +2237,25 @@ const getClubStatistics = async (req, res) =&gt; {
     res.status(200).json({
       success: true,
       data: {
-          clubName: currentClub.name,
-          totalBookings,
-          totalRevenue,
-          feedbacks: feedbacks.map(f =&gt; ({
-<span class="cstat-no" title="statement not covered" >             id: f._id,</span>
-<span class="cstat-no" title="statement not covered" >             rating: f.rating,</span>
-<span class="cstat-no" title="statement not covered" >             comment: f.comment,</span>
-<span class="cstat-no" title="statement not covered" >             reply: f.reply_content,</span>
-<span class="cstat-no" title="statement not covered" >             created_at: f.created_at,</span>
-<span class="cstat-no" title="statement not covered" >             user: f.account_id ? { name: f.account_id.fullname || f.account_id.username, avatar: f.account_id.avatar } : { name: "Ẩn danh" }</span>
-          })),
-          tournaments: tournaments.map(t =&gt; ({
-<span class="cstat-no" title="statement not covered" >             id: t._id,</span>
-<span class="cstat-no" title="statement not covered" >             name: t.name,</span>
-<span class="cstat-no" title="statement not covered" >             start_time: t.play_date || t.start_time || t.created_at,</span>
-<span class="cstat-no" title="statement not covered" >             status: t.status,</span>
-<span class="cstat-no" title="statement not covered" >             fee: t.fee,</span>
-<span class="cstat-no" title="statement not covered" >             max_players: t.max_players</span>
-          }))
+        clubName: currentClub.name,
+        totalBookings,
+        totalRevenue,
+        feedbacks: feedbacks.map(f =&gt; ({
+<span class="cstat-no" title="statement not covered" >          id: f._id,</span>
+<span class="cstat-no" title="statement not covered" >          rating: f.rating,</span>
+<span class="cstat-no" title="statement not covered" >          comment: f.comment,</span>
+<span class="cstat-no" title="statement not covered" >          reply: f.reply_content,</span>
+<span class="cstat-no" title="statement not covered" >          created_at: f.created_at,</span>
+<span class="cstat-no" title="statement not covered" >          user: f.account_id ? { name: f.account_id.fullname || f.account_id.username, avatar: f.account_id.avatar } : { name: "Ẩn danh" }</span>
+        })),
+        tournaments: tournaments.map(t =&gt; ({
+<span class="cstat-no" title="statement not covered" >          id: t._id,</span>
+<span class="cstat-no" title="statement not covered" >          name: t.name,</span>
+<span class="cstat-no" title="statement not covered" >          start_time: t.play_date || t.start_time || t.created_at,</span>
+<span class="cstat-no" title="statement not covered" >          status: t.status,</span>
+<span class="cstat-no" title="statement not covered" >          fee: t.fee,</span>
+<span class="cstat-no" title="statement not covered" >          max_players: t.max_players</span>
+        }))
       }
     });
 &nbsp;
@@ -2284,9 +2284,9 @@ const completeOnboarding = async (req, res) =&gt; {
       .sort({ purchase_date: -1 });
 &nbsp;
     if (activeSub &amp;&amp; activeSub.subscription_id) {
-       const subName = activeSub.subscription_id.name.toLowerCase();
-       if (subName.includes("basic")) realPlanType = "basic";
-       if (subName.includes("pro")) realPlanType = "pro";
+      const subName = activeSub.subscription_id.name.toLowerCase();
+      if (subName.includes("basic")) realPlanType = "basic";
+      if (subName.includes("pro")) realPlanType = "pro";
     }
 &nbsp;
     club.onboarding_completed = true;
@@ -2320,7 +2320,7 @@ module.exports = {
             <div class='footer quiet pad2 space-top1 center small'>
                 Code coverage generated by
                 <a href="https://istanbul.js.org/" target="_blank" rel="noopener noreferrer">istanbul</a>
-                at 2026-04-24T14:42:53.490Z
+                at 2026-05-04T15:45:27.957Z
             </div>
         <script src="../prettify.js"></script>
         <script>

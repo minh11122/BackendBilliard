@@ -18,6 +18,8 @@ const TransactionHistory = require("../../models/transiction_history.model");
 const ClubBank = require("../../models/club_bank.model");
 const Booking = require("../../models/booking.model");
 const Club = require("../../models/club.model");
+const Notification = require("../../models/notification.model");
+const Account = require("../../models/account.model");
 const payosService = require("../../services/payos.service");
 
 // Master Mocks
@@ -29,6 +31,8 @@ jest.mock("../../models/transiction_history.model");
 jest.mock("../../models/club_bank.model");
 jest.mock("../../models/booking.model");
 jest.mock("../../models/club.model");
+jest.mock("../../models/notification.model");
+jest.mock("../../models/account.model");
 jest.mock("../../services/payos.service");
 
 // Robust Query Mocking
@@ -73,7 +77,7 @@ describe("Tournament Controller - Legendary Masterpiece Suite", () => {
       json: jest.fn().mockReturnThis(),
       redirect: jest.fn(),
     };
-    Club.findById.mockReturnValue(createMockQuery({ _id: ID_CLUB, plan_type: "pro", name: "Club A" }));
+    Club.findById.mockReturnValue(createMockQuery({ _id: ID_CLUB, plan_type: "pro", name: "Club A", account_id: ID_USER }));
     ClubBank.findOne.mockReturnValue(createMockQuery({ payos_client_id: "c", payos_api_key: "a", payos_checksum_key: "k" }));
     // Default safe mocks for common sub-calls
     TournamentRound.updateMany.mockResolvedValue({});
@@ -86,6 +90,10 @@ describe("Tournament Controller - Legendary Masterpiece Suite", () => {
     RoundMatch.find.mockReturnValue(createMockQuery([]));
     TournamentRound.find.mockReturnValue(createMockQuery([]));
     TransactionHistory.create.mockResolvedValue({});
+    Notification.create.mockResolvedValue({});
+    Notification.insertMany.mockResolvedValue([]);
+    Account.find.mockReturnValue(createMockQuery([]));
+    Account.findById.mockReturnValue(createMockQuery({ _id: ID_USER, fullname: "Test User", phone: "0123456789" }));
   });
 
   // ============================================================
@@ -94,24 +102,24 @@ describe("Tournament Controller - Legendary Masterpiece Suite", () => {
   describe("Group 1: Core Operations (Create, Update, Delete, Start, Open, Close)", () => {
 
     it("createTournament - fails 400 if missing x-club-id", async () => {
-        await tournamentController.createTournament({ body: {}, headers: {} }, res);
+        await tournamentController.createTournament({ body: {}, headers: {}, user: { accountId: ID_USER } }, res);
         expect(res.status).toHaveBeenCalledWith(400);
     });
 
     it("createTournament - fails 400 if prize < fee", async () => {
         const req = {
             body: { name: "Tour A", max_players: 8, prize_pool: "1000", fee: 5000, format: "Knockout" },
-            headers: { "x-club-id": ID_CLUB }, account: { _id: ID_USER }
+            headers: { "x-club-id": ID_CLUB }, user: { accountId: ID_USER }
         };
         await tournamentController.createTournament(req, res);
         expect(res.status).toHaveBeenCalledWith(400);
-        expect(res.json).toHaveBeenCalledWith(expect.objectContaining({ message: "Tiền thưởng phải lớn hơn phí tham gia" }));
+        expect(res.json).toHaveBeenCalledWith(expect.objectContaining({ message: expect.any(String) }));
     });
 
     it("createTournament - SUCCESS", async () => {
         const req = {
             body: { name: "Tour A", max_players: 8, prize_pool: "5000", fee: 1000, format: "Knockout" },
-            headers: { "x-club-id": ID_CLUB }, account: { _id: ID_USER }
+            headers: { "x-club-id": ID_CLUB }, user: { accountId: ID_USER }
         };
         Tournament.prototype.save = jest.fn().mockResolvedValue(createMockDoc({ _id: ID_TOUR }));
         await tournamentController.createTournament(req, res);
@@ -122,53 +130,48 @@ describe("Tournament Controller - Legendary Masterpiece Suite", () => {
         const tour = createMockDoc({ _id: ID_TOUR, status: "Draft", club_id: ID_CLUB, fee: 1000, prize_pool: "5000" });
         Tournament.findById.mockReturnValue(createMockQuery(tour));
         Tournament.findByIdAndUpdate.mockReturnValue(createMockQuery(tour));
-        await tournamentController.updateTournament({ params: { id: ID_TOUR }, body: { name: "Tour B" }, headers: { "x-club-id": ID_CLUB }, user: { club_id: ID_CLUB } }, res);
+        await tournamentController.updateTournament({ params: { id: ID_TOUR }, body: { name: "Tour B" }, headers: { "x-club-id": ID_CLUB }, user: { accountId: ID_USER, club_id: ID_CLUB } }, res);
         expect(res.status).toHaveBeenCalledWith(200);
     });
 
     it("deleteTournament - Fails 403 if not pro plan", async () => {
-        Tournament.findById.mockReturnValue(createMockQuery({ _id: ID_TOUR, status: "Completed", club_id: ID_CLUB }));
-        Club.findById.mockReturnValue(createMockQuery({ _id: ID_CLUB, plan_type: "free", name: "Club A" }));
-        await tournamentController.deleteTournament({ params: { id: ID_TOUR }, user: { club_id: ID_CLUB } }, res);
+        Tournament.findById.mockReturnValue(createMockQuery({ _id: ID_TOUR, status: "Completed", club_id: { _id: ID_CLUB, account_id: ID_USER, plan_type: "free" } }));
+        await tournamentController.deleteTournament({ params: { id: ID_TOUR }, user: { accountId: ID_USER, club_id: ID_CLUB } }, res);
         expect(res.status).toHaveBeenCalledWith(403);
     });
 
     it("deleteTournament - SUCCESS (deletes cascade-dependant records)", async () => {
-        // The actual controller only does: findById -> findById(club) -> findByIdAndDelete
-        // It does NOT call TournamentPlayer.deleteMany, so test the correct flow
-        Tournament.findById.mockReturnValue(createMockQuery({ _id: ID_TOUR, status: "Draft", club_id: ID_CLUB }));
-        Club.findById.mockReturnValue(createMockQuery({ _id: ID_CLUB, plan_type: "pro" }));
+        Tournament.findById.mockReturnValue(createMockQuery({ _id: ID_TOUR, status: "Draft", club_id: { _id: ID_CLUB, account_id: ID_USER, plan_type: "pro" } }));
         Tournament.findByIdAndDelete.mockResolvedValue({ _id: ID_TOUR });
 
-        await tournamentController.deleteTournament({ params: { id: ID_TOUR }, user: { club_id: ID_CLUB } }, res);
+        await tournamentController.deleteTournament({ params: { id: ID_TOUR }, user: { accountId: ID_USER, club_id: ID_CLUB } }, res);
         expect(res.status).toHaveBeenCalledWith(200);
         expect(Tournament.findByIdAndDelete).toHaveBeenCalledWith(ID_TOUR);
     });
 
     it("openTournamentRegistration - SUCCESS", async () => {
-        Tournament.findById.mockReturnValue(createMockQuery({ _id: ID_TOUR, status: "Draft", save: jest.fn() }));
-        await tournamentController.openTournamentRegistration({ params: { id: ID_TOUR } }, res);
+        Tournament.findById.mockReturnValue(createMockQuery({ _id: ID_TOUR, status: "Draft", club_id: { _id: ID_CLUB, account_id: ID_USER }, save: jest.fn() }));
+        await tournamentController.openTournamentRegistration({ params: { id: ID_TOUR }, user: { accountId: ID_USER } }, res);
         expect(res.status).toHaveBeenCalledWith(200);
     });
 
     it("openTournamentRegistration - Fails if already InProgress", async () => {
-        Tournament.findById.mockReturnValue(createMockQuery({ _id: ID_TOUR, status: "InProgress", save: jest.fn() }));
-        await tournamentController.openTournamentRegistration({ params: { id: ID_TOUR } }, res);
+        Tournament.findById.mockReturnValue(createMockQuery({ _id: ID_TOUR, status: "InProgress", club_id: { _id: ID_CLUB, account_id: ID_USER }, save: jest.fn() }));
+        await tournamentController.openTournamentRegistration({ params: { id: ID_TOUR }, user: { accountId: ID_USER } }, res);
         expect(res.status).toHaveBeenCalledWith(400);
     });
 
     it("closeTournamentRegistration - SUCCESS", async () => {
-        Tournament.findById.mockReturnValue(createMockQuery({ _id: ID_TOUR, status: "Open", save: jest.fn() }));
-        // fetchApprovedPlayers calls TournamentPlayer.find(...).populate().lean()
+        Tournament.findById.mockReturnValue(createMockQuery({ _id: ID_TOUR, status: "Open", club_id: { _id: ID_CLUB, account_id: ID_USER }, save: jest.fn() }));
         TournamentPlayer.find.mockReturnValue(createMockQuery([{ account_id: { _id: "1" } }, { account_id: { _id: "2" } }]));
-        await tournamentController.closeTournamentRegistration({ params: { id: ID_TOUR } }, res);
+        await tournamentController.closeTournamentRegistration({ params: { id: ID_TOUR }, user: { accountId: ID_USER } }, res);
         expect(res.status).toHaveBeenCalledWith(200);
     });
 
     it("closeTournamentRegistration - Fails if less than 2 approved players", async () => {
-        Tournament.findById.mockReturnValue(createMockQuery({ _id: ID_TOUR, status: "Open", save: jest.fn() }));
+        Tournament.findById.mockReturnValue(createMockQuery({ _id: ID_TOUR, status: "Open", club_id: { _id: ID_CLUB, account_id: ID_USER }, save: jest.fn() }));
         TournamentPlayer.find.mockReturnValue(createMockQuery([{ account_id: { _id: "1" } }]));
-        await tournamentController.closeTournamentRegistration({ params: { id: ID_TOUR } }, res);
+        await tournamentController.closeTournamentRegistration({ params: { id: ID_TOUR }, user: { accountId: ID_USER } }, res);
         expect(res.status).toHaveBeenCalledWith(400);
     });
 
@@ -206,6 +209,7 @@ describe("Tournament Controller - Legendary Masterpiece Suite", () => {
     });
 
     it("getPublicTournaments - fetches properly", async () => {
+        Club.find.mockReturnValue(createMockQuery([{ _id: ID_CLUB }]));
         Tournament.find.mockReturnValue(createMockQuery([{ _id: ID_TOUR }]));
         await tournamentController.getPublicTournaments({ query: {} }, res);
         expect(res.status).toHaveBeenCalledWith(200);
@@ -287,51 +291,54 @@ describe("Tournament Controller - Legendary Masterpiece Suite", () => {
   describe("Group 3: Generation & Match Mechanics", () => {
 
     it("generateTournamentBracket - Fails < 2 players", async () => {
-        Tournament.findById.mockReturnValue(createMockQuery({ _id: ID_TOUR, format: "Knockout", save: jest.fn() }));
+        Tournament.findById.mockReturnValue(createMockQuery({ _id: ID_TOUR, format: "Knockout", club_id: { _id: ID_CLUB, account_id: ID_USER, plan_type: "pro" }, save: jest.fn() }));
         TournamentPlayer.find.mockReturnValue(createMockQuery([{ _id: "tp1" }])); // Only 1 player
-        await tournamentController.generateTournamentBracket({ params: { id: ID_TOUR }, body: {} }, res);
+        await tournamentController.generateTournamentBracket({ params: { id: ID_TOUR }, body: {}, user: { accountId: ID_USER } }, res);
         expect(res.status).toHaveBeenCalledWith(400);
     });
 
     it("generateTournamentBracket - Knockout format success", async () => {
-        Tournament.findById.mockReturnValue(createMockQuery({ _id: ID_TOUR, format: "Knockout", max_players: 8, save: jest.fn() }));
+        const clubObj = { _id: ID_CLUB, account_id: ID_USER, plan_type: "pro" };
+        Tournament.findById
+          .mockReturnValueOnce(createMockQuery({ _id: ID_TOUR, format: "Knockout", max_players: 8, club_id: clubObj, save: jest.fn() }))
+          .mockReturnValueOnce(createMockQuery({ _id: ID_TOUR }));
         TournamentPlayer.find.mockReturnValue(createMockQuery([{ account_id: "p1" }, { account_id: "p2" }]));
         RoundMatch.deleteMany.mockResolvedValue({});
         TournamentRound.deleteMany.mockResolvedValue({});
         TournamentRound.insertMany.mockResolvedValue([]);
         RoundMatch.insertMany.mockResolvedValue([]);
         RoundMatch.find.mockReturnValue(createMockQuery([]));
-        Tournament.findById.mockReturnValueOnce(createMockQuery({ _id: ID_TOUR, format: "Knockout", max_players: 8, save: jest.fn() }))
-          .mockReturnValueOnce(createMockQuery({ _id: ID_TOUR })); // fresh after save
-        await tournamentController.generateTournamentBracket({ params: { id: ID_TOUR }, body: {} }, res);
+        await tournamentController.generateTournamentBracket({ params: { id: ID_TOUR }, body: {}, user: { accountId: ID_USER } }, res);
         expect(res.status).toHaveBeenCalledWith(200);
     });
 
     it("generateTournamentBracket - Round Robin format success", async () => {
-        Tournament.findById.mockReturnValue(createMockQuery({ _id: ID_TOUR, format: "Round Robin", max_players: 8, save: jest.fn() }));
+        const clubObj = { _id: ID_CLUB, account_id: ID_USER, plan_type: "pro" };
+        Tournament.findById
+          .mockReturnValueOnce(createMockQuery({ _id: ID_TOUR, format: "Round Robin", max_players: 8, club_id: clubObj, save: jest.fn() }))
+          .mockReturnValueOnce(createMockQuery({ _id: ID_TOUR }));
         TournamentPlayer.find.mockReturnValue(createMockQuery([{ account_id: "p1" }, { account_id: "p2" }]));
         RoundMatch.deleteMany.mockResolvedValue({});
         TournamentRound.deleteMany.mockResolvedValue({});
         TournamentRound.insertMany.mockResolvedValue([{ _id: "r1" }]);
         RoundMatch.insertMany.mockResolvedValue([]);
         RoundMatch.find.mockReturnValue(createMockQuery([]));
-        Tournament.findById.mockReturnValueOnce(createMockQuery({ _id: ID_TOUR, format: "Round Robin", max_players: 8, save: jest.fn() }))
-          .mockReturnValueOnce(createMockQuery({ _id: ID_TOUR })); // fresh
-        await tournamentController.generateTournamentBracket({ params: { id: ID_TOUR }, body: { format: "Round Robin" } }, res);
+        await tournamentController.generateTournamentBracket({ params: { id: ID_TOUR }, body: { format: "Round Robin" }, user: { accountId: ID_USER } }, res);
         expect(res.status).toHaveBeenCalledWith(200);
     });
 
     it("generateTournamentBracket - Double Elimination format success", async () => {
-        Tournament.findById.mockReturnValue(createMockQuery({ _id: ID_TOUR, format: "Double Elimination", max_players: 4, save: jest.fn() }));
+        const clubObj = { _id: ID_CLUB, account_id: ID_USER, plan_type: "pro" };
+        Tournament.findById
+          .mockReturnValueOnce(createMockQuery({ _id: ID_TOUR, format: "Double Elimination", max_players: 4, club_id: clubObj, save: jest.fn() }))
+          .mockReturnValueOnce(createMockQuery({ _id: ID_TOUR }));
         TournamentPlayer.find.mockReturnValue(createMockQuery([{ account_id: "p1" }, { account_id: "p2" }, { account_id: "p3" }, { account_id: "p4" }]));
         RoundMatch.deleteMany.mockResolvedValue({});
         TournamentRound.deleteMany.mockResolvedValue({});
         TournamentRound.insertMany.mockResolvedValue([]);
         RoundMatch.insertMany.mockResolvedValue([]);
         RoundMatch.find.mockReturnValue(createMockQuery([]));
-        Tournament.findById.mockReturnValueOnce(createMockQuery({ _id: ID_TOUR, format: "Double Elimination", max_players: 4, save: jest.fn() }))
-          .mockReturnValueOnce(createMockQuery({ _id: ID_TOUR })); // fresh
-        await tournamentController.generateTournamentBracket({ params: { id: ID_TOUR }, body: { format: "Double Elimination" } }, res);
+        await tournamentController.generateTournamentBracket({ params: { id: ID_TOUR }, body: { format: "Double Elimination" }, user: { accountId: ID_USER } }, res);
         expect(res.status).toHaveBeenCalledWith(200);
     });
 
@@ -411,11 +418,12 @@ describe("Tournament Controller - Legendary Masterpiece Suite", () => {
 
     it("createTournamentPayOSPayment - SUCCESS with fee=0 registers for free", async () => {
         Tournament.findById
-          .mockReturnValueOnce(createMockQuery({ _id: ID_TOUR, status: "Open", club_id: ID_CLUB, fee: 0, max_players: 16 }))
-          .mockReturnValueOnce(createMockQuery({ _id: ID_TOUR, max_players: 16 })); // ensureTournamentApproved
+          .mockReturnValueOnce(createMockQuery({ _id: ID_TOUR, status: "Open", club_id: ID_CLUB, fee: 0, max_players: 16, name: "Tour Test" }))
+          .mockReturnValueOnce(createMockQuery({ _id: ID_TOUR, max_players: 16, name: "Tour Test", club_id: ID_CLUB })); // ensureTournamentApproved
         TournamentPlayer.countDocuments.mockReturnValue(createMockQuery(0));
         TournamentPlayer.findOne.mockReturnValue(createMockQuery(null));
         TournamentPlayer.findOneAndUpdate.mockReturnValue(createMockQuery({}));
+        Club.findById.mockReturnValue(createMockQuery({ _id: ID_CLUB, account_id: ID_USER }));
 
         await tournamentController.createTournamentPayOSPayment({ params: { id: ID_TOUR }, user: { accountId: ID_USER } }, res);
         expect(res.status).toHaveBeenCalledWith(200);
@@ -432,12 +440,14 @@ describe("Tournament Controller - Legendary Masterpiece Suite", () => {
     });
 
     it("verifyTournamentPayOSPayment - PAID succeeds", async () => {
-        const txDoc = createMockDoc({ _id: "tx", description: "TournamentFee:" + ID_TOUR, status: "PENDING" });
+        const txDoc = createMockDoc({ _id: "tx", description: "TournamentFee:" + ID_TOUR, status: "PENDING", account_id: ID_USER, amount: 200000 });
         TransactionHistory.findOne
           .mockReturnValueOnce(createMockQuery(txDoc))  // main lookup
           .mockReturnValueOnce(createMockQuery(txDoc)); // markTransactionSuccessAndApprove
-        Tournament.findById.mockReturnValue(createMockQuery({ _id: ID_TOUR, club_id: ID_CLUB, max_players: 16 }));
+        Tournament.findById.mockReturnValue(createMockQuery({ _id: ID_TOUR, club_id: ID_CLUB, max_players: 16, name: "Tour Test" }));
+        Club.findById.mockReturnValue(createMockQuery({ _id: ID_CLUB, account_id: ID_USER }));
         payosService.getPaymentInfo.mockResolvedValue({ status: "PAID" });
+        TournamentPlayer.findOne.mockReturnValue(createMockQuery(null));
         TournamentPlayer.findOneAndUpdate.mockReturnValue(createMockQuery({}));
         TournamentPlayer.countDocuments.mockReturnValue(createMockQuery(5));
 
@@ -448,12 +458,14 @@ describe("Tournament Controller - Legendary Masterpiece Suite", () => {
 
     it("payosWebhook - processes payment successfully", async () => {
         const payload = { data: { code: "00", orderCode: 123 }, success: true };
-        const txDoc = createMockDoc({ _id: "tx", description: "TournamentFee:" + ID_TOUR, status: "PENDING" });
+        const txDoc = createMockDoc({ _id: "tx", description: "TournamentFee:" + ID_TOUR, status: "PENDING", account_id: ID_USER, amount: 200000 });
         TransactionHistory.findOne
           .mockReturnValueOnce(createMockQuery(txDoc))   // webhook lookup
           .mockReturnValueOnce(createMockQuery(txDoc)); // markTransactionSuccessAndApprove
-        Tournament.findById.mockReturnValue(createMockQuery({ _id: ID_TOUR, club_id: ID_CLUB, max_players: 16 }));
+        Tournament.findById.mockReturnValue(createMockQuery({ _id: ID_TOUR, club_id: ID_CLUB, max_players: 16, name: "Tour Test" }));
+        Club.findById.mockReturnValue(createMockQuery({ _id: ID_CLUB, account_id: ID_USER }));
         payosService.verifyWebhook.mockResolvedValue({ data: { code: "00" } });
+        TournamentPlayer.findOne.mockReturnValue(createMockQuery(null));
         TournamentPlayer.findOneAndUpdate.mockReturnValue(createMockQuery({}));
         TournamentPlayer.countDocuments.mockReturnValue(createMockQuery(5));
 

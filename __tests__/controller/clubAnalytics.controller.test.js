@@ -7,6 +7,8 @@ const Service = require("../../models/service.model");
 const BookingService = require("../../models/booking_service.model");
 const Feedback = require("../../models/feedback.model");
 const Club = require("../../models/club.model");
+const Tournament = require("../../models/tournament.model");
+const TransactionHistory = require("../../models/transiction_history.model");
 
 jest.mock("../../models/invoice.model");
 jest.mock("../../models/booking.model");
@@ -16,6 +18,8 @@ jest.mock("../../models/service.model");
 jest.mock("../../models/booking_service.model");
 jest.mock("../../models/feedback.model");
 jest.mock("../../models/club.model");
+jest.mock("../../models/tournament.model");
+jest.mock("../../models/transiction_history.model");
 
 const createRes = () => {
   const res = {};
@@ -60,23 +64,21 @@ describe("Club Analytics Controller - Unit Tests", () => {
       };
       Booking.find.mockReturnValueOnce(mockQuery1);
 
-      // 4. Mock Invoices
-      Invoice.find.mockReturnValue({
-        populate: jest.fn().mockReturnValue({
-          lean: jest.fn().mockResolvedValue([{
-            invoice_date: "2026-04-10",
-            table_cost: 100000,
-            total_service: 50000,
-            payment_method: "Cash",
-            booking_id: { table_id: validTableId }
-          }])
-        })
+      // 4. Mock TransactionHistory (New Source of Truth for Revenue)
+      TransactionHistory.find.mockReturnValue({
+        lean: jest.fn().mockResolvedValue([{
+          booking_id: validBookingId,
+          amount: 150000,
+          transaction_time: "2026-04-10",
+          transaction_type: "BOOKING_FINAL_PAYMENT_CASH"
+        }])
       });
 
       // 5. Mock Bookings in range (Call 2: For Performance)
       const mockQuery2 = {
         populate: jest.fn().mockReturnThis(),
         lean: jest.fn().mockResolvedValue([{
+           _id: validBookingId,
            table_id: { _id: validTableId, table_number: "01", table_type_id: validTypeId },
            total_bill: 150000,
            start_time: "10:00",
@@ -88,21 +90,31 @@ describe("Club Analytics Controller - Unit Tests", () => {
       // 6. Mock Table Types
       TableType.find.mockReturnValue({ lean: jest.fn().mockResolvedValue([{ _id: validTypeId, name: "Pool" }]) });
 
-      // 7. Mock Services
-      BookingService.find.mockReturnValue({
-        populate: jest.fn().mockReturnValue({
+      // 7. Mock Services (2 calls: first .lean() then .populate().lean())
+      BookingService.find
+        .mockReturnValueOnce({
           lean: jest.fn().mockResolvedValue([{
-             service_id: { _id: validServiceId, name: "Pepsi" },
+             service_id: validServiceId,
+             booking_id: validBookingId,
              quantity: 2,
              unit_price: 15000
           }])
         })
-      });
+        .mockReturnValueOnce({
+          populate: jest.fn().mockReturnValue({
+            lean: jest.fn().mockResolvedValue([{
+               service_id: { _id: validServiceId, name: "Pepsi" },
+               quantity: 2,
+               unit_price: 15000
+            }])
+          })
+        });
       Service.find.mockReturnValue({ lean: jest.fn().mockResolvedValue([{ _id: validServiceId, name: "Pepsi", status: "Active" }]) });
 
       // 8. Mock Feedback
       Feedback.find.mockReturnValue({ lean: jest.fn().mockResolvedValue([{ rating: 5 }, { rating: 4 }]) });
       Invoice.countDocuments.mockResolvedValue(1); // Unpaid debt
+      Tournament.find.mockReturnValue({ lean: jest.fn().mockResolvedValue([]) }); // No tournaments
 
       await clubAnalyticsController.getClubAnalytics(req, res);
 

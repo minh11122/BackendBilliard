@@ -54,7 +54,14 @@ const getClubAnalytics = async (req, res) => {
     const successfulTransactions = await TransactionHistory.find({
       booking_id: { $in: bookingIds },
       status: "SUCCESS",
-      transaction_time: dateFilter
+      transaction_time: dateFilter,
+      transaction_type: { 
+        $in: [
+          "BOOKING_DEPOSIT", 
+          "BOOKING_FINAL_PAYMENT_CASH", 
+          "BOOKING_FINAL_PAYMENT_TRANSFER"
+        ] 
+      }
     }).lean();
 
     const revenueByDateMap = {};

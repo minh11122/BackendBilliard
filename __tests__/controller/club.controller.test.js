@@ -10,6 +10,7 @@ const Tournament = require("../../models/tournament.model");
 const Notification = require("../../models/notification.model");
 const Account = require("../../models/account.model");
 const SubscriptionAccount = require("../../models/subcription_account.model");
+const Role = require("../../models/role.model");
 const { geocodeAddress } = require("../../utils/geocoding");
 const clubController = require("../../controller/club.controller");
 
@@ -25,6 +26,7 @@ jest.mock("../../models/tournament.model");
 jest.mock("../../models/notification.model");
 jest.mock("../../models/account.model");
 jest.mock("../../models/subcription_account.model");
+jest.mock("../../models/role.model");
 jest.mock("../../utils/geocoding");
 
 const createRes = () => {
@@ -52,6 +54,8 @@ describe("Club Controller - Unit Tests", () => {
     jest.spyOn(console, "warn").mockImplementation(() => {});
     Province.findOne.mockReturnValue(mockQuery({ name: "Hà Nội", code: "01" }));
     District.findOne.mockReturnValue(mockQuery({ name: "Cầu Giấy", code: "01" }));
+    Role.findOne.mockReturnValue(mockQuery({ _id: "role_staff", name: "STAFF_SYSTEM" }));
+    Notification.insertMany.mockResolvedValue([]);
   });
 
   afterEach(() => {

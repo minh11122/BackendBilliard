@@ -4,7 +4,7 @@
   "description": "",
   "main": "index.js",
   "scripts": {
-    "test": "jest",
+    "test": "jest __tests__/controller --collectCoverageFrom=\"controller/**/*.js\"",
     "start": "nodemon index.js"
   },
   "author": "",

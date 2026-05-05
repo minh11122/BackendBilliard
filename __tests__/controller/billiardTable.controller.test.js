@@ -1,7 +1,9 @@
 const tableService = require("../../services/billiardTable.service");
 const billiardTableController = require("../../controller/billiardTable.controller");
+const Booking = require("../../models/booking.model");
 
 jest.mock("../../services/billiardTable.service");
+jest.mock("../../models/booking.model");
 jest.mock("../../configs/cloudinary.config", () => ({
   uploader: {
     destroy: jest.fn().mockResolvedValue({ result: "ok" }),
@@ -96,6 +98,7 @@ describe("Billiard Table Controller - Unit Tests", () => {
       };
       const res = createRes();
 
+      Booking.countDocuments.mockResolvedValue(0);
       tableService.getTableById.mockResolvedValue({ images: ["http://cloud.com/old.jpg", "http://cloud.com/keep.jpg"] });
       tableService.updateTable.mockResolvedValue({ _id: "t1", table_number: "New" });
 
@@ -113,6 +116,7 @@ describe("Billiard Table Controller - Unit Tests", () => {
         const req = { params: { id: "t1" } };
         const res = createRes();
   
+        Booking.countDocuments.mockResolvedValue(0);
         tableService.getTableById.mockResolvedValue({ images: ["img1.jpg"] });
         tableService.deleteTable.mockResolvedValue(true);
   
@@ -126,6 +130,7 @@ describe("Billiard Table Controller - Unit Tests", () => {
         const req = { params: { id: "t1" } };
         const res = createRes();
   
+        Booking.countDocuments.mockResolvedValue(0);
         tableService.deleteTable.mockRejectedValue(new Error("Cannot delete table in use"));
   
         await billiardTableController.deleteBilliardTable(req, res);

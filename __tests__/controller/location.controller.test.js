@@ -29,6 +29,18 @@ describe("Location Controller - Unit Tests", () => {
       expect(res.status).toHaveBeenCalledWith(200);
       expect(res.json).toHaveBeenCalledWith(expect.any(Array));
     });
+
+    it("should handle error in getProvinces", async () => {
+      const req = {};
+      const res = createRes();
+
+      Province.find.mockReturnValue({ sort: jest.fn().mockRejectedValue(new Error("Database failure")) });
+
+      await locationController.getProvinces(req, res);
+
+      expect(res.status).toHaveBeenCalledWith(500);
+      expect(res.json).toHaveBeenCalledWith(expect.objectContaining({ message: "Database failure" }));
+    });
   });
 
   describe("getDistrictsByProvince", () => {
