@@ -3,7 +3,7 @@ const TransactionHistory = require("../models/transiction_history.model");
 const Club = require("../models/club.model");
 
 /**
- * Customer: lấy lịch sử giao dịch chuyển khoản của chính tài khoản đang đăng nhập.
+ * Customer: lấy lịch sử giao dịch của chính tài khoản đang đăng nhập.
  */
 const getMyTransferHistory = async (req, res) => {
   try {
@@ -83,8 +83,8 @@ const getMyTransferHistory = async (req, res) => {
 };
 
 /**
- * Owner / Staff-club: lấy lịch sử giao dịch liên quan booking của club.
- * Lọc bằng: transaction_history.booking_id -> bookings.table_id -> billiard_tables.club_id
+ * Owner / Staff-club: lấy lịch sử giao dịch của club
+ * (bao gồm giao dịch booking + lệ phí tham gia giải đấu).
  */
 const getClubTransferHistory = async (req, res) => {
   try {
@@ -109,9 +109,8 @@ const getClubTransferHistory = async (req, res) => {
 
     const clubObjectId = new mongoose.Types.ObjectId(club_id);
 
-    const rows = await TransactionHistory.aggregate([
+    const bookingRows = await TransactionHistory.aggregate([
       { $match: { booking_id: { $ne: null } } },
-      { $sort: { transaction_time: -1 } },
 
       {
         $lookup: {
@@ -164,6 +163,7 @@ const getClubTransferHistory = async (req, res) => {
           transaction_type: 1,
           transaction_time: 1,
           status: 1,
+          tournament: null,
 
           player: {
             _id: "$account._id",
@@ -188,6 +188,84 @@ const getClubTransferHistory = async (req, res) => {
         },
       },
     ]);
+
+    const tournamentRows = await TransactionHistory.aggregate([
+      { $match: { transaction_type: "TOURNAMENT_FEE" } },
+      {
+        $addFields: {
+          tournament_id: {
+            $convert: {
+              input: { $arrayElemAt: [{ $split: ["$description", ":"] }, 1] },
+              to: "objectId",
+              onError: null,
+              onNull: null,
+            },
+          },
+        },
+      },
+      {
+        $lookup: {
+          from: "tournaments",
+          localField: "tournament_id",
+          foreignField: "_id",
+          as: "tournament",
+        },
+      },
+      { $unwind: { path: "$tournament", preserveNullAndEmptyArrays: false } },
+      { $match: { "tournament.club_id": clubObjectId } },
+      {
+        $lookup: {
+          from: "clubs",
+          localField: "tournament.club_id",
+          foreignField: "_id",
+          as: "club",
+        },
+      },
+      { $unwind: { path: "$club", preserveNullAndEmptyArrays: true } },
+      {
+        $lookup: {
+          from: "accounts",
+          localField: "account_id",
+          foreignField: "_id",
+          as: "account",
+        },
+      },
+      { $unwind: { path: "$account", preserveNullAndEmptyArrays: true } },
+      {
+        $project: {
+          _id: 1,
+          order_code: 1,
+          amount: 1,
+          description: 1,
+          transaction_type: 1,
+          transaction_time: 1,
+          status: 1,
+          player: {
+            _id: "$account._id",
+            fullname: "$account.fullname",
+            email: "$account.email",
+            phone: "$account.phone",
+          },
+          booking: null,
+          table: null,
+          tournament: {
+            _id: "$tournament._id",
+            name: "$tournament.name",
+          },
+          club: {
+            _id: "$club._id",
+            name: "$club.name",
+            address: "$club.address",
+          },
+        },
+      },
+    ]);
+
+    const rows = [...bookingRows, ...tournamentRows].sort(
+      (a, b) =>
+        new Date(b.transaction_time || 0).getTime() -
+        new Date(a.transaction_time || 0).getTime()
+    );
 
     res.status(200).json({ success: true, data: rows });
   } catch (error) {
