@@ -19,6 +19,8 @@ const accountSchema = new mongoose.Schema(
       type: String,
       trim: true,
       default: null,
+      unique: true,
+      sparse: true,
     },
 
     avatar_url: {
@@ -42,8 +44,9 @@ const accountSchema = new mongoose.Schema(
 
     provider_id: {
       type: String,
-      default: null,
       trim: true,
+      unique: true,
+      sparse: true,
     },
 
     role_id: {
@@ -60,7 +63,7 @@ const accountSchema = new mongoose.Schema(
 
     status: {
       type: String,
-      enum: ["PENDING", "ACTIVE", "INACTIVE", "BANNED","DELETED"],
+      enum: ["PENDING", "ACTIVE", "INACTIVE", "BANNED", "DELETED"],
       default: "PENDING",
     },
   },
@@ -71,7 +74,7 @@ const accountSchema = new mongoose.Schema(
       createdAt: "created_at",
       updatedAt: "updated_at",
     },
-  }
+  },
 );
 
 module.exports = mongoose.model("Account", accountSchema);

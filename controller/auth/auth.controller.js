@@ -20,12 +20,16 @@ const client = new OAuth2Client(process.env.VITE_GOOGLE_CLIENT_ID);
 const register = async (req, res) => {
   try {
     let { fullname, email, password, confirmPassword } = req.body;
+
     email = typeof email === "string" ? email.trim() : email;
 
+    console.log("REGISTER API RUNNING");
+
+    // Validate
     if (!email || !password || !confirmPassword) {
-      return res
-        .status(400)
-        .json({ message: "Vui lòng nhập email và mật khẩu" });
+      return res.status(400).json({
+        message: "Vui lòng nhập email và mật khẩu",
+      });
     }
 
     if (password !== confirmPassword) {
@@ -34,23 +38,33 @@ const register = async (req, res) => {
       });
     }
 
-    // Lấy tạm email làm fullname
+    // fullname mặc định
     if (!fullname) {
       fullname = email.split("@")[0];
     }
 
     // Check email
     const existingEmail = await Account.findOne({ email });
+
     if (existingEmail) {
       return res.status(400).json({
         message: "Email đã tồn tại",
       });
     }
 
+    // Role
     const role = await Role.findOne({ name: "CUSTOMER" });
 
+    if (!role) {
+      return res.status(500).json({
+        message: "Không tìm thấy role CUSTOMER",
+      });
+    }
+
+    // Hash password
     const hashedPassword = await bcrypt.hash(password, 10);
 
+    // Create account
     const account = await Account.create({
       fullname,
       email,
@@ -60,32 +74,74 @@ const register = async (req, res) => {
       role_id: role._id,
     });
 
+    // Generate OTP
     const otpCode = generateOtp();
+
     const expiresAt = new Date(Date.now() + 5 * 60 * 1000);
 
     await Otp.findOneAndUpdate(
       { account_id: account._id },
-      { otp_code: otpCode, attempts: 0, expires_at: expiresAt },
-      { upsert: true },
+      {
+        otp_code: otpCode,
+        attempts: 0,
+        expires_at: expiresAt,
+      },
+      {
+        upsert: true,
+      }
     );
 
+    // Send mail
     await sendOtpEmail(email, otpCode);
 
-    res.status(201).json({
+    return res.status(201).json({
       message: "Đăng ký thành công, OTP đã gửi",
     });
+
   } catch (error) {
+
+    // ===== LOG FULL ERROR =====
+    console.log("========== REGISTER ERROR ==========");
+
+    console.log("MESSAGE:");
+    console.log(error.message);
+
+    console.log("CODE:");
+    console.log(error.code);
+
+    console.log("KEY PATTERN:");
+    console.log(error.keyPattern);
+
+    console.log("KEY VALUE:");
+    console.log(error.keyValue);
+
+    console.log("STACK:");
+    console.log(error.stack);
+
+    console.log("FULL ERROR:");
+    console.dir(error, { depth: null });
+
+    console.log("====================================");
+
+    // ===== DUPLICATE KEY =====
     if (error.code === 11000) {
-      const field = Object.keys(error.keyPattern)[0];
+
+      const field = Object.keys(error.keyPattern || {})[0];
+
       return res.status(400).json({
-        message:
-          field === "email" ? "Email đã tồn tại" : "Số điện thoại đã tồn tại",
+        message: `${field} đã tồn tại`,
+        field,
+        value: error.keyValue,
       });
     }
 
-    res.status(500).json({ message: error.message });
+    // ===== OTHER ERROR =====
+    return res.status(500).json({
+      message: error.message || "Server Error",
+    });
   }
 };
+
 
 // Xác thực OTP
 const verifyOtp = async (req, res) => {
@@ -108,7 +164,9 @@ const verifyOtp = async (req, res) => {
 
     if (otp.attempts >= 5) {
       await Otp.deleteOne({ _id: otp._id });
-      return res.status(400).json({ message: "OTP đã hết hạn do nhập sai quá 5 lần" });
+      return res
+        .status(400)
+        .json({ message: "OTP đã hết hạn do nhập sai quá 5 lần" });
     }
 
     if (otp.otp_code !== otp_code) {
@@ -116,7 +174,9 @@ const verifyOtp = async (req, res) => {
       await otp.save();
       if (otp.attempts >= 5) {
         await Otp.deleteOne({ _id: otp._id });
-        return res.status(400).json({ message: "OTP đã hết hạn do nhập sai quá 5 lần" });
+        return res
+          .status(400)
+          .json({ message: "OTP đã hết hạn do nhập sai quá 5 lần" });
       }
       return res.status(400).json({ message: "OTP sai" });
     }
@@ -209,7 +269,8 @@ const registerGoogle = async (req, res) => {
     const mailResult = await sendAccountPasswordEmail(email, tempPassword);
     if (!mailResult?.success) {
       return res.status(500).json({
-        message: "Tạo tài khoản Google thành công nhưng gửi mật khẩu qua email thất bại",
+        message:
+          "Tạo tài khoản Google thành công nhưng gửi mật khẩu qua email thất bại",
         error: mailResult?.error,
       });
     }
@@ -319,8 +380,7 @@ const loginGoogle = async (req, res) => {
     const payload = ticket.getPayload();
     const { email } = payload;
 
-    let account = await Account.findOne({ email })
-      .populate("role_id", "name");
+    let account = await Account.findOne({ email }).populate("role_id", "name");
 
     if (!account) {
       return res
@@ -385,7 +445,9 @@ const googleAuth = async (req, res) => {
     if (!account) {
       const role = await Role.findOne({ name: "CUSTOMER" });
       if (!role)
-        return res.status(500).json({ message: "Role CUSTOMER chÆ°a Ä‘Æ°á»£c táº¡o" });
+        return res
+          .status(500)
+          .json({ message: "Role CUSTOMER chÆ°a Ä‘Æ°á»£c táº¡o" });
 
       const tempPassword = generateTempPassword();
       const hashedPassword = await bcrypt.hash(tempPassword, 10);
@@ -403,14 +465,17 @@ const googleAuth = async (req, res) => {
       const mailResult = await sendAccountPasswordEmail(email, tempPassword);
       if (!mailResult?.success) {
         return res.status(500).json({
-          message: "Tạo tài khoản Google thành công nhưng gửi mật khẩu qua email thất bại",
+          message:
+            "Tạo tài khoản Google thành công nhưng gửi mật khẩu qua email thất bại",
           error: mailResult?.error,
         });
       }
     }
 
     if (account.provider !== "google")
-      return res.status(400).json({ message: "Email Ä‘Ã£ Ä‘Äƒng kÃ½ báº±ng local" });
+      return res
+        .status(400)
+        .json({ message: "Email Ä‘Ã£ Ä‘Äƒng kÃ½ báº±ng local" });
 
     if (account.status !== "ACTIVE")
       return res.status(403).json({ message: "TÃ i khoáº£n bá»‹ khÃ³a" });
@@ -432,8 +497,8 @@ const getInforById = async (req, res) => {
     const accountId = req.user.accountId;
 
     const account = await Account.findById(accountId)
-      .populate("role_id", "name") 
-      .select("-password_hash"); 
+      .populate("role_id", "name")
+      .select("-password_hash");
 
     if (!account) {
       return res.status(404).json({
@@ -619,7 +684,9 @@ const markAsRead = async (req, res) => {
     );
 
     if (!notification) {
-      return res.status(404).json({ message: "KhÃ´ng tÃ¬m tháº¥y notification" });
+      return res
+        .status(404)
+        .json({ message: "KhÃ´ng tÃ¬m tháº¥y notification" });
     }
 
     res.json({
@@ -657,7 +724,9 @@ const deleteNotification = async (req, res) => {
     const notification = await Notification.findByIdAndDelete(id);
 
     if (!notification) {
-      return res.status(404).json({ message: "KhÃ´ng tÃ¬m tháº¥y notification" });
+      return res
+        .status(404)
+        .json({ message: "KhÃ´ng tÃ¬m tháº¥y notification" });
     }
 
     res.json({
@@ -716,11 +785,7 @@ const checkProfileStatus = async (req, res) => {
       });
     }
 
-    const isComplete = !!(
-      account.fullname &&
-      account.phone &&
-      account.email
-    );
+    const isComplete = !!(account.fullname && account.phone && account.email);
 
     res.json({
       message: "Check profile success",
@@ -753,9 +818,5 @@ module.exports = {
   deleteNotification,
   deleteAllNotifications,
   countUnread,
-  checkProfileStatus
+  checkProfileStatus,
 };
-
-
-
-
