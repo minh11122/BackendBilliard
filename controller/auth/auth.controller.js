@@ -79,7 +79,7 @@ const register = async (req, res) => {
       const field = Object.keys(error.keyPattern)[0];
       return res.status(400).json({
         message:
-          field === "email" ? "Email đã tồn tại" : "Số điện thoại đã tồn tại",
+          field === "email" ? "Email đã tồn tại" : "Email đã tồn tại",
       });
     }
 
