@@ -20,7 +20,7 @@ const {
   deleteAllNotifications,
   countUnread,
   checkProfileStatus
-} = require("../controller/auth/auth.controller");
+} = require("../controller/auth");
 const authenticate = require("../middleware/authenticate.middleware");
 const authorize = require("../middleware/authorize.middleware");
 

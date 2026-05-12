@@ -12,7 +12,7 @@ const Account = require("../../models/account.model");
 const SubscriptionAccount = require("../../models/subcription_account.model");
 const Role = require("../../models/role.model");
 const { geocodeAddress } = require("../../utils/geocoding");
-const clubController = require("../../controller/club.controller");
+const clubController = require("../../controller/club");
 
 jest.mock("../../models/club.model");
 jest.mock("../../models/image.model");

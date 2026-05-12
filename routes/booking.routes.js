@@ -1,6 +1,6 @@
 const express = require("express");
 const router = express.Router();
-const bookingController = require("../controller/booking.controller");
+const bookingController = require("../controller/booking");
 const authenticate = require("../middleware/authenticate.middleware");
 
 // Tạo booking mới (cần đăng nhập)

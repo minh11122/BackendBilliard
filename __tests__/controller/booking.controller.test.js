@@ -8,7 +8,7 @@ process.env.PAYOS_CLIENT_ID = "dummy_id";
 process.env.PAYOS_API_KEY = "dummy_key";
 process.env.PAYOS_CHECKSUM_KEY = "dummy_checksum";
 
-const bookingController = require("../../controller/booking.controller");
+const bookingController = require("../../controller/booking");
 const Booking = require("../../models/booking.model");
 const BilliardTable = require("../../models/billiard_table.model");
 const BookingService = require("../../models/booking_service.model");
