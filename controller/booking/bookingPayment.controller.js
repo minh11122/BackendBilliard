@@ -17,7 +17,10 @@ const createBookingPayOSPayment = async (req, res) => {
     const { id } = req.params;
     const accountId = req.user?.accountId;
 
-    const booking = await Booking.findById(id).populate("table_id");
+    const booking = await Booking.findOne({ _id: id }).populate({
+      path: "table_id",
+      match: { club_id: clubId },
+    });
     if (!booking) {
       return res
         .status(404)
@@ -464,7 +467,10 @@ const checkOutBooking = async (req, res) => {
       });
     }
 
-    const booking = await Booking.findById(id).populate("table_id");
+    const booking = await Booking.findOne({ _id: id }).populate({
+      path: "table_id",
+      match: { club_id: clubId },
+    });
     if (!booking) {
       return res
         .status(404)
@@ -472,9 +478,9 @@ const checkOutBooking = async (req, res) => {
     }
 
     // Kiểm tra bàn thuộc club của nhân viên
-    if (booking.table_id.club_id.toString() !== clubId.toString()) {
+    if (!booking.table_id) {
       return res
-        .status(403)
+        .status(404)
         .json({ success: false, message: "Đơn này không thuộc quán của bạn" });
     }
 
@@ -604,7 +610,10 @@ const createBookingCheckoutPayOSPayment = async (req, res) => {
       });
     }
 
-    const booking = await Booking.findById(id).populate("table_id");
+    const booking = await Booking.findOne({ _id: id }).populate({
+      path: "table_id",
+      match: { club_id: clubId },
+    });
     if (!booking) {
       return res.status(404).json({
         success: false,
@@ -612,7 +621,7 @@ const createBookingCheckoutPayOSPayment = async (req, res) => {
       });
     }
 
-    if (booking.table_id?.club_id?.toString() !== clubId.toString()) {
+    if (!booking.table_id) {
       return res.status(403).json({
         success: false,
         message: "Đơn này không thuộc quán của bạn",
@@ -819,14 +828,6 @@ const verifyBookingCheckoutPayOSPayment = async (req, res) => {
       });
     }
 
-    const booking = await Booking.findById(tx.booking_id).populate("table_id");
-    if (!booking) {
-      return res.status(404).json({
-        success: false,
-        message: "Không tìm thấy booking",
-      });
-    }
-
     const clubId = req.user?.club_id;
     if (!clubId) {
       return res.status(400).json({
@@ -835,7 +836,18 @@ const verifyBookingCheckoutPayOSPayment = async (req, res) => {
       });
     }
 
-    if (booking.table_id?.club_id?.toString() !== clubId.toString()) {
+    const booking = await Booking.findOne({ _id: tx.booking_id }).populate({
+      path: "table_id",
+      match: { club_id: clubId },
+    });
+    if (!booking) {
+      return res.status(404).json({
+        success: false,
+        message: "Không tìm thấy booking",
+      });
+    }
+
+    if (!booking.table_id) {
       return res.status(403).json({
         success: false,
         message: "Đơn này không thuộc quán của bạn",

@@ -3,6 +3,7 @@ const TournamentPlayer = require("../../models/tournament_player.model");
 const TournamentRound = require("../../models/tournament_round.model");
 const RoundMatch = require("../../models/round_match.model");
 const Booking = require("../../models/booking.model");
+const Club = require("../../models/club.model");
 const {
   updateRoundStatusAndProgression,
   resolvePendingAutoAdvances,
@@ -10,18 +11,35 @@ const {
   checkAndCompleteTournament,
 } = require("./tournament.helpers");
 
+const resolveManagedClubId = async (user) => {
+  if (!user) return null;
+  if (user.role === "STAFF_CLUB" && user.club_id) return String(user.club_id);
+  if (user.role === "OWNER") {
+    const club = await Club.findOne({ account_id: user.accountId }).select("_id").lean();
+    return club ? String(club._id) : null;
+  }
+  return null;
+};
+
 const startRoundMatch = async (req, res) => {
   try {
     const { id, matchId } = req.params;
     const { table_id, scheduled_at, race_to } = req.body || {};
 
     const tournament = await Tournament.findById(id)
-      .select("status format table_type_id")
+      .select("status format table_type_id club_id")
       .lean();
     if (!tournament) {
       return res
         .status(404)
         .json({ success: false, message: "Không tìm thấy giải đấu" });
+    }
+    const managedClubId = await resolveManagedClubId(req.user);
+    if (!managedClubId || String(tournament.club_id) !== String(managedClubId)) {
+      return res.status(403).json({
+        success: false,
+        message: "Báº¡n khÃ´ng cÃ³ quyá»n quáº£n lÃ½ tráº­n Ä‘áº¥u cá»§a giáº£i nÃ y",
+      });
     }
     if (tournament.status !== "InProgress") {
       return res.status(400).json({
@@ -134,11 +152,18 @@ const updateMatchResult = async (req, res) => {
     const { id, matchId } = req.params;
     const { player1_score, player2_score, winner_id, race_to } = req.body || {};
 
-    const tournament = await Tournament.findById(id).select("status").lean();
+    const tournament = await Tournament.findById(id).select("status club_id").lean();
     if (!tournament) {
       return res
         .status(404)
         .json({ success: false, message: "Không tìm thấy giải đấu" });
+    }
+    const managedClubId = await resolveManagedClubId(req.user);
+    if (!managedClubId || String(tournament.club_id) !== String(managedClubId)) {
+      return res.status(403).json({
+        success: false,
+        message: "Báº¡n khÃ´ng cÃ³ quyá»n cáº­p nháº­t káº¿t quáº£ cá»§a giáº£i nÃ y",
+      });
     }
     if (tournament.status !== "InProgress") {
       return res

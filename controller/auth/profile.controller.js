@@ -96,9 +96,9 @@ const updatePassword = async (req, res) => {
       });
     }
 
-    if (account.provider !== "local") {
+    if (!account.password_hash) {
       return res.status(400).json({
-        message: "Tài khoản Google không có mật khẩu",
+        message: "Tài khoản này không có mật khẩu",
       });
     }
 

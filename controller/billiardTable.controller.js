@@ -2,6 +2,17 @@ const tableService = require("../services/billiardTable.service");
 const BilliardTable = require("../models/billiard_table.model");
 const cloudinary = require("../configs/cloudinary.config");
 const Booking = require("../models/booking.model");
+const Club = require("../models/club.model");
+
+const canAccessClub = async (req, clubId) => {
+    if (!clubId || !req.user) return false;
+    if (req.user.role === "STAFF_CLUB") return String(req.user.club_id) === String(clubId);
+    if (req.user.role === "OWNER") {
+        const ownedClub = await Club.findOne({ _id: clubId, account_id: req.user.accountId }).select("_id").lean();
+        return !!ownedClub;
+    }
+    return false;
+};
 
 const getBilliardTables = async (req, res) => {
     try {
@@ -48,7 +59,6 @@ const getBilliardTables = async (req, res) => {
 const getBilliardTableById = async (req, res) => {
     try {
         const { id } = req.params;
-
         if (!id) {
             return res.status(400).json({
                 success: false,
@@ -56,7 +66,20 @@ const getBilliardTableById = async (req, res) => {
             });
         }
 
-        const table = await tableService.getTableById(id);
+        const table = await BilliardTable.findById(id).populate("table_type_id", "name");
+        if (!table) {
+            return res.status(404).json({
+                success: false,
+                message: "KhÃ´ng tÃ¬m tháº¥y bÃ n!"
+            });
+        }
+
+        if (!(await canAccessClub(req, table.club_id))) {
+            return res.status(403).json({
+                success: false,
+                message: "Báº¡n khÃ´ng cÃ³ quyá»n xem bÃ n nÃ y"
+            });
+        }
 
         return res.status(200).json({
             success: true,
@@ -167,7 +190,13 @@ const updateBilliardTable = async (req, res) => {
         }
 
         // Lấy bàn hiện tại để xử lý ảnh
-        const existing = await tableService.getTableById(id);
+        const existing = await BilliardTable.findOne({ _id: id, club_id }).populate("table_type_id", "name");
+        if (!existing) {
+            return res.status(404).json({
+                success: false,
+                message: "KhÃ´ng tÃ¬m tháº¥y bÃ n!"
+            });
+        }
         let currentImages = existing.images || [];
 
         // Xử lý danh sách ảnh bị xóa
@@ -252,8 +281,9 @@ const updateBilliardTable = async (req, res) => {
 const deleteBilliardTable = async (req, res) => {
     try {
         const { id } = req.params;
+        const club_id = req.user?.club_id;
 
-        if (!id) {
+        if (!id || !club_id) {
             return res.status(400).json({ success: false, message: "Thiếu ID bàn" });
         }
 
@@ -270,7 +300,7 @@ const deleteBilliardTable = async (req, res) => {
 
         // Xóa ảnh Cloudinary trước khi xóa bàn
         try {
-            const table = await tableService.getTableById(id);
+            const table = await BilliardTable.findOne({ _id: id, club_id });
             if (table.images && table.images.length > 0) {
                 for (const url of table.images) {
                     const publicId = url.split("/").slice(-2).join("/").replace(/\.[^/.]+$/, "");
@@ -281,7 +311,10 @@ const deleteBilliardTable = async (req, res) => {
             console.error("Lỗi xóa ảnh khi delete bàn:", e);
         }
 
-        await tableService.deleteTable(id);
+        const deleted = await BilliardTable.findOneAndDelete({ _id: id, club_id });
+        if (!deleted) {
+            return res.status(404).json({ success: false, message: "KhÃ´ng tÃ¬m tháº¥y bÃ n!" });
+        }
 
         return res.status(200).json({
             success: true,

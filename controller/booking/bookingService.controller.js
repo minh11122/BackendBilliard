@@ -17,16 +17,19 @@ const addBookingService = async (req, res) => {
         .json({ success: false, message: "Thông tin dịch vụ không hợp lệ" });
     }
 
-    const booking = await Booking.findById(id).populate("table_id");
+    const booking = await Booking.findOne({ _id: id }).populate({
+      path: "table_id",
+      match: { club_id: clubId },
+    });
     if (!booking)
       return res
         .status(404)
         .json({ success: false, message: "Không tìm thấy đơn đặt bàn" });
 
     // Kiểm tra quyền hạn
-    if (booking.table_id.club_id.toString() !== clubId.toString()) {
+    if (!booking.table_id) {
       return res
-        .status(403)
+        .status(404)
         .json({ success: false, message: "Đơn này không thuộc quán của bạn" });
     }
 
@@ -94,14 +97,17 @@ const updateBookingServiceQuantity = async (req, res) => {
         message: "Không tìm thấy thông tin dịch vụ trong đơn",
       });
 
-    const booking = await Booking.findById(id).populate("table_id");
+    const booking = await Booking.findOne({ _id: id }).populate({
+      path: "table_id",
+      match: { club_id: clubId },
+    });
     if (!booking)
       return res
         .status(404)
         .json({ success: false, message: "Không tìm thấy đơn đặt bàn" });
 
     // Kiểm tra quyền hạn
-    if (booking.table_id.club_id.toString() !== clubId.toString()) {
+    if (!booking.table_id) {
       return res.status(403).json({
         success: false,
         message: "Bạn không có quyền chỉnh sửa đơn này",
@@ -145,14 +151,17 @@ const deleteBookingService = async (req, res) => {
         message: "Không tìm thấy thông tin dịch vụ trong đơn",
       });
 
-    const booking = await Booking.findById(id).populate("table_id");
+    const booking = await Booking.findOne({ _id: id }).populate({
+      path: "table_id",
+      match: { club_id: clubId },
+    });
     if (!booking)
       return res
         .status(404)
         .json({ success: false, message: "Không tìm thấy đơn đặt bàn" });
 
     // Kiểm tra quyền
-    if (booking.table_id.club_id.toString() !== clubId.toString()) {
+    if (!booking.table_id) {
       return res.status(403).json({
         success: false,
         message: "Bạn không có quyền xoá dịch vụ trong đơn này",
@@ -181,6 +190,17 @@ const deleteBookingService = async (req, res) => {
 const getBookingServices = async (req, res) => {
   try {
     const { id } = req.params;
+    const clubId = req.user.club_id;
+    const booking = await Booking.findOne({ _id: id }).populate({
+      path: "table_id",
+      match: { club_id: clubId },
+    });
+    if (!booking || !booking.table_id) {
+      return res.status(404).json({
+        success: false,
+        message: "Không tìm thấy đơn đặt bàn thuộc quán của bạn",
+      });
+    }
     const services = await BookingService.find({ booking_id: id }).populate(
       "service_id",
     );

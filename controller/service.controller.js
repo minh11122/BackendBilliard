@@ -1,5 +1,17 @@
 const serviceService = require("../services/service.service");
 const cloudinary = require("../configs/cloudinary.config");
+const Service = require("../models/service.model");
+const Club = require("../models/club.model");
+
+const canAccessClub = async (req, clubId) => {
+    if (!clubId || !req.user) return false;
+    if (req.user.role === "STAFF_CLUB") return String(req.user.club_id) === String(clubId);
+    if (req.user.role === "OWNER") {
+        const ownedClub = await Club.findOne({ _id: clubId, account_id: req.user.accountId }).select("_id").lean();
+        return !!ownedClub;
+    }
+    return false;
+};
 
 const getServices = async (req, res) => {
     try {
@@ -35,7 +47,13 @@ const getServices = async (req, res) => {
 const getServiceById = async (req, res) => {
     try {
         const { id } = req.params;
-        const service = await serviceService.getServiceById(id);
+        const service = await Service.findById(id);
+        if (!service) {
+            return res.status(404).json({ success: false, message: "KhÃ´ng tÃ¬m tháº¥y dá»‹ch vá»¥!" });
+        }
+        if (!(await canAccessClub(req, service.club_id))) {
+            return res.status(403).json({ success: false, message: "Báº¡n khÃ´ng cÃ³ quyá»n xem dá»‹ch vá»¥ nÃ y!" });
+        }
         return res.status(200).json({ success: true, data: service });
     } catch (error) {
         const statusCode = error.statusCode || 500;
@@ -121,7 +139,10 @@ const updateService = async (req, res) => {
         }
 
         // Lấy dịch vụ hiện tại để xử lý ảnh
-        const existing = await serviceService.getServiceById(id);
+        const existing = await Service.findOne({ _id: id, club_id });
+        if (!existing) {
+            return res.status(404).json({ success: false, message: "KhÃ´ng tÃ¬m tháº¥y dá»‹ch vá»¥!" });
+        }
         let currentImages = existing.images || [];
 
         // Xử lý danh sách ảnh bị xóa
@@ -175,7 +196,15 @@ const updateService = async (req, res) => {
 const deactivateService = async (req, res) => {
     try {
         const { id } = req.params;
-        const service = await serviceService.deactivateService(id);
+        const club_id = req.user?.club_id;
+        const service = await Service.findOneAndUpdate(
+            { _id: id, club_id },
+            { status: "Inactive" },
+            { new: true }
+        );
+        if (!service) {
+            return res.status(404).json({ success: false, message: "KhÃ´ng tÃ¬m tháº¥y dá»‹ch vá»¥!" });
+        }
         return res.status(200).json({
             success: true,
             message: "Đã vô hiệu hóa dịch vụ.",
@@ -190,7 +219,15 @@ const deactivateService = async (req, res) => {
 const reactivateService = async (req, res) => {
     try {
         const { id } = req.params;
-        const service = await serviceService.reactivateService(id);
+        const club_id = req.user?.club_id;
+        const service = await Service.findOneAndUpdate(
+            { _id: id, club_id },
+            { status: "Active" },
+            { new: true }
+        );
+        if (!service) {
+            return res.status(404).json({ success: false, message: "KhÃ´ng tÃ¬m tháº¥y dá»‹ch vá»¥!" });
+        }
         return res.status(200).json({
             success: true,
             message: "Đã khôi phục dịch vụ.",
@@ -205,10 +242,11 @@ const reactivateService = async (req, res) => {
 const deleteServicePermanently = async (req, res) => {
     try {
         const { id } = req.params;
+        const club_id = req.user?.club_id;
 
         // Xóa ảnh Cloudinary trước khi xóa service
         try {
-            const service = await serviceService.getServiceById(id);
+            const service = await Service.findOne({ _id: id, club_id });
             if (service.images && service.images.length > 0) {
                 for (const url of service.images) {
                     const publicId = url.split("/").slice(-2).join("/").replace(/\.[^/.]+$/, "");
@@ -219,7 +257,10 @@ const deleteServicePermanently = async (req, res) => {
             console.error("Lỗi xóa ảnh khi delete service:", e);
         }
 
-        await serviceService.deleteServicePermanently(id);
+        const deleted = await Service.findOneAndDelete({ _id: id, club_id });
+        if (!deleted) {
+            return res.status(404).json({ success: false, message: "KhÃ´ng tÃ¬m tháº¥y dá»‹ch vá»¥!" });
+        }
         return res.status(200).json({
             success: true,
             message: "Đã xóa vĩnh viễn dịch vụ."

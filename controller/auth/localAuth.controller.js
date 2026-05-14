@@ -205,7 +205,7 @@ const forgotPassword = async (req, res) => {
       return res.status(404).json({ message: "Không tìm thấy account" });
     }
 
-    if (account.provider !== "local") {
+    if (!account.password_hash) {
       return res
         .status(400)
         .json({ message: "Tài khoản Google không dùng mật khẩu" });
@@ -242,7 +242,7 @@ const login = async (req, res) => {
       return res.status(404).json({ message: "Email không tồn tại" });
     }
 
-    if (account.provider !== "local") {
+    if (!account.password_hash) {
       return res
         .status(400)
         .json({ message: "Vui lòng đăng nhập bằng Google" });

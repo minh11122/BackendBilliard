@@ -7,6 +7,28 @@ const Account = require("../../models/account.model");
 const {
   normalizePrizePool,
 } = require("./tournament.helpers");
+const jwt = require("jsonwebtoken");
+
+const getOptionalUser = (req) => {
+  if (req.user) return req.user;
+  const authHeader = req.headers.authorization;
+  if (!authHeader || !authHeader.startsWith("Bearer ")) return null;
+  try {
+    return jwt.verify(authHeader.split(" ")[1], process.env.JWT_SECRET);
+  } catch {
+    return null;
+  }
+};
+
+const resolveManagedClubId = async (user) => {
+  if (!user) return null;
+  if (user.role === "STAFF_CLUB" && user.club_id) return String(user.club_id);
+  if (user.role === "OWNER") {
+    const club = await Club.findOne({ account_id: user.accountId }).select("_id").lean();
+    return club ? String(club._id) : null;
+  }
+  return null;
+};
 
 const createTournament = async (req, res) => {
   try {
@@ -166,7 +188,15 @@ const createTournament = async (req, res) => {
 
 const getTournamentsByClub = async (req, res) => {
   try {
+    const user = req.user;
     let club_id = req.headers["x-club-id"] || req.query.club_id;
+
+    if (user?.role === "STAFF_CLUB") {
+      club_id = user.club_id;
+    } else if (user?.role === "OWNER") {
+      const managedClubId = await resolveManagedClubId(user);
+      club_id = managedClubId || club_id;
+    }
 
     // If no explicit club_id, try to get it from the authenticated user's account
     if (!club_id && req.user?.accountId) {
@@ -240,6 +270,7 @@ const getPublicTournaments = async (req, res) => {
 const getTournamentById = async (req, res) => {
   try {
     const { id } = req.params;
+    const user = getOptionalUser(req);
     const tournament = await Tournament.findById(id)
       .populate("club_id", "name address")
       .populate("table_type_id", "name")
@@ -248,6 +279,16 @@ const getTournamentById = async (req, res) => {
       return res
         .status(404)
         .json({ success: false, message: "Không tìm thấy giải đấu" });
+    }
+    const managedClubId = await resolveManagedClubId(user);
+    if (
+      managedClubId &&
+      String(tournament.club_id?._id || tournament.club_id) !== String(managedClubId)
+    ) {
+      return res.status(403).json({
+        success: false,
+        message: "Báº¡n khÃ´ng cÃ³ quyá»n xem giáº£i Ä‘áº¥u cá»§a quÃ¡n khÃ¡c",
+      });
     }
     return res.status(200).json({ success: true, data: tournament });
   } catch (error) {

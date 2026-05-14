@@ -292,7 +292,10 @@ const getBookingById = async (req, res) => {
       });
     }
 
-    const booking = await Booking.findById(id).populate("table_id");
+    const booking = await Booking.findOne({ _id: id }).populate({
+      path: "table_id",
+      match: { club_id: clubId },
+    });
     if (!booking) {
       return res.status(404).json({
         success: false,
@@ -300,8 +303,8 @@ const getBookingById = async (req, res) => {
       });
     }
 
-    if (booking.table_id?.club_id?.toString() !== clubId.toString()) {
-      return res.status(403).json({
+    if (!booking.table_id) {
+      return res.status(404).json({
         success: false,
         message: "Đơn này không thuộc quán của bạn",
       });
@@ -327,7 +330,10 @@ const extendBooking = async (req, res) => {
         .json({ success: false, message: "Số phút gia hạn không hợp lệ" });
     }
 
-    const booking = await Booking.findById(id).populate("table_id");
+    const booking = await Booking.findOne({ _id: id }).populate({
+      path: "table_id",
+      match: { club_id: clubId },
+    });
     if (!booking) {
       return res
         .status(404)
@@ -335,9 +341,9 @@ const extendBooking = async (req, res) => {
     }
 
     // Kiểm tra quyền hạn
-    if (booking.table_id.club_id.toString() !== clubId.toString()) {
+    if (!booking.table_id) {
       return res
-        .status(403)
+        .status(404)
         .json({ success: false, message: "Đơn này không thuộc quán của bạn" });
     }
 
@@ -482,15 +488,18 @@ const changeTable = async (req, res) => {
         .json({ success: false, message: "Vui lòng chọn bàn mới" });
     }
 
-    const oldBooking = await Booking.findById(id).populate("table_id");
+    const oldBooking = await Booking.findOne({ _id: id }).populate({
+      path: "table_id",
+      match: { club_id: clubId },
+    });
     if (!oldBooking)
       return res
         .status(404)
         .json({ success: false, message: "Không tìm thấy đơn" });
 
-    if (oldBooking.table_id.club_id.toString() !== clubId.toString()) {
+    if (!oldBooking.table_id) {
       return res
-        .status(403)
+        .status(404)
         .json({ success: false, message: "Đơn này không thuộc quán của bạn" });
     }
 
@@ -500,8 +509,8 @@ const changeTable = async (req, res) => {
         .json({ success: false, message: "Chỉ có thể đổi bàn khi đang chơi" });
     }
 
-    const newTable = await BilliardTable.findById(new_table_id);
-    if (!newTable || newTable.club_id.toString() !== clubId.toString()) {
+    const newTable = await BilliardTable.findOne({ _id: new_table_id, club_id: clubId });
+    if (!newTable) {
       return res
         .status(404)
         .json({ success: false, message: "Bàn mới không khả dụng" });
