@@ -75,7 +75,7 @@ const getBilliardTableById = async (req, res) => {
 const createBilliardTable = async (req, res) => {
     try {
         // Lấy thông tin bàn từ form
-        const { table_type_id, table_number, area, price, brand, description, isActive } = req.body;
+        const { table_type_id, table_number, price, description, isActive } = req.body;
 
         // Lấy club_id
         const club_id = req.body.club_id || req.query.club_id || req.user?.club_id;
@@ -104,9 +104,7 @@ const createBilliardTable = async (req, res) => {
             club_id,
             table_type_id,
             table_number,
-            area: area || "Khu vực chung",
             price: Number(price),
-            brand: brand || "",
             description,
             images,
             status: tableStatus
@@ -122,7 +120,7 @@ const createBilliardTable = async (req, res) => {
 
     } catch (error) {
         console.error("Error in createBilliardTable:", error);
-        
+
         // MongoDB duplicate key error (11000)
         if (error.code === 11000) {
             return res.status(409).json({
@@ -142,7 +140,7 @@ const createBilliardTable = async (req, res) => {
 const updateBilliardTable = async (req, res) => {
     try {
         const { id } = req.params; // Lấy ID bàn từ URL
-        const { table_type_id, table_number, area, price, brand, description, isActive, status } = req.body;
+        const { table_type_id, table_number, price, description, isActive, status } = req.body;
 
         if (!id) {
             return res.status(400).json({ success: false, message: "Thiếu ID bàn" });
@@ -150,7 +148,7 @@ const updateBilliardTable = async (req, res) => {
 
         // Lấy club_id
         const club_id = req.body.club_id || req.query.club_id || req.user?.club_id;
-        
+
         if (!club_id) {
             return res.status(400).json({
                 success: false,
@@ -213,9 +211,7 @@ const updateBilliardTable = async (req, res) => {
             club_id,
             table_type_id,
             table_number,
-            area: area || "Khu vực chung",
             price: Number(price),
-            brand: brand || "",
             description,
             status: tableStatus,
             images: [...remainingImages, ...newImages]
@@ -235,7 +231,7 @@ const updateBilliardTable = async (req, res) => {
 
     } catch (error) {
         console.error("Error in updateBilliardTable:", error);
-        
+
         // MongoDB duplicate key error hoặc Lỗi tùy chỉnh ném từ service
         if (error.code === 11000 || error.message.includes("đã tồn tại")) {
             return res.status(409).json({
@@ -325,6 +321,6 @@ module.exports = {
     createBilliardTable,
     updateBilliardTable,
     deleteBilliardTable,
-    getTableTypes,   
-    createTableType  
+    getTableTypes,
+    createTableType
 };
