@@ -16,18 +16,16 @@ const canAccessClub = async (req, clubId) => {
 
 const getBilliardTables = async (req, res) => {
     try {
-        // Lấy club_id từ query hoặc req.user.club_id
         const club_id = req.query.club_id || req.user?.club_id || req.body?.club_id;
         const { page = 1, limit = 5, search, table_type_id, status } = req.query;
 
         if (!club_id) {
             return res.status(400).json({
                 success: false,
-                message: "Không xác định được ID Quán (club_id). Vui lòng đăng nhập lại."
+                message: "Khong xac dinh duoc club_id."
             });
         }
 
-        // Chạy song song 2 Promise để lấy danh sách bàn và số lượng thống kê (Tối ưu tốc độ)
         const [tableData, counts] = await Promise.all([
             tableService.getTables(club_id, { page, limit, search, table_type_id, status }),
             tableService.getTableStatusCounts(club_id)
@@ -41,11 +39,10 @@ const getBilliardTables = async (req, res) => {
                 total: tableData.total,
                 totalPages: tableData.totalPages,
                 currentPage: tableData.currentPage,
-                limit: parseInt(limit || 5)
+                limit: parseInt(limit || 5, 10)
             },
-            statusCounts: counts // Trả về data cho các Tab trạng thái trên UI
+            statusCounts: counts
         });
-
     } catch (error) {
         console.error("Error in getBilliardTables:", error);
         return res.status(500).json({
@@ -62,7 +59,7 @@ const getBilliardTableById = async (req, res) => {
         if (!id) {
             return res.status(400).json({
                 success: false,
-                message: "Thiếu ID bàn"
+                message: "Thieu ID ban"
             });
         }
 
@@ -70,14 +67,14 @@ const getBilliardTableById = async (req, res) => {
         if (!table) {
             return res.status(404).json({
                 success: false,
-                message: "KhÃ´ng tÃ¬m tháº¥y bÃ n!"
+                message: "Khong tim thay ban"
             });
         }
 
         if (!(await canAccessClub(req, table.club_id))) {
             return res.status(403).json({
                 success: false,
-                message: "Báº¡n khÃ´ng cÃ³ quyá»n xem bÃ n nÃ y"
+                message: "Ban khong co quyen xem ban nay"
             });
         }
 
@@ -90,46 +87,45 @@ const getBilliardTableById = async (req, res) => {
         const statusCode = error.statusCode || 500;
         return res.status(statusCode).json({
             success: false,
-            message: error.message || "Lỗi server nội bộ"
+            message: error.message || "Loi server noi bo"
         });
     }
 };
 
 const createBilliardTable = async (req, res) => {
     try {
-        // Lấy thông tin bàn từ form
-        const { table_type_id, table_number, area, price, brand, description, isActive } = req.body;
-
-        // Lấy club_id
+        const { table_type_id, table_number, price, description, isActive } = req.body;
         const club_id = req.body.club_id || req.query.club_id || req.user?.club_id;
+
+        if (club_id && !(await canAccessClub(req, club_id))) {
+            return res.status(403).json({
+                success: false,
+                message: "Ban khong co quyen them ban cho quan nay"
+            });
+        }
 
         if (!club_id) {
             return res.status(400).json({
                 success: false,
-                message: "Không xác định được ID Quán (club_id). Vui lòng đăng nhập lại."
+                message: "Khong xac dinh duoc club_id."
             });
         }
 
-        // Validate cơ bản
         if (!table_type_id || !table_number || !price) {
             return res.status(400).json({
                 success: false,
-                message: "Vui lòng nhập đầy đủ: Tên bàn, Loại bàn và Đơn giá!"
+                message: "Vui long nhap day du ten ban, loai ban va don gia."
             });
         }
 
-        // Lấy URL ảnh từ Cloudinary (multer đã upload nhiều ảnh)
-        const images = req.files ? req.files.map(f => f.path) : [];
-
+        const images = req.files ? req.files.map((file) => file.path) : [];
         const tableStatus = isActive === "false" ? "Maintenance" : "Available";
 
         const tableData = {
             club_id,
             table_type_id,
             table_number,
-            area: area || "Khu vực chung",
             price: Number(price),
-            brand: brand || "",
             description,
             images,
             status: tableStatus
@@ -139,90 +135,85 @@ const createBilliardTable = async (req, res) => {
 
         return res.status(201).json({
             success: true,
-            message: "Thêm bàn bida mới thành công!",
+            message: "Them ban bida moi thanh cong",
             data: newTable
         });
-
     } catch (error) {
         console.error("Error in createBilliardTable:", error);
-        
-        // MongoDB duplicate key error (11000)
+
         if (error.code === 11000) {
             return res.status(409).json({
                 success: false,
-                message: `Tên bàn "${req.body.table_number}" đã tồn tại trong quán. Vui lòng chọn tên khác!`
+                message: `Ten ban "${req.body.table_number}" da ton tai trong quan.`
             });
         }
 
         const statusCode = error.statusCode || 500;
         return res.status(statusCode).json({
             success: false,
-            message: error.message || "Lỗi server nội bộ"
+            message: error.message || "Loi server noi bo"
         });
     }
 };
 
 const updateBilliardTable = async (req, res) => {
     try {
-        const { id } = req.params; // Lấy ID bàn từ URL
-        const { table_type_id, table_number, area, price, brand, description, isActive, status } = req.body;
+        const { id } = req.params;
+        const { table_type_id, table_number, price, description, isActive, status } = req.body;
 
         if (!id) {
-            return res.status(400).json({ success: false, message: "Thiếu ID bàn" });
+            return res.status(400).json({ success: false, message: "Thieu ID ban" });
         }
 
-        // Lấy club_id
         const club_id = req.body.club_id || req.query.club_id || req.user?.club_id;
-        
+
+        if (club_id && !(await canAccessClub(req, club_id))) {
+            return res.status(403).json({
+                success: false,
+                message: "Ban khong co quyen cap nhat ban cho quan nay"
+            });
+        }
+
         if (!club_id) {
             return res.status(400).json({
                 success: false,
-                message: "Không xác định được ID Quán (club_id). Vui lòng đăng nhập lại."
+                message: "Khong xac dinh duoc club_id."
             });
         }
 
-        // Validate cơ bản
         if (!table_type_id || !table_number || !price) {
             return res.status(400).json({
                 success: false,
-                message: "Vui lòng nhập đầy đủ: Tên bàn, Loại bàn và Đơn giá!"
+                message: "Vui long nhap day du ten ban, loai ban va don gia."
             });
         }
 
-        // Lấy bàn hiện tại để xử lý ảnh
         const existing = await BilliardTable.findOne({ _id: id, club_id }).populate("table_type_id", "name");
         if (!existing) {
             return res.status(404).json({
                 success: false,
-                message: "KhÃ´ng tÃ¬m tháº¥y bÃ n!"
+                message: "Khong tim thay ban"
             });
         }
-        let currentImages = existing.images || [];
 
-        // Xử lý danh sách ảnh bị xóa
+        const currentImages = existing.images || [];
         let removedList = [];
         const removedImages = req.body.removedImages;
         if (removedImages) {
             removedList = Array.isArray(removedImages) ? removedImages : [removedImages];
         }
 
-        // Xóa ảnh cũ khỏi Cloudinary
         for (const url of removedList) {
             try {
                 const publicId = url.split("/").slice(-2).join("/").replace(/\.[^/.]+$/, "");
                 await cloudinary.uploader.destroy(publicId);
             } catch (e) {
-                console.error("Lỗi xóa ảnh Cloudinary:", e);
+                console.error("Loi xoa anh Cloudinary:", e);
             }
         }
 
-        // Ảnh còn lại = ảnh cũ trừ ảnh bị xóa
-        const remainingImages = currentImages.filter(img => !removedList.includes(img));
-
-        // Ảnh mới upload
-        const newImages = req.files ? req.files.map(f => f.path) : [];
-
-        // Ưu tiên status gửi trực tiếp, fallback sang isActive
+        const remainingImages = currentImages.filter((img) => !removedList.includes(img));
+        const newImages = req.files ? req.files.map((file) => file.path) : [];
         const tableStatus = status || (isActive === "false" ? "Maintenance" : "Available");
 
         if (tableStatus === "Maintenance") {
@@ -233,7 +224,7 @@ const updateBilliardTable = async (req, res) => {
             if (activeBookings > 0) {
                 return res.status(400).json({
                     success: false,
-                    message: "Không thể chuyển bàn sang trạng thái bảo trì vì đang có lịch đặt hoặc đang được chơi."
+                    message: "Khong the chuyen ban sang bao tri vi dang co lich dat hoac dang duoc choi."
                 });
             }
         }
@@ -242,9 +233,7 @@ const updateBilliardTable = async (req, res) => {
             club_id,
             table_type_id,
             table_number,
-            area: area || "Khu vực chung",
             price: Number(price),
-            brand: brand || "",
             description,
             status: tableStatus,
             images: [...remainingImages, ...newImages]
@@ -253,54 +242,61 @@ const updateBilliardTable = async (req, res) => {
         const updatedTable = await tableService.updateTable(id, updateData);
 
         if (!updatedTable) {
-            return res.status(404).json({ success: false, message: "Không tìm thấy bàn để cập nhật" });
+            return res.status(404).json({ success: false, message: "Khong tim thay ban de cap nhat" });
         }
 
         return res.status(200).json({
             success: true,
-            message: "Cập nhật bàn thành công",
+            message: "Cap nhat ban thanh cong",
             data: updatedTable
         });
-
     } catch (error) {
         console.error("Error in updateBilliardTable:", error);
-        
-        // MongoDB duplicate key error hoặc Lỗi tùy chỉnh ném từ service
-        if (error.code === 11000 || error.message.includes("đã tồn tại")) {
+
+        if (error.code === 11000 || error.message.includes("ton tai")) {
             return res.status(409).json({
                 success: false,
-                message: `Tên bàn "${req.body.table_number}" đã tồn tại trong quán. Vui lòng chọn tên khác!`
+                message: `Ten ban "${req.body.table_number}" da ton tai trong quan.`
             });
         }
 
         const statusCode = error.statusCode || 400;
-        return res.status(statusCode).json({ success: false, message: error.message || "Lỗi cập nhật bàn" });
+        return res.status(statusCode).json({
+            success: false,
+            message: error.message || "Loi cap nhat ban"
+        });
     }
 };
 
 const deleteBilliardTable = async (req, res) => {
     try {
         const { id } = req.params;
-        const club_id = req.user?.club_id;
-
-        if (!id || !club_id) {
-            return res.status(400).json({ success: false, message: "Thiếu ID bàn" });
+        const table = await BilliardTable.findById(id);
+        if (!table) {
+            return res.status(404).json({ success: false, message: "Khong tim thay ban" });
         }
 
+        if (!(await canAccessClub(req, table.club_id))) {
+            return res.status(403).json({
+                success: false,
+                message: "Ban khong co quyen xoa ban nay"
+            });
+        }
+
+        const club_id = table.club_id;
         const activeBookings = await Booking.countDocuments({
             table_id: id,
             status: { $in: ["Booked", "Playing"] }
         });
+
         if (activeBookings > 0) {
             return res.status(400).json({
                 success: false,
-                message: "Không thể xóa bàn vì đang có lịch đặt hoặc đang được chơi."
+                message: "Khong the xoa ban vi dang co lich dat hoac dang duoc choi."
             });
         }
 
-        // Xóa ảnh Cloudinary trước khi xóa bàn
         try {
-            const table = await BilliardTable.findOne({ _id: id, club_id });
             if (table.images && table.images.length > 0) {
                 for (const url of table.images) {
                     const publicId = url.split("/").slice(-2).join("/").replace(/\.[^/.]+$/, "");
@@ -308,25 +304,23 @@ const deleteBilliardTable = async (req, res) => {
                 }
             }
         } catch (e) {
-            console.error("Lỗi xóa ảnh khi delete bàn:", e);
+            console.error("Loi xoa anh khi delete ban:", e);
         }
 
         const deleted = await BilliardTable.findOneAndDelete({ _id: id, club_id });
         if (!deleted) {
-            return res.status(404).json({ success: false, message: "KhÃ´ng tÃ¬m tháº¥y bÃ n!" });
+            return res.status(404).json({ success: false, message: "Khong tim thay ban" });
         }
 
         return res.status(200).json({
             success: true,
-            message: "Xóa bàn thành công"
+            message: "Xoa ban thanh cong"
         });
-
     } catch (error) {
         return res.status(400).json({ success: false, message: error.message });
     }
 };
 
-// Controller Lấy danh sách loại bàn
 const getTableTypes = async (req, res) => {
     try {
         const tableTypes = await tableService.getAllTableTypes();
@@ -339,7 +333,6 @@ const getTableTypes = async (req, res) => {
     }
 };
 
-// Controller Tạo loại bàn
 const createTableType = async (req, res) => {
     try {
         const newType = await tableService.createTableType(req.body);
@@ -358,6 +351,6 @@ module.exports = {
     createBilliardTable,
     updateBilliardTable,
     deleteBilliardTable,
-    getTableTypes,   
-    createTableType  
+    getTableTypes,
+    createTableType
 };
