@@ -1,12 +1,3 @@
-const { OAuth2Client } = require("google-auth-library");
-const jwt = require("jsonwebtoken");
-const bcrypt = require("bcryptjs");
-
-const Account  = require("../../models/account.model");
-const Role = require("../../models/role.model");
-const Otp = require("../../models/otp.model");
-const Notification = require("../../models/notification.model");
-
 const Tournament = require("../../models/tournament.model");
 const Club = require("../../models/club.model");
 const Image = require("../../models/image.model");

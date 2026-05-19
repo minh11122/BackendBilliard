@@ -16,14 +16,13 @@ const {
   getTournamentMatches,
   startRoundMatch,
   updateMatchResult,
-  getRoundRobinLeaderboard,
   updateTournament,
   deleteTournament,
   createTournamentPayOSPayment,
   verifyTournamentPayOSPayment,
   tournamentPayOSWebhook,
   cancelTournament
-} = require("../controller/tournament.controller");
+} = require("../controller/tournament");
 const upload = require("../middleware/uploadCloud.middleware");
 const authenticate = require("../middleware/authenticate.middleware");
 const authorizeRole = require("../middleware/authorizeRole.middleware");
@@ -39,7 +38,6 @@ router.get("/my/tournaments", authenticate, getMyTournaments);
 // Public bracket / match view
 router.get("/:id/bracket", getTournamentBracket);
 router.get("/:id/matches", getTournamentMatches);
-router.get("/:id/leaderboard", getRoundRobinLeaderboard);
 
 // GET /tournaments/:id - get single tournament details
 router.get("/:id", getTournamentById);

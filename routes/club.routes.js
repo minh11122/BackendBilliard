@@ -1,6 +1,6 @@
 const express = require("express");
 const router = express.Router();
-const clubController = require("../controller/club.controller");
+const clubController = require("../controller/club");
 const clubBankController = require("../controller/clubBank.controller");
 const authenticate = require("../middleware/authenticate.middleware");
 

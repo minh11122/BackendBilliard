@@ -6,7 +6,7 @@ const tournamentRoundSchema = new mongoose.Schema(
     round_number: { type: Number, required: true },
     round_type: {
       type: String,
-      enum: ["Knockout", "RoundRobin", "DoubleElimination"],
+      enum: ["Knockout", "DoubleElimination"],
       required: true
     },
     bracket_side: {
@@ -14,7 +14,6 @@ const tournamentRoundSchema = new mongoose.Schema(
       enum: ["Winners", "Losers", "GrandFinal", null],
       default: null
     },
-    group_key: { type: String, default: null },
     race_to: { type: Number, default: 7 },
     status: {
       type: String,
@@ -30,7 +29,7 @@ const tournamentRoundSchema = new mongoose.Schema(
 );
 
 tournamentRoundSchema.index(
-  { tournament_id: 1, bracket_side: 1, round_number: 1, group_key: 1 },
+  { tournament_id: 1, bracket_side: 1, round_number: 1 },
   { unique: true }
 );
 
@@ -38,7 +37,8 @@ const TournamentRound =
   mongoose.models.TournamentRound || mongoose.model("TournamentRound", tournamentRoundSchema);
 
 const LEGACY_INDEX_NAME = "tournament_id_1_round_number_1_group_key_1";
-const CURRENT_INDEX_NAME = "tournament_id_1_bracket_side_1_round_number_1_group_key_1";
+const ROUND_ROBIN_INDEX_NAME = "tournament_id_1_bracket_side_1_round_number_1_group_key_1";
+const CURRENT_INDEX_NAME = "tournament_id_1_bracket_side_1_round_number_1";
 
 const ensureTournamentRoundIndexes = async () => {
   try {
@@ -50,11 +50,12 @@ const ensureTournamentRoundIndexes = async () => {
   }
 
   const indexes = await TournamentRound.collection.indexes();
-  const hasLegacyIndex = indexes.some((index) => index.name === LEGACY_INDEX_NAME);
-
-  if (hasLegacyIndex) {
-    console.log(`[TournamentRound] Dropping legacy index ${LEGACY_INDEX_NAME}`);
-    await TournamentRound.collection.dropIndex(LEGACY_INDEX_NAME);
+  for (const indexName of [LEGACY_INDEX_NAME, ROUND_ROBIN_INDEX_NAME]) {
+    const hasIndex = indexes.some((index) => index.name === indexName);
+    if (hasIndex) {
+      console.log(`[TournamentRound] Dropping legacy index ${indexName}`);
+      await TournamentRound.collection.dropIndex(indexName);
+    }
   }
 
   const refreshedIndexes = await TournamentRound.collection.indexes();
@@ -63,7 +64,7 @@ const ensureTournamentRoundIndexes = async () => {
   if (!hasCurrentIndex) {
     console.log(`[TournamentRound] Creating index ${CURRENT_INDEX_NAME}`);
     await TournamentRound.collection.createIndex(
-      { tournament_id: 1, bracket_side: 1, round_number: 1, group_key: 1 },
+      { tournament_id: 1, bracket_side: 1, round_number: 1 },
       { unique: true, name: CURRENT_INDEX_NAME }
     );
   }

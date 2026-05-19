@@ -70,7 +70,7 @@ const Account = require("../../models/account.model");
 const Role = require("../../models/role.model");
 const Otp = require("../../models/otp.model");
 const Notification = require("../../models/notification.model");
-const authController = require("../../controller/auth/auth.controller");
+const authController = require("../../controller/auth");
 
 const createRes = () => {
   const res = {};

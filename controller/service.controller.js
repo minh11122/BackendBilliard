@@ -9,6 +9,18 @@ const checkOwnerAccess = async (clubId, accountId) => {
 };
 
 const cloudinary = require("../configs/cloudinary.config");
+const Service = require("../models/service.model");
+const Club = require("../models/club.model");
+
+const canAccessClub = async (req, clubId) => {
+    if (!clubId || !req.user) return false;
+    if (req.user.role === "STAFF_CLUB") return String(req.user.club_id) === String(clubId);
+    if (req.user.role === "OWNER") {
+        const ownedClub = await Club.findOne({ _id: clubId, account_id: req.user.accountId }).select("_id").lean();
+        return !!ownedClub;
+    }
+    return false;
+};
 
 const getServices = async (req, res) => {
     try {
@@ -16,7 +28,7 @@ const getServices = async (req, res) => {
         const { page = 1, limit = 10, search, status = "Active" } = req.query;
 
         if (!club_id) {
-            return res.status(400).json({ success: false, message: "Không xác định được ID Quán." });
+            return res.status(400).json({ success: false, message: "Khong xac dinh duoc ID quan." });
         }
 
         if (req.user?.role === "OWNER") {
@@ -102,7 +114,11 @@ const createService = async (req, res) => {
         const club_id = req.user?.club_id || req.query.club_id || req.body.club_id;
 
         if (!club_id) {
-            return res.status(400).json({ success: false, message: "Không xác định được ID Quán." });
+            return res.status(400).json({ success: false, message: "Khong xac dinh duoc ID quan." });
+        }
+
+        if (!(await canAccessClub(req, club_id))) {
+            return res.status(403).json({ success: false, message: "Ban khong co quyen tao dich vu cho quan nay." });
         }
 
         if (req.user?.role === "OWNER") {
@@ -111,19 +127,19 @@ const createService = async (req, res) => {
         }
 
         if (!name || !name.trim()) {
-            return res.status(400).json({ success: false, message: "Tên dịch vụ không được để trống!" });
+            return res.status(400).json({ success: false, message: "Ten dich vu khong duoc de trong." });
         }
         if (name.trim().length > 150) {
-            return res.status(400).json({ success: false, message: "Tên dịch vụ tối đa 150 ký tự!" });
+            return res.status(400).json({ success: false, message: "Ten dich vu toi da 150 ky tu." });
         }
-        if (price === undefined || price === null || isNaN(Number(price))) {
-            return res.status(400).json({ success: false, message: "Giá dịch vụ là bắt buộc và phải là số!" });
+        if (price === undefined || price === null || Number.isNaN(Number(price))) {
+            return res.status(400).json({ success: false, message: "Gia dich vu bat buoc va phai la so." });
         }
         if (Number(price) <= 0) {
-            return res.status(400).json({ success: false, message: "Giá dịch vụ phải lớn hơn 0!" });
+            return res.status(400).json({ success: false, message: "Gia dich vu phai lon hon 0." });
         }
         if (description && description.length > 500) {
-            return res.status(400).json({ success: false, message: "Mô tả tối đa 500 ký tự!" });
+            return res.status(400).json({ success: false, message: "Mo ta toi da 500 ky tu." });
         }
 
         // Kiểm tra trùng tên trong cùng Club
@@ -150,7 +166,7 @@ const createService = async (req, res) => {
 
         return res.status(201).json({
             success: true,
-            message: "Tạo dịch vụ thành công!",
+            message: "Tao dich vu thanh cong.",
             data: newService
         });
     } catch (error) {
@@ -166,7 +182,11 @@ const updateService = async (req, res) => {
         const club_id = req.user?.club_id || req.query.club_id || req.body.club_id;
 
         if (!club_id) {
-            return res.status(400).json({ success: false, message: "Không xác định được ID Quán." });
+            return res.status(400).json({ success: false, message: "Khong xac dinh duoc ID quan." });
+        }
+
+        if (!(await canAccessClub(req, club_id))) {
+            return res.status(403).json({ success: false, message: "Ban khong co quyen cap nhat dich vu cho quan nay." });
         }
 
         if (req.user?.role === "OWNER") {
@@ -175,19 +195,19 @@ const updateService = async (req, res) => {
         }
 
         if (!name || !name.trim()) {
-            return res.status(400).json({ success: false, message: "Tên dịch vụ không được để trống!" });
+            return res.status(400).json({ success: false, message: "Ten dich vu khong duoc de trong." });
         }
         if (name.trim().length > 150) {
-            return res.status(400).json({ success: false, message: "Tên dịch vụ tối đa 150 ký tự!" });
+            return res.status(400).json({ success: false, message: "Ten dich vu toi da 150 ky tu." });
         }
-        if (price === undefined || price === null || isNaN(Number(price))) {
-            return res.status(400).json({ success: false, message: "Giá dịch vụ là bắt buộc và phải là số!" });
+        if (price === undefined || price === null || Number.isNaN(Number(price))) {
+            return res.status(400).json({ success: false, message: "Gia dich vu bat buoc va phai la so." });
         }
         if (Number(price) <= 0) {
-            return res.status(400).json({ success: false, message: "Giá dịch vụ phải lớn hơn 0!" });
+            return res.status(400).json({ success: false, message: "Gia dich vu phai lon hon 0." });
         }
         if (description && description.length > 500) {
-            return res.status(400).json({ success: false, message: "Mô tả tối đa 500 ký tự!" });
+            return res.status(400).json({ success: false, message: "Mo ta toi da 500 ky tu." });
         }
 
         // Kiểm tra trùng tên (trừ chính nó)
@@ -223,7 +243,7 @@ const updateService = async (req, res) => {
                 const publicId = url.split("/").slice(-2).join("/").replace(/\.[^/.]+$/, "");
                 await cloudinary.uploader.destroy(publicId);
             } catch (e) {
-                console.error("Lỗi xóa ảnh Cloudinary:", e);
+                console.error("Loi xoa anh Cloudinary:", e);
             }
         }
 
@@ -242,7 +262,7 @@ const updateService = async (req, res) => {
 
         return res.status(200).json({
             success: true,
-            message: "Cập nhật dịch vụ thành công!",
+            message: "Cap nhat dich vu thanh cong.",
             data: updated
         });
     } catch (error) {
@@ -277,7 +297,7 @@ const deactivateService = async (req, res) => {
         
         return res.status(200).json({
             success: true,
-            message: "Đã vô hiệu hóa dịch vụ.",
+            message: "Da vo hieu hoa dich vu.",
             data: service
         });
     } catch (error) {
@@ -311,7 +331,7 @@ const reactivateService = async (req, res) => {
         
         return res.status(200).json({
             success: true,
-            message: "Đã khôi phục dịch vụ.",
+            message: "Da khoi phuc dich vu.",
             data: service
         });
     } catch (error) {
@@ -322,6 +342,15 @@ const reactivateService = async (req, res) => {
 const deleteServicePermanently = async (req, res) => {
     try {
         const { id } = req.params;
+        const service = await Service.findById(id);
+        if (!service) {
+            return res.status(404).json({ success: false, message: "Khong tim thay dich vu." });
+        }
+        if (!(await canAccessClub(req, service.club_id))) {
+            return res.status(403).json({ success: false, message: "Ban khong co quyen xoa dich vu nay." });
+        }
+
+        const club_id = service.club_id;
 
         const service = await Service.findById(id);
         if (!service) return res.status(404).json({ success: false, message: "Không tìm thấy dịch vụ!" });
@@ -359,7 +388,7 @@ const deleteServicePermanently = async (req, res) => {
         
         return res.status(200).json({
             success: true,
-            message: "Đã xóa vĩnh viễn dịch vụ."
+            message: "Da xoa vinh vien dich vu."
         });
     } catch (error) {
         return res.status(500).json({ success: false, message: error.message });

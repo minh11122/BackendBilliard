@@ -175,11 +175,10 @@ const getBilliardTables = async (req, res) => {
                 total: tableData.total,
                 totalPages: tableData.totalPages,
                 currentPage: tableData.currentPage,
-                limit: parseInt(limit || 5)
+                limit: parseInt(limit || 5, 10)
             },
             statusCounts: counts
         });
-
     } catch (error) {
         console.error("Error in getBilliardTables:", error);
         return res.status(500).json({
@@ -193,11 +192,10 @@ const getBilliardTables = async (req, res) => {
 const getBilliardTableById = async (req, res) => {
     try {
         const { id } = req.params;
-
         if (!id) {
             return res.status(400).json({
                 success: false,
-                message: "Thiếu ID bàn"
+                message: "Thieu ID ban"
             });
         }
 
@@ -219,7 +217,7 @@ const getBilliardTableById = async (req, res) => {
         console.error("Error in getBilliardTableById:", error);
         return res.status(500).json({
             success: false,
-            message: error.message || "Lỗi server nội bộ"
+            message: error.message || "Loi server noi bo"
         });
     }
 };
@@ -256,6 +254,13 @@ const createBilliardTable = async (req, res) => {
         const { table_type_id, isActive } = req.body;
         const club_id = req.user?.club_id || req.query.club_id || req.body.club_id;
         let { table_number, price, description } = req.body;
+
+        if (club_id && !(await canAccessClub(req, club_id))) {
+            return res.status(403).json({
+                success: false,
+                message: "Ban khong co quyen them ban cho quan nay"
+            });
+        }
 
         if (!club_id) {
             return res.status(403).json({ success: false, message: "Không xác định được ID Quán (club_id). Vui lòng đăng nhập lại." });
@@ -312,10 +317,9 @@ const createBilliardTable = async (req, res) => {
 
         return res.status(201).json({
             success: true,
-            message: "Thêm bàn bida mới thành công!",
+            message: "Them ban bida moi thanh cong",
             data: newTable
         });
-
     } catch (error) {
         console.error("Error in createBilliardTable:", error);
         
@@ -425,10 +429,9 @@ const updateBilliardTable = async (req, res) => {
 
         return res.status(200).json({
             success: true,
-            message: "Cập nhật bàn thành công",
+            message: "Cap nhat ban thanh cong",
             data: updatedTable
         });
-
     } catch (error) {
         console.error("Error in updateBilliardTable:", error);
         if (req.files && req.files.length > 0) await deleteCloudinaryImages(req.files.map(f => f.path));
@@ -496,7 +499,6 @@ const getTableTypes = async (req, res) => {
         return res.status(500).json({ success: false, message: error.message });
     }
 };
-
 
 
 module.exports = {

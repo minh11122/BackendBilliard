@@ -9,7 +9,7 @@ process.env.PAYOS_API_KEY = "dummy_key";
 process.env.PAYOS_CHECKSUM_KEY = "dummy_checksum";
 
 const mongoose = require("mongoose");
-const tournamentController = require("../../controller/tournament.controller");
+const tournamentController = require("../../controller/tournament");
 const Tournament = require("../../models/tournament.model");
 const TournamentPlayer = require("../../models/tournament_player.model");
 const TournamentRound = require("../../models/tournament_round.model");
@@ -266,23 +266,8 @@ describe("Tournament Controller - Legendary Masterpiece Suite", () => {
         expect(res.status).toHaveBeenCalledWith(200);
     });
 
-    it("getRoundRobinLeaderboard - SUCCESS with math calculation", async () => {
-        // Requires tournament.format === "Round Robin"
-        Tournament.findById.mockReturnValue(createMockQuery({ _id: ID_TOUR, format: "Round Robin" }));
-        const matches = [
-            { player1_id: "p1", player2_id: "p2", player1_score: 5, player2_score: 2, winner_id: "p1", group_key: "A" }
-        ];
-        RoundMatch.find.mockReturnValue(createMockQuery(matches));
-        await tournamentController.getRoundRobinLeaderboard({ params: { id: ID_TOUR } }, res);
-        expect(res.status).toHaveBeenCalledWith(200);
-    });
 
-    it("getRoundRobinLeaderboard - 400 if not Round Robin format", async () => {
-        Tournament.findById.mockReturnValue(createMockQuery({ _id: ID_TOUR, format: "Knockout" }));
-        await tournamentController.getRoundRobinLeaderboard({ params: { id: ID_TOUR } }, res);
-        expect(res.status).toHaveBeenCalledWith(400);
-        expect(res.json).toHaveBeenCalledWith(expect.objectContaining({ message: "Giải đấu không ở thể thức vòng tròn" }));
-    });
+
   });
 
   // ============================================================
@@ -312,19 +297,12 @@ describe("Tournament Controller - Legendary Masterpiece Suite", () => {
         expect(res.status).toHaveBeenCalledWith(200);
     });
 
-    it("generateTournamentBracket - Round Robin format success", async () => {
+    it("generateTournamentBracket - rejects unsupported Round Robin format", async () => {
         const clubObj = { _id: ID_CLUB, account_id: ID_USER, plan_type: "pro" };
-        Tournament.findById
-          .mockReturnValueOnce(createMockQuery({ _id: ID_TOUR, format: "Round Robin", max_players: 8, club_id: clubObj, save: jest.fn() }))
-          .mockReturnValueOnce(createMockQuery({ _id: ID_TOUR }));
+        Tournament.findById.mockReturnValue(createMockQuery({ _id: ID_TOUR, format: "Knockout", max_players: 8, club_id: clubObj, save: jest.fn() }));
         TournamentPlayer.find.mockReturnValue(createMockQuery([{ account_id: "p1" }, { account_id: "p2" }]));
-        RoundMatch.deleteMany.mockResolvedValue({});
-        TournamentRound.deleteMany.mockResolvedValue({});
-        TournamentRound.insertMany.mockResolvedValue([{ _id: "r1" }]);
-        RoundMatch.insertMany.mockResolvedValue([]);
-        RoundMatch.find.mockReturnValue(createMockQuery([]));
         await tournamentController.generateTournamentBracket({ params: { id: ID_TOUR }, body: { format: "Round Robin" }, user: { accountId: ID_USER } }, res);
-        expect(res.status).toHaveBeenCalledWith(200);
+        expect(res.status).toHaveBeenCalledWith(400);
     });
 
     it("generateTournamentBracket - Double Elimination format success", async () => {
