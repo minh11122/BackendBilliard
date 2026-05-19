@@ -1,30 +1,75 @@
-const serviceService = require("../services/service.service");
+const mongoose = require("mongoose");
+const Service = require("../models/service.model");
+const Club = require("../models/club.model");
+
+const checkOwnerAccess = async (clubId, accountId) => {
+    if (!clubId || !accountId) return false;
+    const club = await Club.findOne({ _id: clubId, account_id: accountId });
+    return !!club;
+};
+
 const cloudinary = require("../configs/cloudinary.config");
 
 const getServices = async (req, res) => {
     try {
-        const club_id = req.query.club_id || req.user?.club_id || req.body?.club_id;
+        const club_id = req.user?.club_id || req.query.club_id || req.body.club_id;
         const { page = 1, limit = 10, search, status = "Active" } = req.query;
 
         if (!club_id) {
             return res.status(400).json({ success: false, message: "Không xác định được ID Quán." });
         }
 
-        const [serviceData, counts] = await Promise.all([
-            serviceService.getServices(club_id, { page, limit, search, status }),
-            serviceService.getServiceStatusCounts(club_id)
+        if (req.user?.role === "OWNER") {
+            const isOwner = await checkOwnerAccess(club_id, req.user.accountId || req.user.id);
+            if (!isOwner) return res.status(403).json({ success: false, message: "Bạn không có quyền thao tác trên quán này!" });
+        }
+
+        const query = { club_id: new mongoose.Types.ObjectId(club_id), status };
+
+        if (search) {
+            query.name = { $regex: search, $options: "i" };
+        }
+
+        const skip = (page - 1) * limit;
+
+        const services = await Service.find(query)
+            .skip(skip)
+            .limit(parseInt(limit))
+            .sort({ created_at: -1 });
+
+        const total = await Service.countDocuments(query);
+
+        const countData = await Service.aggregate([
+            { $match: { club_id: new mongoose.Types.ObjectId(club_id) } },
+            { $group: { _id: "$status", count: { $sum: 1 } } }
         ]);
+
+        let totalCount = 0;
+        let activeCount = 0;
+        let inactiveCount = 0;
+
+        countData.forEach(item => {
+            if (item._id === "Active") activeCount = item.count;
+            if (item._id === "Inactive") inactiveCount = item.count;
+            totalCount += item.count;
+        });
+
+        const statusCounts = {
+            total: totalCount,
+            active: activeCount,
+            inactive: inactiveCount
+        };
 
         return res.status(200).json({
             success: true,
-            data: serviceData.services,
+            data: services,
             pagination: {
-                total: serviceData.total,
-                totalPages: serviceData.totalPages,
-                currentPage: serviceData.currentPage,
+                total,
+                totalPages: Math.ceil(total / limit),
+                currentPage: parseInt(page),
                 limit: parseInt(limit)
             },
-            statusCounts: counts
+            statusCounts
         });
     } catch (error) {
         console.error("Error in getServices:", error);
@@ -35,21 +80,34 @@ const getServices = async (req, res) => {
 const getServiceById = async (req, res) => {
     try {
         const { id } = req.params;
-        const service = await serviceService.getServiceById(id);
+        const service = await Service.findById(id);
+        if (!service) return res.status(404).json({ success: false, message: "Không tìm thấy dịch vụ!" });
+
+        if (req.user?.role === "OWNER") {
+            const isOwner = await checkOwnerAccess(service.club_id, req.user.accountId || req.user.id);
+            if (!isOwner) return res.status(403).json({ success: false, message: "Bạn không có quyền xem dịch vụ của quán khác!" });
+        } else if (req.user?.role === "STAFF_CLUB" && req.user.club_id !== service.club_id.toString()) {
+            return res.status(403).json({ success: false, message: "Nhân viên không có quyền xem dịch vụ của quán khác!" });
+        }
+        
         return res.status(200).json({ success: true, data: service });
     } catch (error) {
-        const statusCode = error.statusCode || 500;
-        return res.status(statusCode).json({ success: false, message: error.message });
+        return res.status(500).json({ success: false, message: error.message });
     }
 };
 
 const createService = async (req, res) => {
     try {
         const { name, price, description } = req.body;
-        const club_id = req.body.club_id || req.query.club_id || req.user?.club_id;
+        const club_id = req.user?.club_id || req.query.club_id || req.body.club_id;
 
         if (!club_id) {
             return res.status(400).json({ success: false, message: "Không xác định được ID Quán." });
+        }
+
+        if (req.user?.role === "OWNER") {
+            const isOwner = await checkOwnerAccess(club_id, req.user.accountId || req.user.id);
+            if (!isOwner) return res.status(403).json({ success: false, message: "Bạn không có quyền thao tác trên quán này!" });
         }
 
         if (!name || !name.trim()) {
@@ -68,7 +126,12 @@ const createService = async (req, res) => {
             return res.status(400).json({ success: false, message: "Mô tả tối đa 500 ký tự!" });
         }
 
-        // Lấy URL ảnh từ Cloudinary (multer đã upload)
+        // Kiểm tra trùng tên trong cùng Club
+        const existing = await Service.findOne({ club_id, name: name.trim(), status: "Active" });
+        if (existing) {
+            return res.status(409).json({ success: false, message: `Dịch vụ "${name.trim()}" đã tồn tại trong quán!` });
+        }
+
         const images = req.files ? req.files.map(f => f.path) : [];
 
         const serviceData = {
@@ -77,10 +140,13 @@ const createService = async (req, res) => {
             price: Number(price),
             images,
             description: description || "",
-            created_by: req.user?.id || req.accountId || null
+            created_by: req.user?.id || req.accountId || null,
+            status: "Active",
+            created_at: new Date()
         };
 
-        const newService = await serviceService.createService(serviceData);
+        const newService = new Service(serviceData);
+        await newService.save();
 
         return res.status(201).json({
             success: true,
@@ -89,8 +155,7 @@ const createService = async (req, res) => {
         });
     } catch (error) {
         console.error("Error in createService:", error);
-        const statusCode = error.statusCode || 500;
-        return res.status(statusCode).json({ success: false, message: error.message });
+        return res.status(500).json({ success: false, message: error.message });
     }
 };
 
@@ -98,10 +163,15 @@ const updateService = async (req, res) => {
     try {
         const { id } = req.params;
         const { name, price, description, removedImages } = req.body;
-        const club_id = req.body.club_id || req.query.club_id || req.user?.club_id;
+        const club_id = req.user?.club_id || req.query.club_id || req.body.club_id;
 
         if (!club_id) {
             return res.status(400).json({ success: false, message: "Không xác định được ID Quán." });
+        }
+
+        if (req.user?.role === "OWNER") {
+            const isOwner = await checkOwnerAccess(club_id, req.user.accountId || req.user.id);
+            if (!isOwner) return res.status(403).json({ success: false, message: "Bạn không có quyền thao tác trên quán này!" });
         }
 
         if (!name || !name.trim()) {
@@ -120,17 +190,34 @@ const updateService = async (req, res) => {
             return res.status(400).json({ success: false, message: "Mô tả tối đa 500 ký tự!" });
         }
 
-        // Lấy dịch vụ hiện tại để xử lý ảnh
-        const existing = await serviceService.getServiceById(id);
+        // Kiểm tra trùng tên (trừ chính nó)
+        const existingName = await Service.findOne({
+            club_id,
+            name: name.trim(),
+            status: "Active",
+            _id: { $ne: id }
+        });
+        
+        if (existingName) {
+            return res.status(409).json({ success: false, message: `Dịch vụ "${name.trim()}" đã tồn tại trong quán!` });
+        }
+
+        const existing = await Service.findById(id);
+        if (!existing) {
+            return res.status(404).json({ success: false, message: "Không tìm thấy dịch vụ." });
+        }
+
+        if (existing.club_id.toString() !== club_id) {
+            return res.status(403).json({ success: false, message: "Bạn không có quyền sửa dịch vụ của quán khác!" });
+        }
+        
         let currentImages = existing.images || [];
 
-        // Xử lý danh sách ảnh bị xóa
         let removedList = [];
         if (removedImages) {
             removedList = Array.isArray(removedImages) ? removedImages : [removedImages];
         }
 
-        // Xóa ảnh cũ khỏi Cloudinary
         for (const url of removedList) {
             try {
                 const publicId = url.split("/").slice(-2).join("/").replace(/\.[^/.]+$/, "");
@@ -140,10 +227,7 @@ const updateService = async (req, res) => {
             }
         }
 
-        // Ảnh còn lại = ảnh cũ trừ ảnh bị xóa
         const remainingImages = currentImages.filter(img => !removedList.includes(img));
-
-        // Ảnh mới upload
         const newImages = req.files ? req.files.map(f => f.path) : [];
 
         const updateData = {
@@ -154,11 +238,7 @@ const updateService = async (req, res) => {
             description: description || ""
         };
 
-        const updated = await serviceService.updateService(id, updateData);
-
-        if (!updated) {
-            return res.status(404).json({ success: false, message: "Không tìm thấy dịch vụ." });
-        }
+        const updated = await Service.findByIdAndUpdate(id, updateData, { new: true });
 
         return res.status(200).json({
             success: true,
@@ -167,38 +247,75 @@ const updateService = async (req, res) => {
         });
     } catch (error) {
         console.error("Error in updateService:", error);
-        const statusCode = error.statusCode || 500;
-        return res.status(statusCode).json({ success: false, message: error.message });
+        return res.status(500).json({ success: false, message: error.message });
     }
 };
 
 const deactivateService = async (req, res) => {
     try {
         const { id } = req.params;
-        const service = await serviceService.deactivateService(id);
+        
+        const club_id = req.user?.club_id || req.query.club_id || req.body.club_id;
+        if (!club_id) return res.status(400).json({ success: false, message: "Không xác định được ID Quán." });
+
+        if (req.user?.role === "OWNER") {
+            const isOwner = await checkOwnerAccess(club_id, req.user.accountId || req.user.id);
+            if (!isOwner) return res.status(403).json({ success: false, message: "Bạn không có quyền thao tác trên quán này!" });
+        }
+
+        const existing = await Service.findById(id);
+        if (!existing) return res.status(404).json({ success: false, message: "Không tìm thấy dịch vụ!" });
+        if (existing.club_id.toString() !== club_id) {
+            return res.status(403).json({ success: false, message: "Bạn không có quyền sửa dịch vụ của quán khác!" });
+        }
+
+        const service = await Service.findByIdAndUpdate(
+            id,
+            { status: "Inactive" },
+            { new: true }
+        );
+        
         return res.status(200).json({
             success: true,
             message: "Đã vô hiệu hóa dịch vụ.",
             data: service
         });
     } catch (error) {
-        const statusCode = error.statusCode || 500;
-        return res.status(statusCode).json({ success: false, message: error.message });
+        return res.status(500).json({ success: false, message: error.message });
     }
 };
 
 const reactivateService = async (req, res) => {
     try {
         const { id } = req.params;
-        const service = await serviceService.reactivateService(id);
+        
+        const club_id = req.user?.club_id || req.query.club_id || req.body.club_id;
+        if (!club_id) return res.status(400).json({ success: false, message: "Không xác định được ID Quán." });
+
+        if (req.user?.role === "OWNER") {
+            const isOwner = await checkOwnerAccess(club_id, req.user.accountId || req.user.id);
+            if (!isOwner) return res.status(403).json({ success: false, message: "Bạn không có quyền thao tác trên quán này!" });
+        }
+
+        const existing = await Service.findById(id);
+        if (!existing) return res.status(404).json({ success: false, message: "Không tìm thấy dịch vụ!" });
+        if (existing.club_id.toString() !== club_id) {
+            return res.status(403).json({ success: false, message: "Bạn không có quyền sửa dịch vụ của quán khác!" });
+        }
+
+        const service = await Service.findByIdAndUpdate(
+            id,
+            { status: "Active" },
+            { new: true }
+        );
+        
         return res.status(200).json({
             success: true,
             message: "Đã khôi phục dịch vụ.",
             data: service
         });
     } catch (error) {
-        const statusCode = error.statusCode || 500;
-        return res.status(statusCode).json({ success: false, message: error.message });
+        return res.status(500).json({ success: false, message: error.message });
     }
 };
 
@@ -206,27 +323,46 @@ const deleteServicePermanently = async (req, res) => {
     try {
         const { id } = req.params;
 
-        // Xóa ảnh Cloudinary trước khi xóa service
-        try {
-            const service = await serviceService.getServiceById(id);
-            if (service.images && service.images.length > 0) {
-                for (const url of service.images) {
-                    const publicId = url.split("/").slice(-2).join("/").replace(/\.[^/.]+$/, "");
-                    await cloudinary.uploader.destroy(publicId);
-                }
-            }
-        } catch (e) {
-            console.error("Lỗi xóa ảnh khi delete service:", e);
+        const service = await Service.findById(id);
+        if (!service) return res.status(404).json({ success: false, message: "Không tìm thấy dịch vụ!" });
+
+        if (req.user?.role === "OWNER") {
+            const isOwner = await checkOwnerAccess(service.club_id, req.user.accountId || req.user.id);
+            if (!isOwner) return res.status(403).json({ success: false, message: "Bạn không có quyền xem dịch vụ của quán khác!" });
+        } else if (req.user?.role === "STAFF_CLUB" && req.user.club_id !== service.club_id.toString()) {
+            return res.status(403).json({ success: false, message: "Nhân viên không có quyền xem dịch vụ của quán khác!" });
         }
 
-        await serviceService.deleteServicePermanently(id);
+        const club_id = req.user?.club_id || req.query.club_id || req.body.club_id;
+        if (!club_id) return res.status(400).json({ success: false, message: "Không xác định được ID Quán." });
+
+        if (req.user?.role === "OWNER") {
+            const isOwner = await checkOwnerAccess(club_id, req.user.accountId || req.user.id);
+            if (!isOwner) return res.status(403).json({ success: false, message: "Bạn không có quyền thao tác trên quán này!" });
+        }
+        if (service.club_id.toString() !== club_id) {
+            return res.status(403).json({ success: false, message: "Bạn không có quyền xóa dịch vụ của quán khác!" });
+        }
+
+        if (service.images && service.images.length > 0) {
+            for (const url of service.images) {
+                try {
+                    const publicId = url.split("/").slice(-2).join("/").replace(/\.[^/.]+$/, "");
+                    await cloudinary.uploader.destroy(publicId);
+                } catch (e) {
+                    console.error("Lỗi xóa ảnh khi delete service:", e);
+                }
+            }
+        }
+
+        await Service.findByIdAndDelete(id);
+        
         return res.status(200).json({
             success: true,
             message: "Đã xóa vĩnh viễn dịch vụ."
         });
     } catch (error) {
-        const statusCode = error.statusCode || 500;
-        return res.status(statusCode).json({ success: false, message: error.message });
+        return res.status(500).json({ success: false, message: error.message });
     }
 };
 

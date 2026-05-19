@@ -7,7 +7,6 @@ const authorizeRole = require("../middleware/authorizeRole.middleware");
 
 // Public: lấy danh sách loại bàn
 router.get("/types", tableController.getTableTypes);
-router.post("/types", tableController.createTableType);
 
 // Protected: tất cả route bàn yêu cầu đăng nhập + role OWNER/STAFF_CLUB
 router.get("/", authenticate, authorizeRole("OWNER", "STAFF_CLUB"), tableController.getBilliardTables);

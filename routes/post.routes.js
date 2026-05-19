@@ -28,7 +28,15 @@ router.get(
   postController.getMyPosts
 );
 
-// Chi tiết bài post đã duyệt (đặt sau /my để tránh đụng route động)
+// Lấy danh sách bài chờ duyệt (STAFF_SYSTEM)
+router.get(
+  "/pending",
+  authenticate,
+  authorizeRole("STAFF_SYSTEM"),
+  postController.getPendingPosts
+);
+
+// Chi tiết bài post đã duyệt (đặt sau /my và /pending để tránh đụng route động)
 router.get("/:id", postController.getApprovedPostDetail);
 
 // Cập nhật bài post
@@ -50,13 +58,6 @@ router.delete(
 
 // ================= STAFF SYSTEM =================
 
-// Lấy danh sách bài chờ duyệt
-router.get(
-  "/pending",
-  authenticate,
-  authorizeRole("STAFF_SYSTEM"),
-  postController.getPendingPosts
-);
 
 // Duyệt / từ chối bài post (gộp)
 router.put(

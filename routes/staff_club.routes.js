@@ -1,7 +1,5 @@
 const express = require("express");
 const router = express.Router();
-
-// 🔥 THAY ĐỔI Ở ĐÂY: Sử dụng middleware của bạn
 const authenticate = require("../middleware/authenticate.middleware");
 const authorizeRole = require("../middleware/authorizeRole.middleware");
 
@@ -11,7 +9,6 @@ const {
     createStaffClub,
     banStaffClub,
     unbanStaffClub,
-    deleteStaffClub,
     getStaffClubById,
     updateStaffClub
 } = require("../controller/staff_club.controller");
@@ -24,7 +21,6 @@ router.get("/banned", getBannedStaffClub);
 router.post("/", createStaffClub);
 router.put("/:id/ban", banStaffClub);
 router.put("/:id/unban", unbanStaffClub);
-router.delete("/:id", deleteStaffClub);
 router.get("/:id", getStaffClubById);
 router.put("/:id", updateStaffClub);
 module.exports = router;

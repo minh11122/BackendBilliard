@@ -22,6 +22,13 @@ const getClubAnalytics = async (req, res) => {
         return res.status(404).json({ success: false, message: "Không tìm thấy quán" });
     }
 
+    if (req.user?.role === "OWNER" && currentClub.account_id.toString() !== req.user.accountId) {
+        return res.status(403).json({ success: false, message: "Bạn không có quyền xem thống kê của quán khác" });
+    }
+    if (req.user?.role === "STAFF_CLUB" && req.user.club_id !== club_id) {
+        return res.status(403).json({ success: false, message: "Bạn không có quyền xem thống kê của quán khác" });
+    }
+
     if (currentClub.plan_type === "free") {
         return res.status(403).json({ success: false, message: "Tính năng Báo cáo doanh thu chỉ dành cho gói Basic hoặc Pro." });
     }

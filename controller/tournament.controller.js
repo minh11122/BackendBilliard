@@ -1,41 +1,65 @@
-const mongoose = require("mongoose");
-const Tournament = require("../models/tournament.model");
-const TournamentPlayer = require("../models/tournament_player.model");
-const TournamentRound = require("../models/tournament_round.model");
-const RoundMatch = require("../models/round_match.model");
-const Booking = require("../models/booking.model");
-const TransactionHistory = require("../models/transiction_history.model");
-const ClubBank = require("../models/club_bank.model");
-const Club = require("../models/club.model");
-const Notification = require("../models/notification.model");
-const Account = require("../models/account.model");
-const payosService = require("../services/payos.service");
+// ============================================================================
+// FILE: tournament.controller.js
+// BỘ NÃO CỦA MODULE GIẢI ĐẤU BIDA
+// Chứa 36 hàm gồm: Hàm Private (Thuật toán Engine) và Hàm Public (API cho Frontend)
+// ============================================================================
 
+// === IMPORT CÁC MODEL VÀ SERVICE ===
+const mongoose = require("mongoose");
+const Tournament = require("../models/tournament.model"); // Model Giải Đấu
+const TournamentPlayer = require("../models/tournament_player.model"); // Model Đăng Ký Cơ Thủ
+const TournamentRound = require("../models/tournament_round.model"); // Model Vòng Đấu
+const RoundMatch = require("../models/round_match.model"); // Model Trận Đấu
+const Booking = require("../models/booking.model"); // Model Đặt Bàn (tích hợp khóa bàn khi thi đấu)
+const TransactionHistory = require("../models/transiction_history.model"); // Model Lịch Sử Giao Dịch (PayOS)
+const ClubBank = require("../models/club_bank.model"); // Model Tài Khoản Ngân Hàng CLB
+const Club = require("../models/club.model"); // Model Câu Lạc Bộ
+const Notification = require("../models/notification.model"); // Model Thông Báo
+const Account = require("../models/account.model"); // Model Tài Khoản Người Dùng
+const payosService = require("../services/payos.service"); // Service tích hợp cổng thanh toán PayOS
+
+// Thời gian hết hạn link thanh toán PayOS (phút)
 const PAYOS_EXPIRE_MINUTES = 10;
 
+// ============================================================================
+// HÀM TIỆN ÍCH: shuffleArray
+// Xáo trộn ngẫu nhiên mảng (Thuật toán Fisher-Yates) dùng để bốc thăm vị trí cơ thủ.
+// ============================================================================
 const shuffleArray = (input) => {
-  const arr = [...input];
+  const arr = [...input]; // Tạo bản sao để không ảnh hưởng mảng gốc
   for (let i = arr.length - 1; i > 0; i -= 1) {
-    const j = Math.floor(Math.random() * (i + 1));
-    [arr[i], arr[j]] = [arr[j], arr[i]];
+    const j = Math.floor(Math.random() * (i + 1)); // Chọn vị trí ngẫu nhiên
+    [arr[i], arr[j]] = [arr[j], arr[i]]; // Hoán đổi vị trí
   }
   return arr;
 };
 
+// ============================================================================
+// HÀM TIỆN ÍCH: nextPowerOfTwo
+// Tìm lũy thừa 2 nhỏ nhất >= n. Dùng để tính bracket size.
+// VD: n=5 -> 8. n=9 -> 16. n=16 -> 16.
+// ============================================================================
 const nextPowerOfTwo = (n) => {
   if (n < 2) return 2;
   let p = 1;
-  while (p < n) p <<= 1;
+  while (p < n) p <<= 1; // Dịch bit trái (nhân đôi) cho đến khi >= n
   return p;
 };
 
+// ============================================================================
+// HÀM HELPER: ensureTournamentApproved
+// Xác nhận đăng ký: Duyệt đăng ký cơ thủ vào giải đấu, gửi thông báo cho Staff/Owner,
+// và tự động đóng đăng ký nếu đã đủ người.
+// ============================================================================
 const ensureTournamentApproved = async (tournamentId, accountId, feeAmount) => {
+  // Kiểm tra xem cơ thủ này đã được duyệt trước đó chưa (tránh gửi thông báo lặp lại)
   const existingRegistration = await TournamentPlayer.findOne({
     tournament_id: tournamentId,
     account_id: accountId,
     status: "Approved",
   }).lean();
 
+  // Tạo mới hoặc cập nhật bản ghi đăng ký thành Approved (Upsert)
   await TournamentPlayer.findOneAndUpdate(
     { tournament_id: tournamentId, account_id: accountId },
     {
@@ -52,10 +76,12 @@ const ensureTournamentApproved = async (tournamentId, accountId, feeAmount) => {
     await Tournament.findById(tournamentId).select("max_players name club_id");
   if (!tournament) return;
 
+  // Nếu lần đầu đăng ký (chưa từng Approved) -> Gửi thông báo
   if (!existingRegistration) {
     const playerAccount = await Account.findById(accountId).select("fullname phone").lean();
     const playerName = playerAccount ? (playerAccount.fullname || playerAccount.phone || "Một người chơi") : "Một người chơi";
 
+    // Gửi thông báo cho Cơ Thủ đăng ký thành công
     await Notification.create({
       account_id: accountId,
       title: "Đăng ký giải đấu thành công",
@@ -64,13 +90,15 @@ const ensureTournamentApproved = async (tournamentId, accountId, feeAmount) => {
       is_read: false,
     });
 
+    // Gửi thông báo cho Staff và Owner của CLB
     const clubStaffs = await Account.find({
       club_id: tournament.club_id,
       status: "ACTIVE",
     }).select("_id").lean();
 
     const clubInfo = await Club.findById(tournament.club_id).select("account_id").lean();
-
+    
+    // Gom danh sách người nhận (Staff + Owner), dùng Set để tránh trùng lặp
     const targetIds = new Set(clubStaffs.map(staff => staff._id.toString()));
     if (clubInfo?.account_id) {
       targetIds.add(clubInfo.account_id.toString());
@@ -89,6 +117,7 @@ const ensureTournamentApproved = async (tournamentId, accountId, feeAmount) => {
     }
   }
 
+  // Đếm số cơ thủ đã được duyệt, nếu đủ max_players thì tự động đóng đăng ký
   const approvedCount = await TournamentPlayer.countDocuments({
     tournament_id: tournamentId,
     status: "Approved",
@@ -102,20 +131,33 @@ const ensureTournamentApproved = async (tournamentId, accountId, feeAmount) => {
   });
 };
 
+// ============================================================================
+// HÀM HELPER: markTransactionSuccessAndApprove
+// Xác nhận thanh toán: Đánh dấu giao dịch PayOS thành công và tự động duyệt đăng ký cơ thủ.
+// ============================================================================
 const markTransactionSuccessAndApprove = async (orderCode) => {
   const tx = await TransactionHistory.findOne({ order_code: orderCode });
+  // Bỏ qua nếu không tìm thấy hoặc giao dịch không phải lệ phí giải đấu
   if (!tx || !tx.description?.startsWith("TournamentFee:")) return false;
 
+  // Nếu đã xử lý rồi (SUCCESS) thì không xử lý lại
   if (tx.status === "SUCCESS") return true;
 
+  // Tách Tournament ID từ description (format: "TournamentFee:TOURNAMENT_ID")
   const [, tournamentId] = tx.description.split(":");
+  // Gọi hàm duyệt đăng ký cơ thủ
   await ensureTournamentApproved(tournamentId, tx.account_id, tx.amount || 0);
+  // Cập nhật trạng thái giao dịch
   tx.status = "SUCCESS";
   tx.transaction_time = new Date();
   await tx.save();
   return true;
 };
 
+// ============================================================================
+// HÀM HELPER: fetchApprovedPlayers
+// Lấy danh sách cơ thủ đã được duyệt (Approved) của một giải đấu.
+// ============================================================================
 const fetchApprovedPlayers = async (tournamentId) => {
   return TournamentPlayer.find({
     tournament_id: tournamentId,
@@ -125,6 +167,10 @@ const fetchApprovedPlayers = async (tournamentId) => {
     .lean();
 };
 
+// ============================================================================
+// HÀM HELPER: clearBracket
+// Xóa sạch toàn bộ Vòng Đấu và Trận Đấu cũ của giải trước khi tạo nhánh mới.
+// ============================================================================
 const clearBracket = async (tournamentId) => {
   await Promise.all([
     RoundMatch.deleteMany({ tournament_id: tournamentId }),
@@ -132,9 +178,14 @@ const clearBracket = async (tournamentId) => {
   ]);
 };
 
+// ============================================================================
+// HÀM HELPER: buildFirstRoundPairs
+// Ghép cặp Vòng 1: Dựa vào danh sách cơ thủ đã xáo trộn và bracketSize,
+// ghép từng đôi một. Nếu thiếu người -> cặp [người, null] (sẽ thành BYE).
+// ============================================================================
 const buildFirstRoundPairs = (playerIds, bracketSize) => {
   const players = [...playerIds];
-  const matchCount = bracketSize / 2;
+  const matchCount = bracketSize / 2; // Số trận Vòng 1
   const pairs = [];
 
   for (let i = 0; i < matchCount; i += 1) {
@@ -142,21 +193,28 @@ const buildFirstRoundPairs = (playerIds, bracketSize) => {
     const remainingMatches = matchCount - i;
 
     if (remainingPlayers <= 0) {
+      // Hết người -> Cặp trống hoàn toàn (ghost match)
       pairs.push([null, null]);
       continue;
     }
 
     if (remainingPlayers <= remainingMatches) {
+      // Không đủ người ghép đôi -> BYE (người còn lại thắng tự động)
       pairs.push([players.shift() || null, null]);
       continue;
     }
 
+    // Đủ người -> Ghép cặp bình thường
     pairs.push([players.shift() || null, players.shift() || null]);
   }
 
   return pairs;
 };
 
+// ============================================================================
+// HÀM HELPER: normalizePrizePool
+// Xử lý và validate giá trị giải thưởng (prize pool) và phí tham gia.
+// ============================================================================
 const normalizePrizePool = (prizePool, fee = 0) => {
   const feeValue = Number(fee) || 0;
   if (!Number.isFinite(feeValue) || feeValue < 0) {
@@ -179,6 +237,7 @@ const normalizePrizePool = (prizePool, fee = 0) => {
     return { error: "Tiền thưởng phải lớn hơn 0" };
   }
 
+  // Tiền thưởng phải lớn hơn phí tham gia (nếu có thu phí)
   if (feeValue > 0 && prizeValue <= feeValue) {
     return { error: "Tiền thưởng phải lớn hơn phí tham gia" };
   }
@@ -186,64 +245,91 @@ const normalizePrizePool = (prizePool, fee = 0) => {
   return { value: String(prizeValue) };
 };
 
+// ============================================================================
+// HÀM HELPER: getWinnerFeedTarget
+// Lấy tọa độ (ID trận và vị trí ghế) của trận đấu tiếp theo dành cho Người Thắng
+// ============================================================================
 const getWinnerFeedTarget = (matchDoc) => ({
+  // Hỗ trợ cả 2 chuẩn tên field: winner_next_match_id (cho nhánh Kép) hoặc next_match_id (cho nhánh Loại trực tiếp)
   matchId: matchDoc?.winner_next_match_id || matchDoc?.next_match_id || null,
+  // Xác định xem người thắng sẽ ngồi ở ghế trên (1) hay ghế dưới (2) ở trận tiếp theo
   slot: matchDoc?.winner_next_slot || matchDoc?.next_slot || null,
 });
 
+// ============================================================================
+// HÀM ĐỆ QUY DFS: canMatchProduceParticipant
+// Radar quét sâu: Kiểm tra xem một trận đấu (matchId) có khả năng đẻ ra người thắng/thua 
+// để ngoi lên vòng trong hay không. Đây là cốt lõi để xử lý luật Thắng Tự Động (BYE).
+// ============================================================================
 const canMatchProduceParticipant = async (
   matchId,
-  routeType = "winner",
-  visited = new Set(),
+  routeType = "winner", // Đang tìm đường đi cho người thắng (winner) hay người thua (loser)
+  visited = new Set(),  // Dùng Set để nhớ các trận đã đi qua, chống lặp vô hạn (Infinite Loop)
 ) => {
+  // Bảo vệ: Nếu không truyền ID trận thì dừng
   if (!matchId) return false;
 
+  // Khóa chống lặp: Đánh dấu nhánh này đã đi qua
   const visitKey = `${matchId}:${routeType}`;
   if (visited.has(visitKey)) return false;
   visited.add(visitKey);
 
+  // Truy vấn DB lấy trạng thái và ID người chơi hiện tại của trận này
   const match = await RoundMatch.findById(matchId)
     .select("status player1_id player2_id winner_id loser_id")
     .lean();
   if (!match) return false;
 
+  // Kịch bản 1: Nếu trận này đã ĐÁNH XONG (Finished)
   if (match.status === "Finished") {
+    // Nếu đang rà soát nhánh loser, kiểm tra xem có loser_id không. Ngược lại kiểm tra winner_id.
+    // Nếu có người (true), nghĩa là trận này ĐÃ sinh ra người -> Trả về true.
     return routeType === "loser"
       ? Boolean(match.loser_id)
       : Boolean(match.winner_id);
   }
 
+  // Lấy trạng thái xem 2 ghế đã có người ngồi chờ chưa
   const hasPlayer1 = Boolean(match.player1_id);
   const hasPlayer2 = Boolean(match.player2_id);
 
+  // Kịch bản 2: Trận chưa đánh nhưng ĐÃ ĐỦ 2 NGƯỜI ngồi chờ
+  // Chắc chắn 100% khi đánh xong sẽ có người đi tiếp -> Trả về true luôn, không cần quét sâu hơn.
   if (hasPlayer1 && hasPlayer2) {
     return true;
   }
 
+  // Kịch bản 3: Đang dò tìm đường đi của nhánh THUA (Dành cho Double Elimination)
   if (routeType === "loser") {
+    // Nếu có player1 nhưng trống player2 -> Quét lặn xuống tìm xem tương lai ghế 2 có ai lên không.
     if (hasPlayer1 && !hasPlayer2) {
       return canSlotReceiveParticipant(match._id, 2, visited);
     }
-
+    // Nếu có player2 nhưng trống player1 -> Quét xem ghế 1 tương lai có ai lên không.
     if (!hasPlayer1 && hasPlayer2) {
       return canSlotReceiveParticipant(match._id, 1, visited);
     }
-
+    // Nếu cả 2 ghế đều trống: Phải đảm bảo CẢ 2 nhánh dưới đều sẽ sinh ra người thì mới có trận đấu.
     return (
       (await canSlotReceiveParticipant(match._id, 1, visited)) &&
       (await canSlotReceiveParticipant(match._id, 2, visited))
     );
   }
 
+  // Kịch bản 4: Đang dò tìm đường đi của nhánh THẮNG (Mặc định)
+  // Nếu có player1 nhưng trống player2
   if (hasPlayer1 && !hasPlayer2) {
+    // Quét xuống vòng dưới xem ghế 2 có ai ngoi lên không
     const missingCanReceive = await canSlotReceiveParticipant(
       match._id,
       2,
       visited,
     );
+    // Chỉ cần ghế 2 có người lên (missingCanReceive), HOẶC bản thân player1 đang đứng chờ (để được Thắng Tự Động)
     return missingCanReceive || hasPlayer1;
   }
 
+  // Tương tự, nếu có player2 nhưng trống player1
   if (!hasPlayer1 && hasPlayer2) {
     const missingCanReceive = await canSlotReceiveParticipant(
       match._id,
@@ -253,17 +339,25 @@ const canMatchProduceParticipant = async (
     return missingCanReceive || hasPlayer2;
   }
 
+  // Nếu cả 2 ghế trống: Trận này sẽ đẻ ra người thắng NẾU 1 trong 2 nhánh con của nó sinh ra người
   return (
     (await canSlotReceiveParticipant(match._id, 1, visited)) ||
     (await canSlotReceiveParticipant(match._id, 2, visited))
   );
 };
 
+// ============================================================================
+// HÀM ĐỆ QUY DFS: canSlotReceiveParticipant
+// Radar phụ trợ: Xác định xem một "ghế trống" (slot) cụ thể của một trận đấu (targetMatchId)
+// liệu có nhận được người chơi nào từ các trận vệ tinh xung quanh rớt xuống hay không.
+// ============================================================================
 const canSlotReceiveParticipant = async (
   targetMatchId,
   slot,
   visited = new Set(),
 ) => {
+  // Tìm TẤT CẢ các trận đấu (sources) đang chĩa mũi tên (chỉ đường) vào cái targetMatchId và slot này.
+  // Quét cả đường của người thắng (winner_next) lẫn đường rớt đài của người thua (loser_next).
   const sources = await RoundMatch.find({
     $or: [
       { winner_next_match_id: targetMatchId, winner_next_slot: slot },
@@ -276,11 +370,14 @@ const canSlotReceiveParticipant = async (
     )
     .lean();
 
+  // Nếu không có bất kỳ trận nào chĩa mũi tên vào ghế này -> Ghế này vĩnh viễn trống (Mồ côi).
   if (!sources.length) {
     return false;
   }
 
+  // Duyệt qua từng trận vệ tinh tìm được
   for (const source of sources) {
+    // Trường hợp 1: Nếu mũi tên chĩa vào đây là đường đi của NGƯỜI THẮNG
     const winnerFeedsTarget =
       String(source.winner_next_match_id || source.next_match_id || "") ===
       String(targetMatchId) &&
@@ -288,62 +385,86 @@ const canSlotReceiveParticipant = async (
       Number(slot);
 
     if (winnerFeedsTarget) {
+      // Gọi ngược lại hàm canMatchProduceParticipant để hỏi cái trận vệ tinh kia: "Mày có sinh ra người thắng không?"
       if (
         await canMatchProduceParticipant(source._id, "winner", new Set(visited))
       ) {
-        return true;
+        return true; // Có -> Ghế này sẽ có người ngồi!
       }
     }
 
+    // Trường hợp 2: Nếu mũi tên chĩa vào đây là đường rớt đài của NGƯỜI THUA
     const loserFeedsTarget =
       String(source.loser_next_match_id || "") === String(targetMatchId) &&
       Number(source.loser_next_slot || null) === Number(slot);
 
     if (loserFeedsTarget) {
+      // Gọi đệ quy hỏi trận vệ tinh: "Mày có sinh ra người thua không?"
       if (
         await canMatchProduceParticipant(source._id, "loser", new Set(visited))
       ) {
-        return true;
+        return true; // Có -> Ghế này sẽ có người rớt xuống ngồi!
       }
     }
   }
 
+  // Quét hết mọi hướng mà không thấy ai -> Chắc chắn trống.
   return false;
 };
 
+// ============================================================================
+// HÀM HELPER: pushParticipantToMatch
+// Bàn tay sắp xếp: Dùng để gán ID một người chơi (participantId) vào một ghế (slot) 
+// cụ thể của một trận đấu vòng trong (matchId). Thường gọi sau khi có người Thắng/Thua.
+// ============================================================================
 const pushParticipantToMatch = async (
   matchId,
   slot,
   participantId,
   session = null,
 ) => {
+  // Tránh lỗi undefined nếu thiếu tham số đầu vào
   if (!matchId || !slot || !participantId) return null;
 
+  // Xác định trường cần update trong MongoDB dựa vào slot (1 -> player1_id, 2 -> player2_id)
   const field = slot === 1 ? "player1_id" : "player2_id";
+  
+  // Lấy trận đấu đích ra từ Database
   const match = await RoundMatch.findById(matchId).session(session || null);
   if (!match) return null;
 
+  // Nếu cái ghế đó hiện đang trống thì mới nhét người chơi vào
   if (!match[field]) {
-    match[field] = participantId;
-    await match.save({ session });
+    match[field] = participantId; // Gán ID người chơi
+    await match.save({ session }); // Lưu trực tiếp xuống Database
   }
 
   return match;
 };
 
+// ============================================================================
+// HÀM HELPER: syncRoundStatusesForStartedTournament
+// Đồng bộ trạng thái Vòng Đấu: Quét toàn bộ các trận đấu trong 1 giải,
+// để tự động cập nhật trạng thái của từng Vòng (Round) từ Pending -> InProgress -> Completed.
+// ============================================================================
 const syncRoundStatusesForStartedTournament = async (tournamentId) => {
+  // Chỉ đồng bộ khi giải đấu đang ở trạng thái "Đang diễn ra" (InProgress)
   const tournament = await Tournament.findById(tournamentId)
     .select("status")
     .lean();
   if (!tournament || tournament.status !== "InProgress") return;
 
+  // Lấy toàn bộ danh sách các Vòng đấu (Rounds) của giải này
   const rounds = await TournamentRound.find({
     tournament_id: tournamentId,
   }).lean();
+  
+  // Lấy toàn bộ danh sách các Trận đấu (Matches) của giải này
   const matches = await RoundMatch.find({ tournament_id: tournamentId })
     .select("round_id status")
     .lean();
 
+  // Gom nhóm các trận đấu theo từng Vòng đấu (Group by round_id) để dễ tính toán
   const byRound = matches.reduce((acc, match) => {
     const key = String(match.round_id);
     acc[key] = acc[key] || [];
@@ -351,23 +472,30 @@ const syncRoundStatusesForStartedTournament = async (tournamentId) => {
     return acc;
   }, {});
 
+  // Duyệt qua từng Vòng đấu một
   for (const round of rounds) {
     const roundMatches = byRound[String(round._id)] || [];
-    if (!roundMatches.length) continue;
+    if (!roundMatches.length) continue; // Nếu vòng này không có trận nào thì bỏ qua
 
+    // Kiểm tra xem TOÀN BỘ các trận trong vòng này đã đánh xong hết chưa?
     const allFinished = roundMatches.every(
       (match) => match.status === "Finished",
     );
+    
+    // Kiểm tra xem CÓ BẤT KỲ trận nào trong vòng này đã/đang diễn ra không?
     const hasStartedMatch = roundMatches.some((match) =>
       ["Ready", "Playing", "Finished"].includes(match.status),
     );
 
+    // Quyết định trạng thái mới cho Vòng đấu:
+    // Xong hết -> Completed. Bắt đầu đánh -> InProgress. Chưa có gì -> Pending.
     const desiredStatus = allFinished
       ? "Completed"
       : hasStartedMatch
         ? "InProgress"
         : "Pending";
 
+    // Nếu trạng thái thay đổi so với DB thì mới cập nhật để tiết kiệm truy vấn
     if (round.status !== desiredStatus) {
       await TournamentRound.findByIdAndUpdate(round._id, {
         status: desiredStatus,
@@ -376,92 +504,141 @@ const syncRoundStatusesForStartedTournament = async (tournamentId) => {
   }
 };
 
+// ============================================================================
+// HÀM HELPER: propagateMatchOutcomes
+// Máy bơm luân chuyển: Cỗ máy điều phối chính của giải đấu.
+// Đọc tọa độ của trận vừa đánh xong (matchDoc), từ đó đẩy ID của Người Thắng 
+// và Người Thua đi đến đúng vị trí ghế tiếp theo của họ.
+// ============================================================================
 const propagateMatchOutcomes = async (
   matchDoc,
   session = null,
   visited = new Set(),
 ) => {
+  // Bảo vệ: Nếu không có dữ liệu trận thì dừng
   if (!matchDoc) return;
 
+  // Khóa chống lặp vô hạn (Infinite Loop) - Ghi nhớ trận này đã điều phối xong
   const matchId = String(matchDoc._id);
   if (visited.has(matchId)) return;
   visited.add(matchId);
 
+  // 1. ĐIỀU HƯỚNG NGƯỜI THẮNG
+  // Lấy tọa độ ghế tiếp theo của Người Thắng
   const winnerTarget = getWinnerFeedTarget(matchDoc);
   if (matchDoc.winner_id && winnerTarget.matchId && winnerTarget.slot) {
+    // Gọi hàm nhồi ID người thắng vào trận đấu tiếp theo đó
     const nextMatch = await pushParticipantToMatch(
       winnerTarget.matchId,
       winnerTarget.slot,
       matchDoc.winner_id,
       session,
     );
+    // Nếu nhồi thành công, "đánh thức" trận tiếp theo để kiểm tra xem nó đã đủ 2 người chưa
     if (nextMatch) {
       await refreshMatchState(nextMatch._id, session, visited);
     }
   }
 
+  // 2. ĐIỀU HƯỚNG NGƯỜI THUA (Chỉ áp dụng cho Double Elimination có nhánh Loser)
+  // Kiểm tra xem trận này có tọa độ rớt đài cho người thua hay không
   if (matchDoc.loser_next_match_id && matchDoc.loser_next_slot) {
     if (matchDoc.loser_id) {
+      // Nhồi người thua xuống trận nhánh dưới (Loser bracket)
       const loserMatch = await pushParticipantToMatch(
         matchDoc.loser_next_match_id,
         matchDoc.loser_next_slot,
         matchDoc.loser_id,
         session,
       );
+      // Đánh thức trận nhánh thua đó
       if (loserMatch) {
         await refreshMatchState(loserMatch._id, session, visited);
       }
     } else {
+      // Trường hợp không có loser_id (Ví dụ: Trận này Thắng tự động do đối thủ bỏ cuộc từ trước)
+      // Vẫn phải đánh thức trận nhánh dưới để nó tự tính toán lại xem nó có được Thắng tự động tiếp không
       await refreshMatchState(matchDoc.loser_next_match_id, session, visited);
     }
   }
 };
 
+// ============================================================================
+// HÀM HELPER: refreshMatchState
+// Đánh thức trận đấu: Sau khi có người được nhồi vào, hàm này kiểm tra:
+// - ĐỦ NGƯỜI: Đổi trạng thái thành Ready (Sẵn sàng).
+// - THIẾU NGƯỜI DO NHÁNH DƯỚI RỖNG: Tự động phán quyết Thắng Tự Động (BYE).
+// ============================================================================
 async function refreshMatchState(matchId, session = null, visited = new Set()) {
   const match = await RoundMatch.findById(matchId).session(session || null);
+  // Nếu trận không tồn tại hoặc đã Đánh xong (Finished) thì không cần kiểm tra nữa
   if (!match || match.status === "Finished") return false;
 
   let changed = false;
 
+  // Kịch bản 1: CẢ 2 NGƯỜI ĐÃ CÓ MẶT VÀ ĐANG CHỜ (Scheduled)
   if (match.player1_id && match.player2_id && match.status === "Scheduled") {
+    // Đổi trạng thái thành Ready (Sẵn sàng) -> Trên giao diện Staff sẽ hiện nút Xanh "Gán Bàn"
     match.status = "Ready";
     await match.save({ session });
-    return true;
+    return true; // Báo cáo là trạng thái đã bị thay đổi
   }
 
+  // Kịch bản 2: CẢ 2 GHẾ ĐỀU TRỐNG HOẶC ĐÃ ĐẦY NHƯNG KHÔNG PHẢI SCHEDULED
+  // Không có gì để tự động xử lý thêm, thoát luôn.
   if (Boolean(match.player1_id) === Boolean(match.player2_id)) {
     return changed;
   }
 
+  // Kịch bản 3: CHỈ CÓ 1 NGƯỜI NGỒI ĐỢI -> Kiểm tra có được Thắng tự động (BYE) không?
+  // Xác định xem đang trống ghế nào (ghế 1 hay ghế 2)
   const missingSlot = match.player1_id ? 2 : 1;
+  
+  // Dùng Radar rà quét nhánh dưới: "Ê, tương lai có ai lên ngồi cái ghế trống này không?"
   const hasPendingSource = await canSlotReceiveParticipant(
     match._id,
     missingSlot,
     visited,
   );
+  
+  // Nếu CÓ tiềm năng (người vòng dưới đang đánh chưa xong) -> Phải chờ tiếp, không được xử thắng.
   if (hasPendingSource) {
     return changed;
   }
 
+  // NẾU KHÔNG CÒN AI CÓ THỂ LÊN ĐƯỢC NỮA (Do nhánh dưới hủy hết):
+  // Lấy ID của người ĐANG NGỒI CHỜ (may mắn) đó ra.
   const winnerId = match.player1_id || match.player2_id;
-  if (!winnerId) return changed;
+  if (!winnerId) return changed; // Bảo vệ lỗi
 
+  // Xử lý Thắng Tự Động ngay lập tức!
   match.winner_id = winnerId;
-  match.loser_id = null;
-  match.result = "BYE";
-  match.finished_at = new Date();
-  match.status = "Finished";
+  match.loser_id = null; // Trận BYE không có ai thua
+  match.result = "BYE"; // Ghi chú lại lý do thắng
+  match.finished_at = new Date(); // Chốt thời gian kết thúc
+  match.status = "Finished"; // Chốt trạng thái trận
   await match.save({ session });
 
+  // Do trận này vừa "Tự động kết thúc", phải tiếp tục gọi cái Máy Bơm ở trên
+  // để đẩy ông may mắn này đi tiếp vào vòng trong nữa.
   await propagateMatchOutcomes(match, session, visited);
   return true;
 }
 
+// ============================================================================
+// HÀM HELPER: resolvePendingAutoAdvances
+// Trình Cứu Hộ: Dùng để quét lại toàn bộ giải đấu xem có trận nào đang bị kẹt
+// ở trạng thái "Thiếu 1 người" mà nhánh dưới lại không có ai để lên không.
+// Nếu có, gọi refreshMatchState để xử Thắng Tự Động cho họ đi tiếp.
+// ============================================================================
 const resolvePendingAutoAdvances = async (tournamentId) => {
   let shouldContinue = true;
 
+  // Sử dụng vòng lặp while để quét liên tục cho đến khi không còn trận nào kẹt nữa
+  // Bởi vì xử thắng trận A có thể vô tình làm trận B (ở vòng trong) bị thiếu người theo.
   while (shouldContinue) {
     shouldContinue = false;
+    // Tìm các trận: Chưa đánh (status != Finished) VÀ (chỉ có người 1 HOẶC chỉ có người 2)
     const candidates = await RoundMatch.find({
       tournament_id: tournamentId,
       status: { $ne: "Finished" },
@@ -473,8 +650,12 @@ const resolvePendingAutoAdvances = async (tournamentId) => {
       .select("_id")
       .lean();
 
+    // Duyệt qua từng "nạn nhân" đang kẹt
     for (const candidate of candidates) {
+      // Đánh thức trận đó để nó tự kiểm tra xem có được BYE không
       const changed = await refreshMatchState(candidate._id);
+      // Nếu trạng thái bị đổi (nghĩa là vừa có người được xử thắng lên vòng trong)
+      // -> Phải bật cờ true để lặp lại việc quét từ đầu (phòng trường hợp vòng trong lại bị kẹt)
       if (changed) {
         shouldContinue = true;
       }
@@ -482,7 +663,13 @@ const resolvePendingAutoAdvances = async (tournamentId) => {
   }
 };
 
+// ============================================================================
+// HÀM HELPER: computeRoundRobinLeaderboard
+// Bộ đếm điểm: Dành riêng cho thể thức Vòng Tròn (Round Robin).
+// Tính toán số trận thắng, thua, điểm số, hiệu số ván thắng/thua để xếp hạng.
+// ============================================================================
 const computeRoundRobinLeaderboard = async (tournamentId) => {
+  // 1. Lấy tất cả các trận ĐÃ ĐÁNH XONG của giải này
   const matches = await RoundMatch.find({
     tournament_id: tournamentId,
     match_format: "RoundRobin",
@@ -494,6 +681,8 @@ const computeRoundRobinLeaderboard = async (tournamentId) => {
     .lean();
 
   const stats = {};
+  
+  // Hàm khởi tạo dòng điểm (row) cho một người chơi nếu họ chưa có tên trên bảng vàng
   const ensureEntry = (id, groupKey) => {
     const key = String(id);
     if (!stats[key]) {
@@ -503,15 +692,17 @@ const computeRoundRobinLeaderboard = async (tournamentId) => {
         matches: 0,
         wins: 0,
         losses: 0,
-        frames_for: 0,
-        frames_against: 0,
-        points: 0,
+        frames_for: 0, // Tổng số ván cơ thủ này thắng được
+        frames_against: 0, // Tổng số ván cơ thủ này bị thua
+        points: 0, // Điểm số (Thường: Thắng = 3 điểm)
       };
     }
     return stats[key];
   };
 
+  // 2. Cộng dồn điểm số từ các trận đấu
   matches.forEach((m) => {
+    // Tách thông tin của 2 người chơi ra để xử lý độc lập
     const entries = [
       {
         id: m.player1_id,
@@ -528,9 +719,12 @@ const computeRoundRobinLeaderboard = async (tournamentId) => {
     entries.forEach((entry) => {
       if (!entry.id) return;
       const row = ensureEntry(entry.id, m.group_key);
-      row.matches += 1;
-      row.frames_for += Number(entry.scoreFor || 0);
-      row.frames_against += Number(entry.scoreAgainst || 0);
+      
+      row.matches += 1; // Tăng số trận đã đá
+      row.frames_for += Number(entry.scoreFor || 0); // Cập nhật số ván thắng
+      row.frames_against += Number(entry.scoreAgainst || 0); // Cập nhật số ván thua
+      
+      // Nếu người này là người chiến thắng trận đó -> Được 3 điểm
       if (String(m.winner_id || "") === String(entry.id)) {
         row.wins += 1;
         row.points += 3;
@@ -540,24 +734,28 @@ const computeRoundRobinLeaderboard = async (tournamentId) => {
     });
   });
 
+  // 3. Tính "Hiệu số" (frame_diff) = Thắng - Thua
   const leaderboard = Object.values(stats).map((row) => ({
     ...row,
     frame_diff: row.frames_for - row.frames_against,
   }));
 
+  // 4. Gom nhóm người chơi theo bảng (VD: Bảng A, Bảng B)
   const grouped = leaderboard.reduce((acc, row) => {
     acc[row.group_key] = acc[row.group_key] || [];
     acc[row.group_key].push(row);
     return acc;
   }, {});
 
+  // 5. Sắp xếp thứ hạng (Rank) trong từng bảng
   Object.keys(grouped).forEach((group) => {
     grouped[group].sort(
       (a, b) =>
-        b.points - a.points ||
-        b.frame_diff - a.frame_diff ||
-        b.frames_for - a.frames_for,
+        b.points - a.points || // Ưu tiên 1: Điểm số
+        b.frame_diff - a.frame_diff || // Ưu tiên 2: Hiệu số ván
+        b.frames_for - a.frames_for, // Ưu tiên 3: Tổng số ván thắng
     );
+    // Sau khi sắp xếp xong thì gán số Rank cho họ
     grouped[group].forEach((row, idx) => {
       row.rank = idx + 1;
     });
@@ -566,25 +764,35 @@ const computeRoundRobinLeaderboard = async (tournamentId) => {
   return grouped;
 };
 
+// ============================================================================
+// HÀM HELPER: checkAndCompleteTournament
+// Kẻ Kết Liễu: Tìm kiếm trận Chung Kết (Grand Final) xem đã đánh xong chưa.
+// Nếu xong rồi thì đóng giải đấu lại, vinh danh Quán Quân, Á Quân.
+// ============================================================================
 const checkAndCompleteTournament = async (tournamentId) => {
   const tournament = await Tournament.findById(tournamentId).lean();
   if (!tournament) return;
 
+  // Nếu giải đã kết thúc hoặc hủy rồi thì không làm gì nữa
   if (tournament.status === "Completed" || tournament.status === "Cancelled")
     return;
 
+  // ============ THỂ THỨC LOẠI TRỰC TIẾP (KNOCKOUT) ============
   if (tournament.format === "Knockout") {
+    // Trận chung kết là trận KHÔNG CÓ next_match_id (Không có đường đi tiếp nữa)
     const finalMatch = await RoundMatch.findOne({
       tournament_id: tournamentId,
       match_format: "Knockout",
       next_match_id: null,
     }).lean();
 
+    // Nếu tìm thấy Chung kết VÀ nó đã đánh xong
     if (
       finalMatch &&
       finalMatch.status === "Finished" &&
       finalMatch.winner_id
     ) {
+      // 1. Phế truất tất cả: Đặt trạng thái toàn bộ cơ thủ thành "Bị Loại" (Eliminated)
       await TournamentPlayer.updateMany(
         { tournament_id: tournamentId },
         {
@@ -596,6 +804,7 @@ const checkAndCompleteTournament = async (tournamentId) => {
         },
       );
 
+      // 2. Vinh danh Vua: Sửa lại trạng thái của người thắng thành Quán Quân (Champion)
       await TournamentPlayer.findOneAndUpdate(
         { tournament_id: tournamentId, account_id: finalMatch.winner_id },
         {
@@ -603,6 +812,7 @@ const checkAndCompleteTournament = async (tournamentId) => {
         },
       );
 
+      // 3. Trao giải Á Quân cho người thua ở Chung Kết
       if (finalMatch.loser_id) {
         await TournamentPlayer.findOneAndUpdate(
           { tournament_id: tournamentId, account_id: finalMatch.loser_id },
@@ -610,6 +820,7 @@ const checkAndCompleteTournament = async (tournamentId) => {
         );
       }
 
+      // 4. Chốt sổ giải đấu: Cập nhật status thành Completed
       await Tournament.findByIdAndUpdate(tournamentId, {
         status: "Completed",
         champion_account_id: finalMatch.winner_id,
@@ -619,7 +830,9 @@ const checkAndCompleteTournament = async (tournamentId) => {
     return;
   }
 
+  // ============ THỂ THỨC VÒNG TRÒN (ROUND ROBIN) ============
   if (tournament.format === "Round Robin") {
+    // Đếm xem tổng số trận trong giải là bao nhiêu, và số trận đã đánh xong là bao nhiêu
     const totalMatches = await RoundMatch.countDocuments({
       tournament_id: tournamentId,
       match_format: "RoundRobin",
@@ -630,19 +843,29 @@ const checkAndCompleteTournament = async (tournamentId) => {
       status: "Finished",
     });
 
+    // Nếu TẤT CẢ các trận đều đã đánh xong (Finished)
     if (totalMatches > 0 && totalMatches === finishedMatches) {
+      // Lấy Bảng xếp hạng điểm
       const leaderboard = await computeRoundRobinLeaderboard(tournamentId);
+      
+      // Lấy ra những người đứng đầu (Top 1) của từng bảng (Group)
       const topGroups = Object.values(leaderboard)
         .map((rows) => rows[0])
         .filter(Boolean);
+        
       if (topGroups.length) {
+        // Xếp hạng các Top 1 này để tìm ra Quán Quân tổng
         topGroups.sort((a, b) => a.rank - b.rank);
         const championId = topGroups[0].account_id;
+        
+        // Chốt sổ Giải đấu
         await Tournament.findByIdAndUpdate(tournamentId, {
           status: "Completed",
           champion_account_id: championId,
           completed_at: new Date(),
         });
+        
+        // Tương tự, đánh rớt tất cả rồi phong Vương cho Quán Quân
         await TournamentPlayer.updateMany(
           { tournament_id: tournamentId },
           {
@@ -661,13 +884,16 @@ const checkAndCompleteTournament = async (tournamentId) => {
     }
   }
 
+  // ============ THỂ THỨC NHÁNH THẮNG THUA (DOUBLE ELIMINATION) ============
   if (tournament.format === "Double Elimination") {
+    // Trận chung kết của thể thức này nằm ở nhánh GrandFinal
     const grandFinal = await RoundMatch.findOne({
       tournament_id: tournamentId,
       match_format: "DoubleElimination",
       bracket_side: "GrandFinal",
     }).lean();
 
+    // Quy trình chốt Quán Quân / Á Quân y hệt như Knockout
     if (
       grandFinal &&
       grandFinal.status === "Finished" &&
@@ -707,35 +933,55 @@ const checkAndCompleteTournament = async (tournamentId) => {
   }
 };
 
+// ============================================================================
+// HÀM PRIVATE: generateKnockoutBracket
+// Kiến trúc sư Nhánh Loại Trực Tiếp: Tạo toàn bộ cấu trúc nhánh đấu (Bracket)
+// cho thể thức Knockout (Thua 1 trận là bị loại vĩnh viễn).
+// Input: Object tournament (đã lấy từ DB)
+// Output: { roundCount, bracketSize }
+// ============================================================================
 const generateKnockoutBracket = async (tournament) => {
+  // 1. Lấy danh sách những cơ thủ đã được duyệt đăng ký (Approved)
   const approvedPlayers = await fetchApprovedPlayers(tournament._id);
   if (approvedPlayers.length < 2) {
     throw new Error("Cần ít nhất 2 người chơi để tạo nhánh đấu");
   }
 
+  // 2. Xóa toàn bộ nhánh đấu cũ (nếu có), đảm bảo tạo từ đầu sạch sẽ
   await clearBracket(tournament._id);
 
+  // 3. Xáo trộn ngẫu nhiên vị trí cơ thủ (để bốc thăm công bằng)
   const playerIds = shuffleArray(
     approvedPlayers.map((p) => p.account_id?._id || p.account_id),
   );
+  
+  // 4. Tính bracket size (Lũy thừa 2 gần nhất >= số người)
+  // VD: 5 người -> bracketSize = 8. 7 người -> bracketSize = 8. 9 người -> bracketSize = 16.
   const bracketSize = nextPowerOfTwo(playerIds.length);
+  
+  // 5. Ghép cặp Vòng 1 (các vị trí trống sẽ tự động thành BYE)
   const firstRoundPairs = buildFirstRoundPairs(playerIds, bracketSize);
 
+  // 6. Tạo các đối tượng Vòng Đấu (Round Documents) trong MongoDB
+  // Số vòng = log2(bracketSize). VD: 8 người -> 3 vòng (Vòng 1, Bán kết, Chung kết)
   const roundCount = Math.log2(bracketSize);
   const roundDocs = [];
   for (let i = 1; i <= roundCount; i += 1) {
     roundDocs.push({
-      _id: new mongoose.Types.ObjectId(),
+      _id: new mongoose.Types.ObjectId(), // Tạo ID mới cho Vòng đấu
       tournament_id: tournament._id,
       round_number: i,
       round_type: "Knockout",
-      status: "Pending",
+      status: "Pending", // Ban đầu tất cả Vòng đều ở trạng thái Chờ
       order: i,
     });
   }
 
+  // 7. Tạo Ma trận ID Trận Đấu: Tạo trước ID cho tất cả trận ở tất cả vòng
+  //    Đây là bước QUAN TRỌNG để sau đó nối mũi tên (next_match_id) giữa các trận.
   const matchIdMatrix = [];
   for (let r = 0; r < roundCount; r += 1) {
+    // Số trận mỗi vòng = bracketSize / 2^(r+1). VD: Vòng 1 có 4 trận, Vòng 2 có 2, Vòng 3 có 1.
     const matchCount = bracketSize / Math.pow(2, r + 1);
     matchIdMatrix[r] = [];
     for (let m = 0; m < matchCount; m += 1) {
@@ -743,30 +989,40 @@ const generateKnockoutBracket = async (tournament) => {
     }
   }
 
+  // 8. Dựng từng Trận Đấu (Match Document) và NỐI MŨI TÊN giữa chúng
   const matchDocs = [];
   for (let r = 0; r < roundCount; r += 1) {
     const matchCount = bracketSize / Math.pow(2, r + 1);
     for (let m = 0; m < matchCount; m += 1) {
+      // Vòng 1 lấy cặp đã ghép, vòng 2+ để trống chờ người từ vòng trước ngoi lên
       const [p1, p2] = r === 0 ? firstRoundPairs[m] : [null, null];
+      
+      // NỐI MŨI TÊN: Trận hiện tại -> Trận vòng sau
+      // Trận cuối cùng (Chung kết) không có đường đi tiếp (null)
       const nextMatchId =
         r === roundCount - 1 ? null : matchIdMatrix[r + 1][Math.floor(m / 2)];
+      // Xác định ngồi ghế trên hay ghế dưới: Trận chẵn (0,2,4) -> ghế 1, Trận lẻ (1,3,5) -> ghế 2
       const nextSlot = r === roundCount - 1 ? null : (m % 2) + 1;
 
-      let status = "Scheduled";
+      // Xác định trạng thái ban đầu của trận
+      let status = "Scheduled"; // Mặc định: Đã lên lịch (chưa đủ người)
       let winner_id = null;
       let loser_id = null;
       let result = "";
       let finished_at = null;
 
       if (p1 && p2) {
+        // Nếu CẢ 2 NGƯỜI đều có mặt -> Trận sẵn sàng đánh luôn
         status = "Ready";
       } else if (p1 || p2) {
+        // Nếu CHỈ CÓ 1 NGƯỜI (người kia trống do BYE) -> Tự động chốt thắng ngay
         status = "Finished";
         winner_id = p1 || p2;
         result = "BYE";
         finished_at = new Date();
       }
 
+      // Đặt tên hiển thị cho trận đấu
       const isFinal = r === roundCount - 1;
       const isSemi = r === roundCount - 2 && roundCount > 1;
       const match_name = isFinal
@@ -775,6 +1031,7 @@ const generateKnockoutBracket = async (tournament) => {
           ? `Bán kết ${m + 1}`
           : `Vòng ${r + 1} - Trận ${m + 1}`;
 
+      // Tạo document trận đấu hoàn chỉnh
       matchDocs.push({
         _id: matchIdMatrix[r][m],
         tournament_id: tournament._id,
@@ -788,14 +1045,14 @@ const generateKnockoutBracket = async (tournament) => {
         player2_score: 0,
         match_name,
         result,
-        race_to: tournament?.generation_config?.race_to || 7,
-        group_key: null,
-        bracket_side: null,
+        race_to: tournament?.generation_config?.race_to || 7, // Mặc định chạm 7 nếu không cấu hình
+        group_key: null, // Knockout không có bảng (group)
+        bracket_side: null, // Knockout không chia nhánh Thắng/Thua
         next_match_id: nextMatchId,
         next_slot: nextSlot,
         winner_next_match_id: nextMatchId,
         winner_next_slot: nextSlot,
-        loser_next_match_id: null,
+        loser_next_match_id: null, // Knockout: Thua là bị loại, không có đường rớt đài
         loser_next_slot: null,
         match_format: "Knockout",
         status,
@@ -805,11 +1062,14 @@ const generateKnockoutBracket = async (tournament) => {
     }
   }
 
+  // 9. Lưu tất cả Vòng Đấu và Trận Đấu vào MongoDB cùng lúc
   await TournamentRound.insertMany(roundDocs);
   if (matchDocs.length) {
     await RoundMatch.insertMany(matchDocs);
   }
 
+  // 10. Kích hoạt Engine tự động cho các trận BYE đã Finished ở Vòng 1
+  //     Đẩy người thắng BYE đi tiếp vào vòng trong
   const byeMatches = await RoundMatch.find({
     tournament_id: tournament._id,
     status: "Finished",
@@ -818,8 +1078,10 @@ const generateKnockoutBracket = async (tournament) => {
   for (const bye of byeMatches) {
     await propagateMatchOutcomes(bye);
   }
+  // Quét rà lại xem có trận nào bị kẹt do dây chuyền BYE không
   await resolvePendingAutoAdvances(tournament._id);
 
+  // 11. Đánh dấu giải đấu là ĐÃ TẠO NHÁNH ĐẤU
   await Tournament.findByIdAndUpdate(tournament._id, {
     bracket_generated: true,
     bracket_generated_at: new Date(),
@@ -833,14 +1095,22 @@ const generateKnockoutBracket = async (tournament) => {
   return { roundCount, bracketSize };
 };
 
+// ============================================================================
+// HÀM PRIVATE: generateDoubleEliminationBracket
+// Kiến trúc sư Nhánh Kép: Tạo cấu trúc nhánh đấu cho thể thức Double Elimination.
+// Cơ thủ thua ở nhánh Thắng (Winners) sẽ rơi xuống nhánh Thua (Losers).
+// Chỉ khi thua ở nhánh Thua mới bị loại thật sự. Bao gồm 3 phần:
+// Nhánh Thắng (Winners) -> Nhánh Thua (Losers) -> Chung Kết (Grand Final).
+// ============================================================================
 const generateDoubleEliminationBracket = async (tournament) => {
+  // 1. Lấy danh sách cơ thủ đã duyệt
   const approvedPlayers = await fetchApprovedPlayers(tournament._id);
   if (approvedPlayers.length < 2) {
     throw new Error("Cần ít nhất 2 người chơi để tạo nhánh đấu");
   }
 
+  // 2. Xóa nhánh cũ, xáo trộn, tính bracket size
   await clearBracket(tournament._id);
-
   const playerIds = shuffleArray(
     approvedPlayers.map((p) => p.account_id?._id || p.account_id),
   );
@@ -848,6 +1118,8 @@ const generateDoubleEliminationBracket = async (tournament) => {
   const roundCount = Math.log2(bracketSize);
   const firstRoundPairs = buildFirstRoundPairs(playerIds, bracketSize);
 
+  // 3. TRƯỜNG HỢP ĐẶC BIỆT: Chỉ có 2 người (roundCount = 1)
+  //    Không cần nhánh Thắng/Thua, tạo thẳng 1 trận Chung Kết duy nhất
   if (roundCount === 1) {
     const roundId = new mongoose.Types.ObjectId();
     await TournamentRound.create({
@@ -875,6 +1147,7 @@ const generateDoubleEliminationBracket = async (tournament) => {
       finished_at = new Date();
     }
 
+    // Tạo trận Chung Kết duy nhất (không có mũi tên đi tiếp)
     await RoundMatch.create({
       tournament_id: tournament._id,
       round_id: roundId,
@@ -902,6 +1175,7 @@ const generateDoubleEliminationBracket = async (tournament) => {
       locked_by_owner: true,
     });
 
+    // Đánh dấu đã tạo nhánh
     await Tournament.findByIdAndUpdate(tournament._id, {
       bracket_generated: true,
       bracket_generated_at: new Date(),
@@ -918,34 +1192,39 @@ const generateDoubleEliminationBracket = async (tournament) => {
     return { roundCount: 1, bracketSize, losersRoundCount: 0 };
   }
 
+  // 4. Tính số Vòng nhánh Thua: Công thức = 2 * (roundCount - 1)
+  //    VD: 8 người (roundCount=3) -> losersRoundCount = 4
   const losersRoundCount = Math.max(0, 2 * (roundCount - 1));
   const winnersRoundDocs = [];
   const losersRoundDocs = [];
 
+  // 5. Tạo Vòng Đấu cho Nhánh Thắng (Winners Rounds)
   for (let i = 1; i <= roundCount; i += 1) {
     winnersRoundDocs.push({
       _id: new mongoose.Types.ObjectId(),
       tournament_id: tournament._id,
       round_number: i,
       round_type: "DoubleElimination",
-      bracket_side: "Winners",
+      bracket_side: "Winners", // Đánh dấu thuộc nhánh Thắng
       status: "Pending",
       order: i,
     });
   }
 
+  // 6. Tạo Vòng Đấu cho Nhánh Thua (Losers Rounds)
   for (let i = 1; i <= losersRoundCount; i += 1) {
     losersRoundDocs.push({
       _id: new mongoose.Types.ObjectId(),
       tournament_id: tournament._id,
       round_number: i,
       round_type: "DoubleElimination",
-      bracket_side: "Losers",
+      bracket_side: "Losers", // Đánh dấu thuộc nhánh Thua
       status: "Pending",
-      order: roundCount + i,
+      order: roundCount + i, // Xếp thứ tự sau nhánh Thắng
     });
   }
 
+  // 7. Tạo Vòng Chung Kết (Grand Final Round) - trận cuối cùng
   const grandFinalRound = {
     _id: new mongoose.Types.ObjectId(),
     tournament_id: tournament._id,
@@ -953,9 +1232,10 @@ const generateDoubleEliminationBracket = async (tournament) => {
     round_type: "DoubleElimination",
     bracket_side: "GrandFinal",
     status: "Pending",
-    order: roundCount + losersRoundCount + 1,
+    order: roundCount + losersRoundCount + 1, // Xếp cuối cùng
   };
 
+  // 8. Tạo Ma trận ID cho trận Nhánh Thắng (giống Knockout)
   const winnersMatchIds = [];
   for (let r = 0; r < roundCount; r += 1) {
     const matchCount = bracketSize / Math.pow(2, r + 1);
@@ -965,9 +1245,11 @@ const generateDoubleEliminationBracket = async (tournament) => {
     );
   }
 
+  // 9. Hàm tính số trận ở mỗi vòng nhánh Thua (công thức phức tạp hơn Knockout)
   const getLosersMatchCount = (roundNumber) =>
     bracketSize / Math.pow(2, Math.floor((roundNumber + 1) / 2) + 1);
 
+  // 10. Tạo Ma trận ID cho trận Nhánh Thua
   const losersMatchIds = [];
   for (let l = 0; l < losersRoundCount; l += 1) {
     const matchCount = getLosersMatchCount(l + 1);
@@ -977,32 +1259,41 @@ const generateDoubleEliminationBracket = async (tournament) => {
     );
   }
 
+  // 11. Tạo ID cho trận Chung Kết
   const grandFinalId = new mongoose.Types.ObjectId();
   const matchDocs = [];
 
+  // 12. DỰNG NHÁNH THẮNG (Winners Bracket) - Nối mũi tên Thắng/Thua
   for (let r = 0; r < roundCount; r += 1) {
     const matchCount = winnersMatchIds[r].length;
     for (let m = 0; m < matchCount; m += 1) {
       const [p1, p2] = r === 0 ? firstRoundPairs[m] : [null, null];
+      
+      // Mũi tên THẮNG: Đi lên vòng tiếp theo của Nhánh Thắng (hoặc Chung Kết)
       const winnerNextMatchId =
         r === roundCount - 1
-          ? grandFinalId
+          ? grandFinalId // Vòng cuối nhánh Thắng -> Đi thẳng vào Chung Kết (Ghế 1)
           : winnersMatchIds[r + 1][Math.floor(m / 2)];
       const winnerNextSlot = r === roundCount - 1 ? 1 : (m % 2) + 1;
 
+      // Mũi tên THUA: Rớt xuống Nhánh Thua (Logic phức tạp nhất!)
       let loserNextMatchId = null;
       let loserNextSlot = null;
       if (r === 0) {
+        // Vòng 1 nhánh Thắng: Người thua rớt xuống Vòng 1 nhánh Thua
         loserNextMatchId = losersMatchIds[0]?.[Math.floor(m / 2)] || null;
         loserNextSlot = loserNextMatchId ? (m % 2) + 1 : null;
       } else if (r < roundCount - 1) {
+        // Các vòng giữa: Rớt vào vòng lẻ nhánh Thua (cross-feeding)
         loserNextMatchId = losersMatchIds[2 * r - 1]?.[m] || null;
-        loserNextSlot = loserNextMatchId ? 2 : null;
+        loserNextSlot = loserNextMatchId ? 2 : null; // Luôn ngồi ghế 2
       } else {
+        // Vòng cuối nhánh Thắng: Rớt vào vòng cuối nhánh Thua
         loserNextMatchId = losersMatchIds[losersRoundCount - 1]?.[0] || null;
         loserNextSlot = loserNextMatchId ? 2 : null;
       }
 
+      // Xác định trạng thái ban đầu (giống Knockout)
       let status = "Scheduled";
       let winner_id = null;
       let result = "";
@@ -1040,7 +1331,7 @@ const generateDoubleEliminationBracket = async (tournament) => {
         next_slot: winnerNextSlot,
         winner_next_match_id: winnerNextMatchId,
         winner_next_slot: winnerNextSlot,
-        loser_next_match_id: loserNextMatchId,
+        loser_next_match_id: loserNextMatchId, // Đường rớt đài cho người thua
         loser_next_slot: loserNextSlot,
         match_format: "DoubleElimination",
         status,
@@ -1050,6 +1341,7 @@ const generateDoubleEliminationBracket = async (tournament) => {
     }
   }
 
+  // 13. DỰNG NHÁNH THUA (Losers Bracket) - Nối mũi tên đi tiếp trong nhánh Thua
   for (let l = 0; l < losersRoundCount; l += 1) {
     const matchCount = losersMatchIds[l].length;
     for (let m = 0; m < matchCount; m += 1) {
@@ -1057,12 +1349,15 @@ const generateDoubleEliminationBracket = async (tournament) => {
       let winnerNextSlot = null;
 
       if (l === losersRoundCount - 1) {
+        // Vòng cuối nhánh Thua: Người thắng đi lên Chung Kết (Ghế 2)
         winnerNextMatchId = grandFinalId;
         winnerNextSlot = 2;
       } else if (l % 2 === 0) {
+        // Vòng chẵn nhánh Thua: Đi tiếp vào vòng kế (cùng index)
         winnerNextMatchId = losersMatchIds[l + 1]?.[m] || null;
         winnerNextSlot = winnerNextMatchId ? 1 : null;
       } else {
+        // Vòng lẻ nhánh Thua: Đi tiếp vào vòng kế (gộp 2 trận thành 1)
         winnerNextMatchId = losersMatchIds[l + 1]?.[Math.floor(m / 2)] || null;
         winnerNextSlot = winnerNextMatchId ? (m % 2) + 1 : null;
       }
@@ -1072,7 +1367,7 @@ const generateDoubleEliminationBracket = async (tournament) => {
         tournament_id: tournament._id,
         round_id: losersRoundDocs[l]._id,
         match_no: m + 1,
-        player1_id: null,
+        player1_id: null, // Nhánh Thua ban đầu để trống, chờ người rớt từ nhánh Thắng xuống
         player2_id: null,
         winner_id: null,
         loser_id: null,
@@ -1090,7 +1385,7 @@ const generateDoubleEliminationBracket = async (tournament) => {
         next_slot: winnerNextSlot,
         winner_next_match_id: winnerNextMatchId,
         winner_next_slot: winnerNextSlot,
-        loser_next_match_id: null,
+        loser_next_match_id: null, // Thua ở nhánh Thua = Bị loại, không có đường đi tiếp
         loser_next_slot: null,
         match_format: "DoubleElimination",
         status: "Scheduled",
@@ -1100,6 +1395,8 @@ const generateDoubleEliminationBracket = async (tournament) => {
     }
   }
 
+  // 14. DỰNG TRẬN CHUNG KẾT (Grand Final)
+  // Ghế 1: Người thắng nhánh Thắng. Ghế 2: Người thắng nhánh Thua.
   matchDocs.push({
     _id: grandFinalId,
     tournament_id: tournament._id,
@@ -1116,7 +1413,7 @@ const generateDoubleEliminationBracket = async (tournament) => {
     race_to: tournament?.generation_config?.race_to || 7,
     group_key: null,
     bracket_side: "GrandFinal",
-    next_match_id: null,
+    next_match_id: null, // Trận cuối cùng, không có đường đi tiếp
     next_slot: null,
     winner_next_match_id: null,
     winner_next_slot: null,
@@ -1128,6 +1425,7 @@ const generateDoubleEliminationBracket = async (tournament) => {
     locked_by_owner: true,
   });
 
+  // 15. Lưu tất cả Vòng Đấu (3 nhóm: Winners, Losers, GrandFinal) và Trận Đấu vào DB
   await TournamentRound.insertMany([
     ...winnersRoundDocs,
     ...losersRoundDocs,
@@ -1135,6 +1433,7 @@ const generateDoubleEliminationBracket = async (tournament) => {
   ]);
   await RoundMatch.insertMany(matchDocs);
 
+  // 16. Kích hoạt Engine cho các trận BYE (giống Knockout)
   const byeMatches = await RoundMatch.find({
     tournament_id: tournament._id,
     status: "Finished",
@@ -1145,6 +1444,7 @@ const generateDoubleEliminationBracket = async (tournament) => {
   }
   await resolvePendingAutoAdvances(tournament._id);
 
+  // 17. Đánh dấu giải đấu đã tạo nhánh
   await Tournament.findByIdAndUpdate(tournament._id, {
     bracket_generated: true,
     bracket_generated_at: new Date(),
@@ -1161,19 +1461,30 @@ const generateDoubleEliminationBracket = async (tournament) => {
   return { roundCount, bracketSize, losersRoundCount };
 };
 
+// ============================================================================
+// HÀM PRIVATE: generateRoundRobinBracket
+// Kiến trúc sư Bảng Vòng Tròn: Mỗi cơ thủ trong cùng bảng sẽ đánh với tất cả
+// người còn lại. Không có loại trực tiếp, chỉ tính điểm để xếp hạng.
+// Input: tournament, groupSizeInput (số người mỗi bảng, mặc định 4)
+// ============================================================================
 const generateRoundRobinBracket = async (tournament, groupSizeInput) => {
+  // 1. Lấy cơ thủ đã duyệt
   const approvedPlayers = await fetchApprovedPlayers(tournament._id);
   if (approvedPlayers.length < 2) {
-    throw new Error("Cần ít nhất 2 người chơi để tạo bảng đấu");
+    throw new Error("Cần ít nhất 2 người chơi đã duyệt để tạo bảng đấu");
   }
 
+  // 2. Xóa bảng cũ
   await clearBracket(tournament._id);
 
+  // 3. Xáo trộn ngẫu nhiên và chia bảng
   const groupSize = Number(groupSizeInput) > 1 ? Number(groupSizeInput) : 4;
   const shuffled = shuffleArray(
     approvedPlayers.map((p) => p.account_id?._id || p.account_id),
   );
 
+  // Chia cơ thủ thành các bảng (group), mỗi bảng tối đa groupSize người
+  // VD: 8 người, groupSize=4 -> 2 bảng (A, B), mỗi bảng 4 người
   const groups = [];
   for (let i = 0; i < shuffled.length; i += groupSize) {
     groups.push(shuffled.slice(i, i + groupSize));
@@ -1184,20 +1495,26 @@ const generateRoundRobinBracket = async (tournament, groupSizeInput) => {
   const matchDocs = [];
   let order = 1;
 
+  // 4. Duyệt từng bảng để tạo Vòng Đấu và ghép cặp Trận Đấu
   groups.forEach((groupPlayers, groupIdx) => {
+    // Tên bảng: A, B, C... (dùng mã ASCII 65='A', 66='B'...)
     const groupKey = String.fromCharCode(65 + groupIdx);
+    
+    // Tạo Vòng đấu cho bảng này
     const roundId = new mongoose.Types.ObjectId();
     roundDocs.push({
       _id: roundId,
       tournament_id: tournament._id,
       round_number: 1,
       round_type: "RoundRobin",
-      group_key: groupKey,
+      group_key: groupKey, // Gán tên bảng (A, B, C...)
       status: "Pending",
       order: order,
     });
     order += 1;
 
+    // 5. Ghép cặp: Mỗi người đánh với tất cả người còn lại (Tổ hợp C(n,2))
+    // VD: 4 người -> 6 trận. 5 người -> 10 trận.
     let matchNo = 1;
     for (let i = 0; i < groupPlayers.length; i += 1) {
       for (let j = i + 1; j < groupPlayers.length; j += 1) {
@@ -1213,8 +1530,8 @@ const generateRoundRobinBracket = async (tournament, groupSizeInput) => {
           result: "",
           race_to: tournament?.generation_config?.race_to || 7,
           group_key: groupKey,
-          bracket_side: null,
-          next_match_id: null,
+          bracket_side: null, // Vòng tròn không có nhánh
+          next_match_id: null, // Vòng tròn không có mũi tên đi tiếp
           next_slot: null,
           winner_next_match_id: null,
           winner_next_slot: null,
@@ -1229,11 +1546,13 @@ const generateRoundRobinBracket = async (tournament, groupSizeInput) => {
     }
   });
 
+  // 6. Lưu tất cả vào MongoDB
   await TournamentRound.insertMany(roundDocs);
   if (matchDocs.length) {
     await RoundMatch.insertMany(matchDocs);
   }
 
+  // 7. Đánh dấu giải đấu đã tạo bảng đấu
   await Tournament.findByIdAndUpdate(tournament._id, {
     bracket_generated: true,
     bracket_generated_at: new Date(),
@@ -1248,13 +1567,21 @@ const generateRoundRobinBracket = async (tournament, groupSizeInput) => {
   return { groups: groups.length, matches: matchDocs.length };
 };
 
+// ============================================================================
+// HÀM HELPER: updateRoundStatusAndProgression
+// Cập nhật trạng thái Vòng Đấu: Gọi lại hàm syncRoundStatuses sau khi có trận kết thúc.
+// ============================================================================
 const updateRoundStatusAndProgression = async (tournamentId, roundId) => {
   const round = await TournamentRound.findById(roundId).lean();
   if (!round) return;
+  // Đồng bộ lại trạng thái tất cả vòng đấu
   await syncRoundStatusesForStartedTournament(tournamentId);
 };
 
-// Get tournament players list (for OWNER/STAFF and also public viewing)
+// ============================================================================
+// HÀM PUBLIC: getTournamentPlayers
+// Lấy danh sách cơ thủ đã đăng ký giải đấu (dùng cho Owner, Staff và Public).
+// ============================================================================
 const getTournamentPlayers = async (req, res) => {
   try {
     const { id } = req.params;
@@ -1280,7 +1607,10 @@ const getTournamentPlayers = async (req, res) => {
   }
 };
 
-// Create a new tournament
+// ============================================================================
+// HÀM PUBLIC: createTournament
+// Owner tạo giải đấu mới cho CLB. Validate quyền sở hữu, gói Pro, giải thưởng.
+// ============================================================================
 const createTournament = async (req, res) => {
   try {
     const club_id = req.headers["x-club-id"];
@@ -1324,7 +1654,6 @@ const createTournament = async (req, res) => {
       play_date,
       auto_bracket,
       banner,
-      table_type_id,
     } = req.body;
 
     if (!name || !max_players) {
@@ -1382,7 +1711,6 @@ const createTournament = async (req, res) => {
       play_date: play_date ? new Date(play_date) : null,
       auto_bracket: auto_bracket !== undefined ? auto_bracket : true,
       banner: req.file ? req.file.path : banner || "",
-      table_type_id: table_type_id || null,
       status: "Draft",
       created_by: req.user?.accountId || null,
       created_at: new Date(),
@@ -1429,7 +1757,10 @@ const createTournament = async (req, res) => {
   }
 };
 
-// Get all tournaments for a club
+// ============================================================================
+// HÀM PUBLIC: getTournamentsByClub
+// Lấy danh sách tất cả giải đấu của 1 CLB (dùng cho Owner/Staff xem quản lý).
+// ============================================================================
 const getTournamentsByClub = async (req, res) => {
   try {
     let club_id = req.headers["x-club-id"] || req.query.club_id;
@@ -1472,7 +1803,10 @@ const getTournamentsByClub = async (req, res) => {
   }
 };
 
-// Get all public tournaments (excluding Draft, only from onboarded clubs)
+// ============================================================================
+// HÀM PUBLIC: getPublicTournaments
+// Lấy danh sách giải đấu công khai (loại trừ Draft, chỉ từ CLB đã hoàn tất onboarding).
+// ============================================================================
 const getPublicTournaments = async (req, res) => {
   try {
     // Get IDs of all approved + onboarding-completed clubs
@@ -1502,13 +1836,15 @@ const getPublicTournaments = async (req, res) => {
   }
 };
 
-// Get a single tournament
+// ============================================================================
+// HÀM PUBLIC: getTournamentById
+// Lấy thông tin chi tiết 1 giải đấu theo ID.
+// ============================================================================
 const getTournamentById = async (req, res) => {
   try {
     const { id } = req.params;
     const tournament = await Tournament.findById(id)
       .populate("club_id", "name address")
-      .populate("table_type_id", "name")
       .lean();
     if (!tournament) {
       return res
@@ -1524,7 +1860,10 @@ const getTournamentById = async (req, res) => {
   }
 };
 
-// Get approved tournament ids that current user joined
+// ============================================================================
+// HÀM PUBLIC: getMyRegisteredTournamentIds
+// Lấy danh sách ID giải đấu mà người dùng hiện tại đã đăng ký (Approved).
+// ============================================================================
 const getMyRegisteredTournamentIds = async (req, res) => {
   try {
     const accountId = req.user?.accountId;
@@ -1551,7 +1890,10 @@ const getMyRegisteredTournamentIds = async (req, res) => {
   }
 };
 
-// Owner/Staff: mở đăng ký
+// ============================================================================
+// HÀM PUBLIC: openTournamentRegistration
+// Owner/Staff mở đăng ký giải đấu: Chuyển trạng thái giải từ Draft/Closed -> Open.
+// ============================================================================
 const openTournamentRegistration = async (req, res) => {
   try {
     const { id } = req.params;
@@ -1593,7 +1935,10 @@ const openTournamentRegistration = async (req, res) => {
   }
 };
 
-// Owner/Staff: chốt đăng ký & (tuỳ chọn) tạo bracket
+// ============================================================================
+// HÀM PUBLIC: closeTournamentRegistration
+// Owner/Staff chốt đăng ký: Đóng đăng ký và (tùy chọn) tự động tạo nhánh đấu.
+// ============================================================================
 const closeTournamentRegistration = async (req, res) => {
   try {
     const { id } = req.params;
@@ -1624,7 +1969,7 @@ const closeTournamentRegistration = async (req, res) => {
     if (approvedPlayers.length < 2) {
       return res
         .status(400)
-        .json({ success: false, message: "Cần ít nhất 2 người chơi" });
+        .json({ success: false, message: "Cần ít nhất 2 người chơi đã duyệt" });
     }
 
     tournament.status = "Closed";
@@ -1656,7 +2001,10 @@ const closeTournamentRegistration = async (req, res) => {
   }
 };
 
-// Update a tournament
+// ============================================================================
+// HÀM PUBLIC: updateTournament
+// Owner cập nhật thông tin giải đấu (tên, mô tả, ngày, giải thưởng, banner...).
+// ============================================================================
 const updateTournament = async (req, res) => {
   try {
     const { id } = req.params;
@@ -1789,7 +2137,10 @@ const updateTournament = async (req, res) => {
   }
 };
 
-// Delete a tournament
+// ============================================================================
+// HÀM PUBLIC: deleteTournament
+// Owner xóa giải đấu. Kiểm tra quyền sở hữu và gói Pro.
+// ============================================================================
 const deleteTournament = async (req, res) => {
   try {
     const { id } = req.params;
@@ -1836,7 +2187,11 @@ const deleteTournament = async (req, res) => {
   }
 };
 
-// Owner/Staff: tạo bracket/bảng đấu thủ công
+// ============================================================================
+// HÀM PUBLIC: generateTournamentBracket
+// Owner/Staff tạo nhánh/bảng đấu thủ công. Gọi vào hàm Private tương ứng
+// (generateKnockoutBracket / generateDoubleEliminationBracket / generateRoundRobinBracket).
+// ============================================================================
 const generateTournamentBracket = async (req, res) => {
   try {
     const { id } = req.params;
@@ -1867,7 +2222,7 @@ const generateTournamentBracket = async (req, res) => {
     if (approvedPlayers.length < 2) {
       return res
         .status(400)
-        .json({ success: false, message: "Cần ít nhất 2 người chơi" });
+        .json({ success: false, message: "Cần ít nhất 2 người chơi đã duyệt" });
     }
 
     const targetFormat = format || tournament.format;
@@ -1899,7 +2254,11 @@ const generateTournamentBracket = async (req, res) => {
   }
 };
 
-// Owner/Staff: bắt đầu giải đấu
+// ============================================================================
+// HÀM PUBLIC: startTournament
+// Owner/Staff bắt đầu giải đấu: Chuyển trạng thái sang InProgress,
+// kích hoạt Vòng 1 và đồng bộ trạng thái các vòng đấu.
+// ============================================================================
 const startTournament = async (req, res) => {
   try {
     const { id } = req.params;
@@ -1965,7 +2324,10 @@ const startTournament = async (req, res) => {
   }
 };
 
-// Public/Owner/Staff: lấy bracket + danh sách trận
+// ============================================================================
+// HÀM PUBLIC: getTournamentBracket
+// Lấy nhánh đấu (bracket) + danh sách trận theo vòng. Dùng cho Frontend hiển thị sơ đồ.
+// ============================================================================
 const getTournamentBracket = async (req, res) => {
   try {
     const { id } = req.params;
@@ -2027,7 +2389,10 @@ const getTournamentBracket = async (req, res) => {
   }
 };
 
-// Staff: danh sách trận để vận hành (lọc theo status)
+// ============================================================================
+// HÀM PUBLIC: getTournamentMatches
+// Staff lấy danh sách trận để vận hành (có thể lọc theo status hoặc round_number).
+// ============================================================================
 const getTournamentMatches = async (req, res) => {
   try {
     const { id } = req.params;
@@ -2079,19 +2444,27 @@ const getTournamentMatches = async (req, res) => {
 };
 
 // Staff: gán bàn & bắt đầu trận
+// ============================================================================
+// HÀM PUBLIC: startRoundMatch
+// Giao diện Staff (Frontend) gọi hàm này khi bấm nút "Bắt Đầu" một trận đấu.
+// Nhiệm vụ: Gán bàn bida (table_id) cho trận đấu, khóa bàn đó lại (tạo Booking) 
+// và đổi trạng thái trận sang "Playing" (Đang diễn ra).
+// ============================================================================
 const startRoundMatch = async (req, res) => {
   try {
-    const { id, matchId } = req.params;
-    const { table_id, scheduled_at, race_to } = req.body || {};
+    const { id, matchId } = req.params; // Lấy ID giải và ID trận
+    const { table_id, scheduled_at, race_to } = req.body || {}; // Dữ liệu Staff truyền lên
 
+    // 1. Kiểm tra tính hợp lệ của Giải Đấu
     const tournament = await Tournament.findById(id)
-      .select("status format table_type_id")
+      .select("status format")
       .lean();
     if (!tournament) {
       return res
         .status(404)
         .json({ success: false, message: "Không tìm thấy giải đấu" });
     }
+    // Không thể bắt đầu trận nếu Giải chưa InProgress
     if (tournament.status !== "InProgress") {
       return res.status(400).json({
         success: false,
@@ -2099,42 +2472,46 @@ const startRoundMatch = async (req, res) => {
       });
     }
 
+    // 2. Kiểm tra tính hợp lệ của Trận Đấu
     const match = await RoundMatch.findOne({ _id: matchId, tournament_id: id });
     if (!match) {
       return res
         .status(404)
         .json({ success: false, message: "Không tìm thấy trận đấu" });
     }
+    // Phải có đủ mặt 2 cơ thủ mới được đánh
     if (!match.player1_id || !match.player2_id) {
       return res
         .status(400)
         .json({ success: false, message: "Chưa đủ người chơi cho trận đấu" });
     }
+    // Trận đánh xong rồi thì không được bắt đầu lại
     if (match.status === "Finished") {
       return res
         .status(400)
         .json({ success: false, message: "Trận đấu đã kết thúc" });
     }
 
-    const targetTableId = table_id || match.table_id;
+    // 3. Cập nhật dữ liệu Trận Đấu
+    match.table_id = table_id || match.table_id;
+    if (race_to) match.race_to = Number(race_to); // Cập nhật chạm (nếu có)
+    match.scheduled_at = scheduled_at
+      ? new Date(scheduled_at)
+      : match.scheduled_at || new Date();
+    match.started_at = new Date(); // Chốt giờ bắt đầu thực tế
+    match.status = "Playing"; // Cập nhật trạng thái
+    await match.save();
 
-    if (targetTableId) {
-      const BilliardTable = require("../models/billiard_table.model");
-      const table = await BilliardTable.findById(targetTableId).lean();
-      
-      if (!table) {
-        return res.status(404).json({ success: false, message: "Không tìm thấy bàn thi đấu" });
-      }
+    // 4. Cập nhật vòng đấu tương ứng thành InProgress
+    await TournamentRound.findByIdAndUpdate(match.round_id, {
+      status: "InProgress",
+    });
 
-      if (tournament.table_type_id && String(table.table_type_id) !== String(tournament.table_type_id)) {
-        return res.status(400).json({
-          success: false,
-          message: "Loại bàn không khớp với quy định của giải đấu",
-        });
-      }
-
+    // 5. Tích hợp Hệ thống Booking (Khóa bàn bida)
+    if (match.table_id) {
+      // Check xem bàn bida này có khách lẻ nào đang chơi không?
       const activeBooking = await Booking.findOne({
-        table_id: targetTableId,
+        table_id: match.table_id,
         status: { $in: ["Playing"] },
       });
       if (activeBooking) {
@@ -2143,46 +2520,26 @@ const startRoundMatch = async (req, res) => {
           message: "Bàn này đang có khách chơi. Vui lòng chọn bàn khác!",
         });
       }
-    }
 
-    match.table_id = targetTableId;
-    if (race_to) match.race_to = Number(race_to);
-    match.scheduled_at = scheduled_at
-      ? new Date(scheduled_at)
-      : match.scheduled_at || new Date();
-    match.started_at = new Date();
-    match.status = "Playing";
-    await match.save();
-
-    await TournamentRound.findByIdAndUpdate(match.round_id, {
-      status: "InProgress",
-    });
-
-    if (match.table_id) {
+      // Khởi tạo ngày hiện tại (chuẩn giờ VN) để booking
       const todayStr = new Date().toLocaleString("en-US", {
         timeZone: "Asia/Ho_Chi_Minh",
       });
       const localToday = new Date(todayStr);
       localToday.setHours(0, 0, 0, 0);
 
-      const vnTimeStr = new Date().toLocaleTimeString("vi-VN", {
-        timeZone: "Asia/Ho_Chi_Minh",
-        hour: "2-digit",
-        minute: "2-digit",
-        hour12: false,
-      });
-
+      // Tạo một Booking mới giả lập cho giải đấu để khóa bàn lại, không tính tiền giờ
       await Booking.create({
-        guest_name: `Trận giải đấu: ${match.match_name}`,
+        guest_name: `Trận giải đấu: ${match.match_name}`, // Ghi chú tên khách là tên trận
         table_id: match.table_id,
         play_date: localToday,
-        start_time: vnTimeStr,
-        end_time: "23:59",
+        start_time: new Date().toTimeString().slice(0, 5),
+        end_time: "23:59", // Đặt lịch tới cuối ngày để chặn khách ngoài
         code_number: `TOUR_${match._id.toString().slice(-6)}_${Date.now().toString().slice(-4)}`,
-        deposit: 0,
-        hour_price: 0,
-        status: "Playing",
-        note: `TournamentMatch:${match._id}`,
+        deposit: 0, // Giải đấu không thu cọc
+        hour_price: 0, // Không tính tiền giờ
+        status: "Playing", // Khóa bàn ngay lập tức
+        note: `TournamentMatch:${match._id}`, // Để lúc kết thúc biết đường tìm mà tắt bàn
       });
     }
 
@@ -2197,12 +2554,18 @@ const startRoundMatch = async (req, res) => {
   }
 };
 
-// Staff: cập nhật kết quả & tự động phân nhánh
+// ============================================================================
+// HÀM PUBLIC: updateMatchResult
+// Tâm điểm bùng nổ: Nơi Staff chốt tỷ số trận đấu.
+// Hàm này cực kỳ quan trọng vì nó làm "ngòi nổ" kích hoạt toàn bộ Engine Tự Động 
+// ở bên trên (Đẩy người, Tính điểm, Rớt nhánh, Kết thúc giải...).
+// ============================================================================
 const updateMatchResult = async (req, res) => {
   try {
     const { id, matchId } = req.params;
     const { player1_score, player2_score, winner_id, race_to } = req.body || {};
 
+    // 1. Kiểm tra tính hợp lệ cơ bản
     const tournament = await Tournament.findById(id).select("status").lean();
     if (!tournament) {
       return res
@@ -2230,7 +2593,7 @@ const updateMatchResult = async (req, res) => {
         .json({ success: false, message: "Không tìm thấy trận đấu" });
     }
 
-    // Kiểm tra Race To (Nếu có nhập race_to mới hoặc dùng race_to của trận đấu)
+    // 2. Validate luật Bida: Điểm số không được vượt quá số điểm Chạm (Race To)
     const currentRaceTo = race_to ? Number(race_to) : match.race_to;
     if (currentRaceTo > 0) {
       if (p1Score > currentRaceTo || p2Score > currentRaceTo) {
@@ -2247,6 +2610,8 @@ const updateMatchResult = async (req, res) => {
         });
       }
     }
+    
+    // Đảm bảo phải có mặt đủ 2 người mới được chốt điểm (Thắng vắng mặt tính là chức năng khác)
     if (!match.player1_id || !match.player2_id) {
       return res
         .status(400)
@@ -2258,14 +2623,19 @@ const updateMatchResult = async (req, res) => {
         .json({ success: false, message: "Trận đấu đã được chấm điểm" });
     }
 
+    // 3. Phân xử Thắng/Thua
+    // Lấy winner_id từ Frontend truyền lên, nếu không có thì tự so sánh điểm
     const declaredWinner =
       winner_id || (p1Score > p2Score ? match.player1_id : match.player2_id);
+      
     if (!declaredWinner) {
       return res
         .status(400)
         .json({ success: false, message: "Cần chọn người thắng" });
     }
+    
     const declaredWinnerStr = String(declaredWinner);
+    // Kiểm tra xem ID người thắng có thực sự là 1 trong 2 người đang ngồi trên bàn không
     if (
       ![match.player1_id?.toString(), match.player2_id?.toString()].includes(
         declaredWinnerStr,
@@ -2275,48 +2645,48 @@ const updateMatchResult = async (req, res) => {
         .status(400)
         .json({ success: false, message: "Người thắng không khớp người chơi" });
     }
+    // Giải bida không có kết quả hòa
     if (p1Score === p2Score) {
       return res
         .status(400)
         .json({ success: false, message: "Không hỗ trợ kết quả hòa" });
     }
 
+    // Xác định ai là người Thua
     const loserId =
       declaredWinnerStr === String(match.player1_id)
         ? match.player2_id
         : match.player1_id;
 
+    // 4. Cập nhật và chốt Trận Đấu
     match.player1_score = p1Score;
     match.player2_score = p2Score;
     if (race_to) match.race_to = Number(race_to);
     match.winner_id = declaredWinner;
     match.loser_id = loserId;
-    match.result = `${p1Score} - ${p2Score}`;
+    match.result = `${p1Score} - ${p2Score}`; // Ghi chú kết quả tỷ số
     match.finished_at = new Date();
     match.status = "Finished";
     await match.save();
 
+    // 5. Tắt Booking bàn bida: Giải phóng bàn trả lại cho hệ thống quán
     if (match.table_id) {
-      const vnTimeStr = new Date().toLocaleTimeString("vi-VN", {
-        timeZone: "Asia/Ho_Chi_Minh",
-        hour: "2-digit",
-        minute: "2-digit",
-        hour12: false,
-      });
       await Booking.updateMany(
         { note: `TournamentMatch:${match._id}`, status: "Playing" },
         {
           status: "Completed",
-          end_time: vnTimeStr,
-          actual_end_time: vnTimeStr,
+          end_time: new Date().toTimeString().slice(0, 5),
         },
       );
     }
 
+    // 6. LIÊN HOÀN KÍCH HOẠT ENGINE TỰ ĐỘNG (Phần quan trọng nhất)
     const round = await TournamentRound.findById(match.round_id).lean();
 
+    // Kích hoạt Engine Knockout
     if (match.match_format === "Knockout") {
       if (loserId) {
+        // Đánh dấu người thua là Bị Loại vĩnh viễn
         await TournamentPlayer.findOneAndUpdate(
           { tournament_id: id, account_id: loserId },
           {
@@ -2327,14 +2697,18 @@ const updateMatchResult = async (req, res) => {
           },
         );
       }
+      // Gọi "Máy Bơm" đẩy người đi tiếp
       await propagateMatchOutcomes(match);
     }
 
+    // Kích hoạt Engine Round Robin
     if (match.match_format === "RoundRobin") {
-      // No elimination; leaderboard sẽ tính theo điểm
+      // Không ai bị loại sau 1 trận, cứ để đó cho hàm tính điểm lo
     }
 
+    // Kích hoạt Engine Double Elimination (Kép)
     if (match.match_format === "DoubleElimination") {
+      // Chỉ khi thua ở Nhánh Thua (Losers) mới bị loại thật sự
       if (loserId && match.bracket_side === "Losers") {
         await TournamentPlayer.findOneAndUpdate(
           { tournament_id: id, account_id: loserId },
@@ -2346,10 +2720,13 @@ const updateMatchResult = async (req, res) => {
           },
         );
       }
+      // Đẩy người đi tiếp vào các trận trong nhánh
       await propagateMatchOutcomes(match);
+      // Gọi "Trình cứu hộ" rà quét xem có ai được Thắng Tự Động do trống ghế không
       await resolvePendingAutoAdvances(id);
     }
 
+    // 7. Đồng bộ Vòng Đấu và check Chung Kết
     await updateRoundStatusAndProgression(id, match.round_id);
     await checkAndCompleteTournament(id);
 
@@ -2364,7 +2741,10 @@ const updateMatchResult = async (req, res) => {
   }
 };
 
-// Public/Owner: bảng xếp hạng Round Robin
+// ============================================================================
+// HÀM PUBLIC: getRoundRobinLeaderboard
+// Lấy bảng xếp hạng thể thức Vòng Tròn (RoundRobin) của giải đấu.
+// ============================================================================
 const getRoundRobinLeaderboard = async (req, res) => {
   try {
     const { id } = req.params;
@@ -2391,7 +2771,10 @@ const getRoundRobinLeaderboard = async (req, res) => {
   }
 };
 
-// Create PayOS payment link for tournament registration
+// ============================================================================
+// HÀM PUBLIC: createTournamentPayOSPayment
+// Tạo link thanh toán PayOS cho cơ thủ đăng ký giải đấu có thu phí.
+// ============================================================================
 const createTournamentPayOSPayment = async (req, res) => {
   try {
     const { id } = req.params;
@@ -2520,7 +2903,10 @@ const createTournamentPayOSPayment = async (req, res) => {
   }
 };
 
-// Verify tournament payment (frontend return flow)
+// ============================================================================
+// HÀM PUBLIC: verifyTournamentPayOSPayment
+// Xác minh thanh toán PayOS từ Frontend return flow (người dùng quay lại sau khi thanh toán).
+// ============================================================================
 const verifyTournamentPayOSPayment = async (req, res) => {
   try {
     const { orderCode } = req.body;
@@ -2592,7 +2978,10 @@ const verifyTournamentPayOSPayment = async (req, res) => {
   }
 };
 
-// Tournament PayOS webhook
+// ============================================================================
+// HÀM PUBLIC: tournamentPayOSWebhook
+// Webhook PayOS: Nhận thông báo từ PayOS khi thanh toán thành công, tự động duyệt đăng ký.
+// ============================================================================
 const tournamentPayOSWebhook = async (req, res) => {
   try {
     const payload = req.body;
@@ -2668,6 +3057,10 @@ const tournamentPayOSWebhook = async (req, res) => {
   }
 };
 
+// ============================================================================
+// HÀM PUBLIC: getMyTournaments
+// Lấy danh sách giải đấu mà người dùng hiện tại đã đăng ký tham gia.
+// ============================================================================
 const getMyTournaments = async (req, res) => {
   try {
     const accountId = req.user?.accountId;
@@ -2706,7 +3099,10 @@ const getMyTournaments = async (req, res) => {
   }
 };
 
-// Cancel a tournament
+// ============================================================================
+// HÀM PUBLIC: cancelTournament
+// Owner hủy giải đấu: Chuyển trạng thái giải và tất cả cơ thủ sang "Cancelled".
+// ============================================================================
 const cancelTournament = async (req, res) => {
   try {
     const { id } = req.params;

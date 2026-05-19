@@ -23,16 +23,16 @@
         <div class='clearfix'>
             
             <div class='fl pad1y space-right2'>
-                <span class="strong">70.96% </span>
+                <span class="strong">69.75% </span>
                 <span class="quiet">Statements</span>
-                <span class='fraction'>220/310</span>
+                <span class='fraction'>226/324</span>
             </div>
         
             
             <div class='fl pad1y space-right2'>
-                <span class="strong">43.85% </span>
+                <span class="strong">40.98% </span>
                 <span class="quiet">Branches</span>
-                <span class='fraction'>25/57</span>
+                <span class='fraction'>25/61</span>
             </div>
         
             
@@ -44,9 +44,9 @@
         
             
             <div class='fl pad1y space-right2'>
-                <span class="strong">70.96% </span>
+                <span class="strong">69.75% </span>
                 <span class="quiet">Lines</span>
-                <span class='fraction'>220/310</span>
+                <span class='fraction'>226/324</span>
             </div>
         
             
@@ -373,7 +373,21 @@
 <a name='L308'></a><a href='#L308'>308</a>
 <a name='L309'></a><a href='#L309'>309</a>
 <a name='L310'></a><a href='#L310'>310</a>
-<a name='L311'></a><a href='#L311'>311</a></td><td class="line-coverage quiet"><span class="cline-any cline-yes">1x</span>
+<a name='L311'></a><a href='#L311'>311</a>
+<a name='L312'></a><a href='#L312'>312</a>
+<a name='L313'></a><a href='#L313'>313</a>
+<a name='L314'></a><a href='#L314'>314</a>
+<a name='L315'></a><a href='#L315'>315</a>
+<a name='L316'></a><a href='#L316'>316</a>
+<a name='L317'></a><a href='#L317'>317</a>
+<a name='L318'></a><a href='#L318'>318</a>
+<a name='L319'></a><a href='#L319'>319</a>
+<a name='L320'></a><a href='#L320'>320</a>
+<a name='L321'></a><a href='#L321'>321</a>
+<a name='L322'></a><a href='#L322'>322</a>
+<a name='L323'></a><a href='#L323'>323</a>
+<a name='L324'></a><a href='#L324'>324</a>
+<a name='L325'></a><a href='#L325'>325</a></td><td class="line-coverage quiet"><span class="cline-any cline-yes">1x</span>
 <span class="cline-any cline-yes">1x</span>
 <span class="cline-any cline-yes">1x</span>
 <span class="cline-any cline-yes">1x</span>
@@ -524,6 +538,13 @@
 <span class="cline-any cline-no">&nbsp;</span>
 <span class="cline-any cline-yes">1x</span>
 <span class="cline-any cline-yes">1x</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-yes">1x</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-yes">1x</span>
+<span class="cline-any cline-yes">1x</span>
 <span class="cline-any cline-yes">1x</span>
 <span class="cline-any cline-yes">1x</span>
 <span class="cline-any cline-yes">1x</span>
@@ -582,6 +603,13 @@
 <span class="cline-any cline-no">&nbsp;</span>
 <span class="cline-any cline-no">&nbsp;</span>
 <span class="cline-any cline-yes">2x</span>
+<span class="cline-any cline-yes">2x</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-yes">2x</span>
+<span class="cline-any cline-yes">2x</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
 <span class="cline-any cline-yes">2x</span>
 <span class="cline-any cline-no">&nbsp;</span>
 <span class="cline-any cline-no">&nbsp;</span>
@@ -833,6 +861,13 @@ exports.getClubFeedbacks = async (req, res) =&gt; {
 <span class="cstat-no" title="statement not covered" >      return res.status(403).json({ success: false, message: "Bạn không thuộc quán nào hoặc chưa chọn quán" });</span>
 <span class="cstat-no" title="statement not covered" >    }</span>
 &nbsp;
+    if (req.user.role === "OWNER") <span class="branch-0 cbranch-no" title="branch not covered" >{</span>
+<span class="cstat-no" title="statement not covered" >      const club = await Club.findOne({ _id: clubId, account_id: req.user.accountId });</span>
+<span class="cstat-no" title="statement not covered" >      if (!club) return res.status(403).json({ success: false, message: "Bạn không có quyền xem đánh giá của quán này" });</span>
+    } else if (req.user.role === "STAFF_CLUB" &amp;&amp; req.user.club_id !== clubId) <span class="branch-0 cbranch-no" title="branch not covered" >{</span>
+<span class="cstat-no" title="statement not covered" >      return res.status(403).json({ success: false, message: "Bạn không có quyền xem đánh giá của quán khác" });</span>
+<span class="cstat-no" title="statement not covered" >    }</span>
+&nbsp;
     const page = parseInt(req.query.page)<span class="branch-0 cbranch-no" title="branch not covered" > || 1;</span>
     const limit = parseInt(req.query.limit) || 10;
     const skip = (page - 1) * limit;
@@ -894,6 +929,13 @@ exports.replyFeedback = async (req, res) =&gt; {
 &nbsp;
     if (!activeClubId) <span class="branch-0 cbranch-no" title="branch not covered" >{</span>
 <span class="cstat-no" title="statement not covered" >      return res.status(403).json({ success: false, message: "Vui lòng truyền lên clubId của quán đang thao tác" });</span>
+<span class="cstat-no" title="statement not covered" >    }</span>
+&nbsp;
+    if (req.user.role === "OWNER") <span class="branch-0 cbranch-no" title="branch not covered" >{</span>
+<span class="cstat-no" title="statement not covered" >      const club = await Club.findOne({ _id: activeClubId, account_id: req.user.accountId });</span>
+<span class="cstat-no" title="statement not covered" >      if (!club) return res.status(403).json({ success: false, message: "Bạn không có quyền thao tác trên quán này" });</span>
+    } else if (req.user.role === "STAFF_CLUB" &amp;&amp; req.user.club_id !== activeClubId) <span class="branch-0 cbranch-no" title="branch not covered" >{</span>
+<span class="cstat-no" title="statement not covered" >      return res.status(403).json({ success: false, message: "Bạn không có quyền thao tác trên quán khác" });</span>
 <span class="cstat-no" title="statement not covered" >    }</span>
 &nbsp;
     const feedback = await Feedback.findById(id);
@@ -1000,7 +1042,7 @@ exports.updateFeedback = async (req, res) =&gt; {
             <div class='footer quiet pad2 space-top1 center small'>
                 Code coverage generated by
                 <a href="https://istanbul.js.org/" target="_blank" rel="noopener noreferrer">istanbul</a>
-                at 2026-05-04T15:45:27.957Z
+                at 2026-05-14T08:25:09.589Z
             </div>
         <script src="../prettify.js"></script>
         <script>

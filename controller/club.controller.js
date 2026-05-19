@@ -613,12 +613,16 @@ const getClubStatistics = async (req, res) => {
     if (req.user.role === "STAFF_CLUB") {
       club_id = req.user.club_id;
     } else if (req.user.role === "OWNER") {
-      // Tạm thời lấy club đầu tiên của Owner nếu họ gọi API chung. (Tuỳ logic)
-      const club = await Club.findOne({ account_id: req.user.accountId }).lean();
-      if (!club) {
-        return res.status(404).json({ success: false, message: "Chủ quán chưa có câu lạc bộ" });
+      const queryClubId = req.query.club_id;
+      if (queryClubId) {
+        const club = await Club.findOne({ _id: queryClubId, account_id: req.user.accountId }).lean();
+        if (!club) return res.status(403).json({ success: false, message: "Bạn không có quyền xem thống kê của quán này" });
+        club_id = club._id;
+      } else {
+        const club = await Club.findOne({ account_id: req.user.accountId }).lean();
+        if (!club) return res.status(404).json({ success: false, message: "Chủ quán chưa có câu lạc bộ" });
+        club_id = club._id;
       }
-      club_id = club._id;
     } else {
       return res.status(403).json({ success: false, message: "Không có quyền truy cập" });
     }

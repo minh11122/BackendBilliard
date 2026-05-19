@@ -87,7 +87,7 @@ describe("Feedback Controller - Unit Tests", () => {
             const req = {
                 params: { clubId: validClubId },
                 query: { page: "1", rating: "5" },
-                user: { club_id: validClubId }
+                user: { club_id: validClubId, role: "STAFF_CLUB" }
             };
             const res = createRes();
 
@@ -118,7 +118,7 @@ describe("Feedback Controller - Unit Tests", () => {
             const req = {
                 params: { id: validFeedbackId },
                 body: { reply_content: "Cảm ơn bạn!", clubId: validClubId },
-                user: { club_id: validClubId }
+                user: { club_id: validClubId, role: "STAFF_CLUB" }
             };
             const res = createRes();
 
@@ -141,7 +141,8 @@ describe("Feedback Controller - Unit Tests", () => {
         it("should return 403 if feedback belongs to another club", async () => {
             const req = {
                 params: { id: validFeedbackId },
-                body: { reply_content: "Reply", clubId: validClubId }
+                body: { reply_content: "Reply", clubId: validClubId },
+                user: { club_id: validClubId, role: "STAFF_CLUB" }
             };
             const res = createRes();
             Feedback.findById.mockResolvedValue({ _id: validFeedbackId, club_id: validClubId2 });

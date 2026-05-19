@@ -65,6 +65,21 @@ const createStaffClub = async (req, res) => {
             return res.status(400).json({ message: "Vui lòng nhập đầy đủ thông tin" });
         }
 
+        if (fullname.trim().length < 2 || fullname.trim().length > 50) {
+            return res.status(400).json({ message: "Họ tên phải từ 2 đến 50 ký tự" });
+        }
+
+        if (phone && phone.trim() !== "") {
+            if (!/^0[35789]\d{8}$/.test(phone.trim())) {
+                return res.status(400).json({ message: "Số điện thoại không hợp lệ (phải là 10 số theo định dạng Việt Nam)" });
+            }
+        }
+
+        const passwordRegex = /^(?=.*[a-z])(?=.*[A-Z])(?=.*[\W_]).+$/;
+        if (!passwordRegex.test(password)) {
+            return res.status(400).json({ message: "Mật khẩu phải bao gồm chữ hoa, chữ thường và ký tự đặc biệt" });
+        }
+
         const orConditions = [{ email }];
         if (phone && phone.trim() !== "") {
             orConditions.push({ phone: phone.trim() });
@@ -153,27 +168,6 @@ const unbanStaffClub = async (req, res) => {
     }
 };
 
-//Xóa nhân viên quán (Chuyển sang DELETED)
-const deleteStaffClub = async (req, res) => {
-    try {
-        const { id } = req.params;
-        const ownerAccountId = req.user.accountId;
-
-        const staffToDelete = await Account.findById(id);
-        if (!staffToDelete) return res.status(404).json({ message: "Không tìm thấy nhân viên" });
-
-        if (!(await verifyClubOwnership(staffToDelete.club_id, ownerAccountId))) {
-            return res.status(403).json({ message: "Bạn không có quyền thao tác trên nhân viên này" });
-        }
-
-        staffToDelete.status = "DELETED";
-        await staffToDelete.save();
-
-        res.json({ message: "Đã xóa nhân viên quán thành công" });
-    } catch (error) {
-        res.status(500).json({ message: error.message });
-    }
-};
 //Xem chi tiết 1 nhân viên quán
 const getStaffClubById = async (req, res) => {
     try {
@@ -217,17 +211,33 @@ const updateStaffClub = async (req, res) => {
         }
 
         // Cập nhật các trường thông tin nếu có gửi lên
-        if (fullname) staff.fullname = fullname;
+        if (fullname) {
+            if (fullname.trim().length < 2 || fullname.trim().length > 50) {
+                return res.status(400).json({ message: "Họ tên phải từ 2 đến 50 ký tự" });
+            }
+            staff.fullname = fullname;
+        }
 
         // Xử lý phone (nếu chuỗi rỗng thì chuyển thành null, nếu có thì gán vào)
         if (phone !== undefined) {
-            staff.phone = phone === "" ? null : phone;
+            if (phone !== "" && phone !== null) {
+                if (!/^0[35789]\d{8}$/.test(phone.trim())) {
+                    return res.status(400).json({ message: "Số điện thoại không hợp lệ (phải là 10 số theo định dạng Việt Nam)" });
+                }
+                staff.phone = phone.trim();
+            } else {
+                staff.phone = null;
+            }
         }
 
         if (status) staff.status = status;
 
         // Nếu chủ quán muốn đổi mật khẩu cho nhân viên
         if (password) {
+            const passwordRegex = /^(?=.*[a-z])(?=.*[A-Z])(?=.*[\W_]).+$/;
+            if (!passwordRegex.test(password)) {
+                return res.status(400).json({ message: "Mật khẩu phải bao gồm chữ hoa, chữ thường và ký tự đặc biệt" });
+            }
             const hashedPassword = await bcrypt.hash(password, 10);
             staff.password_hash = hashedPassword;
         }
@@ -252,7 +262,6 @@ module.exports = {
     createStaffClub,
     banStaffClub,
     unbanStaffClub,
-    deleteStaffClub,
     getStaffClubById,
     updateStaffClub
 };

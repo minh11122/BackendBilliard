@@ -148,6 +148,13 @@ exports.getClubFeedbacks = async (req, res) => {
       return res.status(403).json({ success: false, message: "Bạn không thuộc quán nào hoặc chưa chọn quán" });
     }
 
+    if (req.user.role === "OWNER") {
+      const club = await Club.findOne({ _id: clubId, account_id: req.user.accountId });
+      if (!club) return res.status(403).json({ success: false, message: "Bạn không có quyền xem đánh giá của quán này" });
+    } else if (req.user.role === "STAFF_CLUB" && req.user.club_id !== clubId) {
+      return res.status(403).json({ success: false, message: "Bạn không có quyền xem đánh giá của quán khác" });
+    }
+
     const page = parseInt(req.query.page) || 1;
     const limit = parseInt(req.query.limit) || 10;
     const skip = (page - 1) * limit;
@@ -209,6 +216,13 @@ exports.replyFeedback = async (req, res) => {
 
     if (!activeClubId) {
       return res.status(403).json({ success: false, message: "Vui lòng truyền lên clubId của quán đang thao tác" });
+    }
+
+    if (req.user.role === "OWNER") {
+      const club = await Club.findOne({ _id: activeClubId, account_id: req.user.accountId });
+      if (!club) return res.status(403).json({ success: false, message: "Bạn không có quyền thao tác trên quán này" });
+    } else if (req.user.role === "STAFF_CLUB" && req.user.club_id !== activeClubId) {
+      return res.status(403).json({ success: false, message: "Bạn không có quyền thao tác trên quán khác" });
     }
 
     const feedback = await Feedback.findById(id);
