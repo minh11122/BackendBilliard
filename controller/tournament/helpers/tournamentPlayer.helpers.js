@@ -33,13 +33,13 @@ const ensureTournamentApproved = async (tournamentId, accountId, feeAmount) => {
       .select("fullname phone")
       .lean();
     const playerName = playerAccount
-      ? (playerAccount.fullname || playerAccount.phone || "Má»™t ngÆ°á»i chÆ¡i")
-      : "Má»™t ngÆ°á»i chÆ¡i";
+      ? (playerAccount.fullname || playerAccount.phone || "Một người chơi")
+      : "Một người chơi";
 
     await Notification.create({
       account_id: accountId,
-      title: "ÄÄƒng kÃ½ giáº£i Ä‘áº¥u thÃ nh cÃ´ng",
-      message: `Báº¡n Ä‘Ã£ Ä‘Äƒng kÃ½ thÃ nh cÃ´ng giáº£i Ä‘áº¥u ${tournament.name || ""}.`,
+      title: "Đăng ký giải đấu thành công",
+      message: `Bạn đã đăng ký thành công giải đấu ${tournament.name || ""}.`,
       link: `/my-tournaments?tournamentId=${tournamentId}`,
       is_read: false,
     });
@@ -62,8 +62,8 @@ const ensureTournamentApproved = async (tournamentId, accountId, feeAmount) => {
       await Notification.insertMany(
         Array.from(targetIds).map((targetId) => ({
           account_id: targetId,
-          title: "CÃ³ ngÆ°á»i Ä‘Äƒng kÃ½ giáº£i Ä‘áº¥u",
-          message: `NgÆ°á»i chÆ¡i ${playerName} vá»«a Ä‘Äƒng kÃ½ tham gia giáº£i Ä‘áº¥u ${tournament.name || ""}.`,
+          title: "Có người đăng ký giải đấu",
+          message: `Người chơi ${playerName} vừa đăng ký tham gia giải đấu ${tournament.name || ""}.`,
           link: `/staff/tournaments/${tournamentId}/players`,
           is_read: false,
         })),
