@@ -9,8 +9,7 @@ const checkOwnerAccess = async (clubId, accountId) => {
 };
 
 const cloudinary = require("../configs/cloudinary.config");
-const Service = require("../models/service.model");
-const Club = require("../models/club.model");
+
 
 const canAccessClub = async (req, clubId) => {
     if (!clubId || !req.user) return false;
@@ -344,32 +343,20 @@ const deleteServicePermanently = async (req, res) => {
         const { id } = req.params;
         const service = await Service.findById(id);
         if (!service) {
-            return res.status(404).json({ success: false, message: "Khong tim thay dich vu." });
+            return res.status(404).json({ success: false, message: "Không tìm thấy dịch vụ." });
         }
-        if (!(await canAccessClub(req, service.club_id))) {
-            return res.status(403).json({ success: false, message: "Ban khong co quyen xoa dich vu nay." });
-        }
-
-        const club_id = service.club_id;
-
-        const service = await Service.findById(id);
-        if (!service) return res.status(404).json({ success: false, message: "Không tìm thấy dịch vụ!" });
-
-        if (req.user?.role === "OWNER") {
-            const isOwner = await checkOwnerAccess(service.club_id, req.user.accountId || req.user.id);
-            if (!isOwner) return res.status(403).json({ success: false, message: "Bạn không có quyền xem dịch vụ của quán khác!" });
-        } else if (req.user?.role === "STAFF_CLUB" && req.user.club_id !== service.club_id.toString()) {
-            return res.status(403).json({ success: false, message: "Nhân viên không có quyền xem dịch vụ của quán khác!" });
-        }
-
+        
         const club_id = req.user?.club_id || req.query.club_id || req.body.club_id;
         if (!club_id) return res.status(400).json({ success: false, message: "Không xác định được ID Quán." });
 
         if (req.user?.role === "OWNER") {
             const isOwner = await checkOwnerAccess(club_id, req.user.accountId || req.user.id);
             if (!isOwner) return res.status(403).json({ success: false, message: "Bạn không có quyền thao tác trên quán này!" });
+        } else if (req.user?.role === "STAFF_CLUB" && req.user.club_id !== service.club_id.toString()) {
+            return res.status(403).json({ success: false, message: "Nhân viên không có quyền xóa dịch vụ của quán khác!" });
         }
-        if (service.club_id.toString() !== club_id) {
+
+        if (service.club_id.toString() !== club_id.toString()) {
             return res.status(403).json({ success: false, message: "Bạn không có quyền xóa dịch vụ của quán khác!" });
         }
 
