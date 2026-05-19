@@ -59,7 +59,7 @@ const buildFirstRoundPairs = (playerIds, bracketSize) => {
 const generateKnockoutBracket = async (tournament) => {
   const approvedPlayers = await fetchApprovedPlayers(tournament._id);
   if (approvedPlayers.length < 2) {
-    throw new Error("Cáº§n Ã­t nháº¥t 2 ngÆ°á»i chÆ¡i Ä‘á»ƒ táº¡o nhÃ¡nh Ä‘áº¥u");
+    throw new Error("Cần ít nhất 2 người chơi để tạo nhánh đấu");
   }
 
   await clearBracket(tournament._id);
@@ -119,10 +119,10 @@ const generateKnockoutBracket = async (tournament) => {
       const isFinal = r === roundCount - 1;
       const isSemi = r === roundCount - 2 && roundCount > 1;
       const match_name = isFinal
-        ? "Chung káº¿t"
+        ? "Chung kết"
         : isSemi
-          ? `BÃ¡n káº¿t ${m + 1}`
-          : `VÃ²ng ${r + 1} - Tráº­n ${m + 1}`;
+          ? `Bán kết ${m + 1}`
+          : `Vòng ${r + 1} - Trận ${m + 1}`;
 
       matchDocs.push({
         _id: matchIdMatrix[r][m],
@@ -184,7 +184,7 @@ const generateKnockoutBracket = async (tournament) => {
 const generateDoubleEliminationBracket = async (tournament) => {
   const approvedPlayers = await fetchApprovedPlayers(tournament._id);
   if (approvedPlayers.length < 2) {
-    throw new Error("Cáº§n Ã­t nháº¥t 2 ngÆ°á»i chÆ¡i Ä‘á»ƒ táº¡o nhÃ¡nh Ä‘áº¥u");
+    throw new Error("Cần ít nhất 2 người chơi để tạo nhánh đấu");
   }
 
   await clearBracket(tournament._id);
