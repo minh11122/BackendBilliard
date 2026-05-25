@@ -5,7 +5,7 @@ const Feedback = require("../../models/feedback.model");
 const Province = require("../../models/province.model");
 const District = require("../../models/district.model");
 const Booking = require("../../models/booking.model");
-const SubscriptionAccount = require("../../models/subcription_account.model");
+const { findActiveSubscriptionForClub } = require("../../utils/subscription.util");
 const { geocodeAddress } = require("../../utils/geocoding");
 const { timeToMinutes } = require("./club.helpers");
 
@@ -242,12 +242,9 @@ const getClubById = async (req, res) => {
     club.priceFrom =
       tables.length > 0 ? Math.min(...tables.map((t) => t.price)) : 0;
 
-    const activeSub = await SubscriptionAccount.findOne({
-      club_id: id,
-      status: { $in: ["active", "Active"] },
-    })
-      .populate("subscription_id")
-      .lean();
+    const activeSub = await findActiveSubscriptionForClub(id, {
+      populate: true
+    });
     if (activeSub && activeSub.subscription_id) {
       club.subscription_name = activeSub.subscription_id.name;
     }

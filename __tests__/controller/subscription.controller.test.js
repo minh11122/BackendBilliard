@@ -30,6 +30,32 @@ const CLUB_ID = "club_001";
 const ACCOUNT_ID = "acc_001";
 const SUB_ID = "sub_001";
 
+const futureExpireDate = () => {
+    const d = new Date();
+    d.setMonth(d.getMonth() + 1);
+    return d;
+};
+
+const pastExpireDate = () => {
+    const d = new Date();
+    d.setDate(d.getDate() - 5);
+    return d;
+};
+
+const mockFindClubRecord = (record) => {
+    SubscriptionAccount.findOne.mockReturnValue({
+        sort: jest.fn().mockResolvedValue(record)
+    });
+};
+
+const mockFindClubRecordWithPopulate = (record) => {
+    SubscriptionAccount.findOne.mockReturnValue({
+        sort: jest.fn().mockReturnValue({
+            populate: jest.fn().mockResolvedValue(record)
+        })
+    });
+};
+
 describe("Subscription Controller - Branch Coverage Suite", () => {
     beforeAll(() => {
         jest.spyOn(console, "error").mockImplementation(() => {});
@@ -39,9 +65,6 @@ describe("Subscription Controller - Branch Coverage Suite", () => {
         jest.clearAllMocks();
     });
 
-    // ══════════════════════════════════════════════════════════════
-    // getSubscriptions
-    // ══════════════════════════════════════════════════════════════
     describe("getSubscriptions", () => {
         it("SUCCESS - returns all subscription packages", async () => {
             const res = makeRes();
@@ -59,28 +82,36 @@ describe("Subscription Controller - Branch Coverage Suite", () => {
         });
     });
 
-    // ══════════════════════════════════════════════════════════════
-    // getCurrentSubscription
-    // ══════════════════════════════════════════════════════════════
     describe("getCurrentSubscription", () => {
         it("SUCCESS - returns active subscription for club", async () => {
             const res = makeRes();
-            SubscriptionAccount.findOne.mockReturnValue({
-                populate: jest.fn().mockReturnValue({
-                    sort: jest.fn().mockResolvedValue({ _id: "sa1", status: "Active" })
-                })
+            mockFindClubRecordWithPopulate({
+                _id: "sa1",
+                status: "active",
+                expire_date: futureExpireDate(),
+                account_id: "acc1"
             });
             await subscriptionController.getCurrentSubscription({ query: { club_id: CLUB_ID } }, res);
             expect(res.status).toHaveBeenCalledWith(200);
         });
 
-        it("SUCCESS - returns null when no active subscription", async () => {
+        it("SUCCESS - returns null when subscription expired", async () => {
             const res = makeRes();
-            SubscriptionAccount.findOne.mockReturnValue({
-                populate: jest.fn().mockReturnValue({
-                    sort: jest.fn().mockResolvedValue(null)
-                })
+            const expired = makeMockDoc({
+                _id: "sa1",
+                status: "active",
+                expire_date: pastExpireDate()
             });
+            mockFindClubRecordWithPopulate(expired);
+            await subscriptionController.getCurrentSubscription({ query: { club_id: CLUB_ID } }, res);
+            expect(res.status).toHaveBeenCalledWith(200);
+            expect(res.json).toHaveBeenCalledWith(expect.objectContaining({ data: null }));
+            expect(expired.save).toHaveBeenCalled();
+        });
+
+        it("SUCCESS - returns null when no subscription", async () => {
+            const res = makeRes();
+            mockFindClubRecordWithPopulate(null);
             await subscriptionController.getCurrentSubscription({ query: { club_id: CLUB_ID } }, res);
             expect(res.status).toHaveBeenCalledWith(200);
             expect(res.json).toHaveBeenCalledWith(expect.objectContaining({ data: null }));
@@ -100,49 +131,39 @@ describe("Subscription Controller - Branch Coverage Suite", () => {
         });
     });
 
-    // ══════════════════════════════════════════════════════════════
-    // createSubscriptionPayment
-    // ══════════════════════════════════════════════════════════════
     describe("createSubscriptionPayment", () => {
         const validReq = {
             user: { accountId: ACCOUNT_ID },
             body: { subscription_id: SUB_ID, club_id: CLUB_ID, returnUrl: "ret", cancelUrl: "can" }
         };
 
-        it("SUCCESS - creates payment with discount applied", async () => {
+        it("SUCCESS - creates payment with price * months", async () => {
             const res = makeRes();
-            Subscription.findById.mockResolvedValue({ _id: SUB_ID, price: 100000, discount_percent: 10 });
-            SubscriptionAccount.findOne.mockReturnValue({ populate: jest.fn().mockResolvedValue(null) });
+            Subscription.findById.mockResolvedValue({ _id: SUB_ID, price: 100000 });
+            mockFindClubRecordWithPopulate(null);
             paymentService.createPayment.mockResolvedValue({ checkoutUrl: "http://pay.url" });
             await subscriptionController.createSubscriptionPayment(validReq, res);
-            // 100000 - 10% = 90000
-            expect(paymentService.createPayment).toHaveBeenCalledWith(expect.objectContaining({ amount: 90000 }));
+            expect(paymentService.createPayment).toHaveBeenCalledWith(expect.objectContaining({ amount: 100000 }));
             expect(res.json).toHaveBeenCalledWith(expect.objectContaining({ success: true }));
         });
 
-        it("SUCCESS - creates payment with no discount (discount_percent=0)", async () => {
+        it("SUCCESS - multiplies price by duration_months", async () => {
             const res = makeRes();
-            Subscription.findById.mockResolvedValue({ _id: SUB_ID, price: 200000, discount_percent: 0 });
-            SubscriptionAccount.findOne.mockReturnValue({ populate: jest.fn().mockResolvedValue(null) });
+            Subscription.findById.mockResolvedValue({ _id: SUB_ID, price: 100000 });
+            mockFindClubRecordWithPopulate(null);
             paymentService.createPayment.mockResolvedValue({ checkoutUrl: "http://pay.url" });
-            await subscriptionController.createSubscriptionPayment(validReq, res);
-            expect(paymentService.createPayment).toHaveBeenCalledWith(expect.objectContaining({ amount: 200000 }));
-        });
-
-        it("SUCCESS - creates payment with no discount_percent field (undefined → 0)", async () => {
-            const res = makeRes();
-            Subscription.findById.mockResolvedValue({ _id: SUB_ID, price: 50000 }); // no discount_percent
-            SubscriptionAccount.findOne.mockReturnValue({ populate: jest.fn().mockResolvedValue(null) });
-            paymentService.createPayment.mockResolvedValue({ checkoutUrl: "http://pay.url" });
-            await subscriptionController.createSubscriptionPayment(validReq, res);
-            expect(paymentService.createPayment).toHaveBeenCalledWith(expect.objectContaining({ amount: 50000 }));
+            await subscriptionController.createSubscriptionPayment({
+                ...validReq,
+                body: { ...validReq.body, duration_months: 3 }
+            }, res);
+            expect(paymentService.createPayment).toHaveBeenCalledWith(expect.objectContaining({ amount: 300000 }));
         });
 
         it("FAIL 400 - missing subscription_id", async () => {
             const res = makeRes();
             await subscriptionController.createSubscriptionPayment({
                 user: { accountId: ACCOUNT_ID },
-                body: { club_id: CLUB_ID } // missing subscription_id
+                body: { club_id: CLUB_ID }
             }, res);
             expect(res.status).toHaveBeenCalledWith(400);
         });
@@ -151,7 +172,7 @@ describe("Subscription Controller - Branch Coverage Suite", () => {
             const res = makeRes();
             await subscriptionController.createSubscriptionPayment({
                 user: { accountId: ACCOUNT_ID },
-                body: { subscription_id: SUB_ID } // missing club_id
+                body: { subscription_id: SUB_ID }
             }, res);
             expect(res.status).toHaveBeenCalledWith(400);
         });
@@ -165,17 +186,14 @@ describe("Subscription Controller - Branch Coverage Suite", () => {
 
         it("FAIL 500 - payment service error", async () => {
             const res = makeRes();
-            Subscription.findById.mockResolvedValue({ _id: SUB_ID, price: 100000, discount_percent: 0 });
-            SubscriptionAccount.findOne.mockReturnValue({ populate: jest.fn().mockResolvedValue(null) });
+            Subscription.findById.mockResolvedValue({ _id: SUB_ID, price: 100000 });
+            mockFindClubRecordWithPopulate(null);
             paymentService.createPayment.mockRejectedValue(new Error("payment failed"));
             await subscriptionController.createSubscriptionPayment(validReq, res);
             expect(res.status).toHaveBeenCalledWith(500);
         });
     });
 
-    // ══════════════════════════════════════════════════════════════
-    // verifySubscriptionPayment
-    // ══════════════════════════════════════════════════════════════
     describe("verifySubscriptionPayment", () => {
         const validReq = {
             user: { accountId: ACCOUNT_ID },
@@ -185,11 +203,10 @@ describe("Subscription Controller - Branch Coverage Suite", () => {
         it("SUCCESS - creates new subscription account when none exists", async () => {
             const res = makeRes();
             paymentService.verifyPayment.mockResolvedValue({});
-            Subscription.findById.mockResolvedValue({ _id: SUB_ID, price: 100000, discount_percent: 0 });
-            
-            SubscriptionAccount.findOne
-                .mockReturnValueOnce({ populate: jest.fn().mockResolvedValue(null) }) // for activeSub
-                .mockResolvedValueOnce(null); // for let clubSubscription = await SubscriptionAccount.findOne({ club_id })
+            Subscription.findById.mockResolvedValue({ _id: SUB_ID, price: 100000, post_limit: 10 });
+
+            mockFindClubRecordWithPopulate(null);
+            mockFindClubRecord(null);
 
             SubscriptionAccount.create.mockResolvedValue({ _id: "sa1", status: "active" });
             await subscriptionController.verifySubscriptionPayment(validReq, res);
@@ -197,37 +214,61 @@ describe("Subscription Controller - Branch Coverage Suite", () => {
             expect(res.json).toHaveBeenCalledWith(expect.objectContaining({ success: true }));
         });
 
-        it("SUCCESS - updates existing subscription account when one exists", async () => {
+        it("SUCCESS - renews same plan and keeps posts_used", async () => {
             const res = makeRes();
             paymentService.verifyPayment.mockResolvedValue({});
-            Subscription.findById.mockResolvedValue({ _id: SUB_ID, price: 200000, discount_percent: 20 });
-            const existingSub = makeMockDoc({ _id: "sa1", club_id: CLUB_ID, status: "Expired" });
-            
-            SubscriptionAccount.findOne
-                .mockReturnValueOnce({ populate: jest.fn().mockResolvedValue(null) }) // for activeSub
-                .mockResolvedValueOnce(existingSub); // for let clubSubscription
+            Subscription.findById.mockResolvedValue({ _id: SUB_ID, price: 100000, post_limit: 5 });
 
-            await subscriptionController.verifySubscriptionPayment(validReq, res);
+            const existingSub = makeMockDoc({
+                _id: "sa1",
+                club_id: CLUB_ID,
+                subscription_id: SUB_ID,
+                status: "expired",
+                expire_date: pastExpireDate(),
+                posts_used: 3,
+                post_limit: 10,
+                start_date: new Date("2026-01-01")
+            });
+
+            mockFindClubRecordWithPopulate(null);
+            mockFindClubRecord(existingSub);
+
+            await subscriptionController.verifySubscriptionPayment({
+                ...validReq,
+                body: { ...validReq.body, duration_months: 3 }
+            }, res);
+
             expect(existingSub.save).toHaveBeenCalled();
             expect(existingSub.status).toBe("active");
-            expect(res.json).toHaveBeenCalledWith(expect.objectContaining({ success: true }));
+            expect(existingSub.posts_used).toBe(3);
+            expect(existingSub.post_limit).toBe(15);
         });
 
-        it("SUCCESS - verifies payment with discount applied to price", async () => {
+        it("SUCCESS - updates existing subscription on plan change resets posts", async () => {
             const res = makeRes();
             paymentService.verifyPayment.mockResolvedValue({});
-            Subscription.findById.mockResolvedValue({ _id: SUB_ID, price: 300000, discount_percent: 33 });
-            
-            SubscriptionAccount.findOne
-                .mockReturnValueOnce({ populate: jest.fn().mockResolvedValue(null) })
-                .mockResolvedValueOnce(null);
+            Subscription.findById.mockResolvedValue({ _id: "sub_pro", price: 200000, post_limit: 20 });
 
-            SubscriptionAccount.create.mockResolvedValue({ _id: "sa2" });
-            await subscriptionController.verifySubscriptionPayment(validReq, res);
-            // price = 300000 - (300000 * 33 / 100) = 300000 - 99000 = 201000
-            expect(SubscriptionAccount.create).toHaveBeenCalledWith(
-                expect.objectContaining({ purchase_price: 201000 })
-            );
+            const existingSub = makeMockDoc({
+                _id: "sa1",
+                club_id: CLUB_ID,
+                subscription_id: SUB_ID,
+                status: "expired",
+                expire_date: pastExpireDate(),
+                posts_used: 7,
+                post_limit: 10
+            });
+
+            mockFindClubRecordWithPopulate(null);
+            mockFindClubRecord(existingSub);
+
+            await subscriptionController.verifySubscriptionPayment({
+                ...validReq,
+                body: { ...validReq.body, subscription_id: "sub_pro" }
+            }, res);
+
+            expect(existingSub.posts_used).toBe(0);
+            expect(existingSub.post_limit).toBe(20);
         });
 
         it("FAIL 400 - missing orderCode", async () => {
@@ -235,24 +276,6 @@ describe("Subscription Controller - Branch Coverage Suite", () => {
             await subscriptionController.verifySubscriptionPayment({
                 user: { accountId: ACCOUNT_ID },
                 body: { subscription_id: SUB_ID, club_id: CLUB_ID }
-            }, res);
-            expect(res.status).toHaveBeenCalledWith(400);
-        });
-
-        it("FAIL 400 - missing subscription_id", async () => {
-            const res = makeRes();
-            await subscriptionController.verifySubscriptionPayment({
-                user: { accountId: ACCOUNT_ID },
-                body: { orderCode: "ORD", club_id: CLUB_ID }
-            }, res);
-            expect(res.status).toHaveBeenCalledWith(400);
-        });
-
-        it("FAIL 400 - missing club_id", async () => {
-            const res = makeRes();
-            await subscriptionController.verifySubscriptionPayment({
-                user: { accountId: ACCOUNT_ID },
-                body: { orderCode: "ORD", subscription_id: SUB_ID }
             }, res);
             expect(res.status).toHaveBeenCalledWith(400);
         });

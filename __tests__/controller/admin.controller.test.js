@@ -331,7 +331,7 @@ describe("Admin Controller - Legendary Masterpiece Suite", () => {
             Subscription.prototype.save = jest.fn().mockResolvedValue(true);
 
             await adminController.createSubscription({
-                body: { name: "Pro", price: 500000, description: "Full features", discount_percent: 10 },
+                body: { name: "Pro", price: 500000, description: "Full features", post_limit: 50 },
                 user: { _id: "admin1" }
             }, res);
 

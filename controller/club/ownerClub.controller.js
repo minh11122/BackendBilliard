@@ -4,7 +4,7 @@ const Province = require("../../models/province.model");
 const District = require("../../models/district.model");
 const Notification = require("../../models/notification.model");
 const Account = require("../../models/account.model");
-const SubscriptionAccount = require("../../models/subcription_account.model");
+const { findActiveSubscriptionForClub } = require("../../utils/subscription.util");
 const Role = require("../../models/role.model");
 const { geocodeAddress } = require("../../utils/geocoding");
 
@@ -34,10 +34,9 @@ const getClubsByAccount = async (req, res) => {
         club.avatar = mainImage ? mainImage.image_url : null;
 
         let realPlanType = "free";
-        const activeSub = await SubscriptionAccount.findOne({
-          club_id: club._id,
-          status: { $in: ["active", "Active"] },
-        }).populate("subscription_id");
+        const activeSub = await findActiveSubscriptionForClub(club._id, {
+          populate: true
+        });
         if (activeSub && activeSub.subscription_id) {
           const subName = activeSub.subscription_id.name.toLowerCase();
           if (subName.includes("basic")) realPlanType = "basic";
@@ -338,12 +337,9 @@ const completeOnboarding = async (req, res) => {
     }
 
     let realPlanType = "free";
-    const activeSub = await SubscriptionAccount.findOne({
-      club_id: id,
-      status: { $in: ["active", "Active"] },
-    })
-      .populate("subscription_id")
-      .sort({ purchase_date: -1 });
+    const activeSub = await findActiveSubscriptionForClub(id, {
+      populate: true
+    });
 
     if (activeSub && activeSub.subscription_id) {
       const subName = activeSub.subscription_id.name.toLowerCase();

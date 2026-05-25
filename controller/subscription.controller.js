@@ -2,16 +2,17 @@ const Subscription = require("../models/subscription.model");
 const SubscriptionAccount = require("../models/subcription_account.model");
 const Notification = require("../models/notification.model");
 const paymentService = require("../services/payment.service");
+const {
+  isSubscriptionValid,
+  isDowngradeBlocked,
+  calculateSubscriptionPrice,
+  calculateRenewalExpireDate,
+  findActiveSubscriptionForClub,
+  findClubSubscriptionRecord
+} = require("../utils/subscription.util");
 
 const ALLOWED_MONTHS = [1, 3, 6, 12];
 const EXPIRING_SOON_DAYS = 3;
-
-function getPlanTier(subscription) {
-  const name = String(subscription?.name || "").toLowerCase();
-  if (name.includes("pro")) return 2;
-  if (name.includes("basic")) return 1;
-  return 0;
-}
 
 const notifySubscriptionExpiringSoon = async (subscriptionAccount) => {
   if (!subscriptionAccount?.expire_date || !subscriptionAccount?.account_id) {
@@ -97,12 +98,9 @@ const getCurrentSubscription = async (req, res) => {
       });
     }
 
-    const current = await SubscriptionAccount.findOne({
-      club_id: club_id,
-      status: { $in: ["active", "Active"] }
-    })
-      .populate("subscription_id")
-      .sort({ purchase_date: -1 });
+    const current = await findActiveSubscriptionForClub(club_id, {
+      populate: true
+    });
 
     if (current) {
       await notifySubscriptionExpiringSoon(current);
@@ -158,24 +156,18 @@ const createSubscriptionPayment = async (req, res) => {
       });
     }
 
-    const activeSub = await SubscriptionAccount.findOne({
-      club_id,
-      status: { $in: ["active", "Active"] }
-    }).populate("subscription_id");
+    const activeSub = await findActiveSubscriptionForClub(club_id, {
+      populate: true
+    });
 
-    const currentTier = getPlanTier(activeSub?.subscription_id);
-    const targetTier = getPlanTier(subscription);
-    if (currentTier === 2 && targetTier === 1) {
+    if (isDowngradeBlocked(activeSub, subscription)) {
       return res.status(400).json({
         success: false,
         message: "Đang sử dụng gói Pro, không thể chuyển xuống Basic"
       });
     }
 
-    const unitPrice =
-      subscription.price -
-      (subscription.price * (subscription.discount_percent || 0)) / 100;
-    const price = Math.max(0, Math.round(unitPrice * months));
+    const price = calculateSubscriptionPrice(subscription, months);
 
     const payment = await paymentService.createPayment({
       accountId,
@@ -240,14 +232,11 @@ const verifySubscriptionPayment = async (req, res) => {
       });
     }
 
-    const activeSub = await SubscriptionAccount.findOne({
-      club_id,
-      status: { $in: ["active", "Active"] }
-    }).populate("subscription_id");
+    const activeSub = await findActiveSubscriptionForClub(club_id, {
+      populate: true
+    });
 
-    const currentTier = getPlanTier(activeSub?.subscription_id);
-    const targetTier = getPlanTier(subscription);
-    if (currentTier === 2 && targetTier === 1) {
+    if (isDowngradeBlocked(activeSub, subscription)) {
       return res.status(400).json({
         success: false,
         message: "Đang sử dụng gói Pro, không thể chuyển xuống Basic"
@@ -255,31 +244,43 @@ const verifySubscriptionPayment = async (req, res) => {
     }
 
     const purchaseDate = new Date();
+    const price = calculateSubscriptionPrice(subscription, months);
 
-    const expireDate = new Date();
-    const baseDays = subscription.duration_days || 30;
-    expireDate.setDate(expireDate.getDate() + (baseDays * months));
+    let clubSubscription = await findClubSubscriptionRecord(club_id);
 
-    const unitPrice =
-      subscription.price -
-      (subscription.price * (subscription.discount_percent || 0)) / 100;
-    const price = Math.max(0, Math.round(unitPrice * months));
+    const isSamePlan =
+      clubSubscription &&
+      String(clubSubscription.subscription_id) === String(subscription_id);
+    const isRenewal =
+      isSamePlan &&
+      (isSubscriptionValid(clubSubscription) ||
+        clubSubscription.status === "expired");
 
-    let clubSubscription = await SubscriptionAccount.findOne({
-      club_id: club_id
-    });
+    const expireDate = calculateRenewalExpireDate(
+      clubSubscription?.expire_date,
+      months,
+      purchaseDate
+    );
 
     if (clubSubscription) {
 
       clubSubscription.subscription_id = subscription_id;
       clubSubscription.account_id = accountId;
       clubSubscription.purchase_date = purchaseDate;
-      clubSubscription.start_date = purchaseDate;
+      if (!isRenewal) {
+        clubSubscription.start_date = purchaseDate;
+      }
       clubSubscription.expire_date = expireDate;
       clubSubscription.purchase_price = price;
       clubSubscription.status = "active";
-      clubSubscription.post_limit = subscription.post_limit || 0;
-      clubSubscription.posts_used = 0;
+
+      if (isRenewal) {
+        clubSubscription.post_limit =
+          (clubSubscription.post_limit || 0) + (subscription.post_limit || 0);
+      } else {
+        clubSubscription.post_limit = subscription.post_limit || 0;
+        clubSubscription.posts_used = 0;
+      }
 
       await clubSubscription.save();
 

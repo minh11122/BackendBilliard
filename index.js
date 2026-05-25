@@ -7,6 +7,7 @@ require("dotenv").config({ path: path.join(__dirname, ".env") });
 const connectDB = require("./configs/db.connect");
 const routes = require("./routes/index");
 require("./cron/bookingCron");
+require("./cron/subscriptionCron");
 
 
 const app = express();
