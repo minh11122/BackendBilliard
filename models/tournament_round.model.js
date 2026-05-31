@@ -36,8 +36,7 @@ tournamentRoundSchema.index(
 const TournamentRound =
   mongoose.models.TournamentRound || mongoose.model("TournamentRound", tournamentRoundSchema);
 
-const LEGACY_INDEX_NAME = "tournament_id_1_round_number_1_group_key_1";
-const ROUND_ROBIN_INDEX_NAME = "tournament_id_1_bracket_side_1_round_number_1_group_key_1";
+
 const CURRENT_INDEX_NAME = "tournament_id_1_bracket_side_1_round_number_1";
 
 const ensureTournamentRoundIndexes = async () => {
@@ -50,13 +49,7 @@ const ensureTournamentRoundIndexes = async () => {
   }
 
   const indexes = await TournamentRound.collection.indexes();
-  for (const indexName of [LEGACY_INDEX_NAME, ROUND_ROBIN_INDEX_NAME]) {
-    const hasIndex = indexes.some((index) => index.name === indexName);
-    if (hasIndex) {
-      console.log(`[TournamentRound] Dropping legacy index ${indexName}`);
-      await TournamentRound.collection.dropIndex(indexName);
-    }
-  }
+ 
 
   const refreshedIndexes = await TournamentRound.collection.indexes();
   const hasCurrentIndex = refreshedIndexes.some((index) => index.name === CURRENT_INDEX_NAME);

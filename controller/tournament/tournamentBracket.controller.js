@@ -210,7 +210,7 @@ const getTournamentMatches = async (req, res) => {
     if (!tournament) {
       return res
         .status(404)
-        .json({ success: false, message: "KhÃ´ng tÃ¬m tháº¥y giáº£i Ä‘áº¥u" });
+        .json({ success: false, message: "Không tìm thấy giải đấu" });
     }
 
     if (tournament.format === "Double Elimination") {
