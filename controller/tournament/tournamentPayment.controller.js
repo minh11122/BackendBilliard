@@ -32,6 +32,16 @@ const createTournamentPayOSPayment = async (req, res) => {
         .json({ success: false, message: "Giải đấu hiện không mở đăng ký" });
     }
 
+    // Chặn đăng ký nếu đã quá hạn (hàng rào phụ khi cron chưa kịp chạy)
+    if (
+      tournament.registration_deadline &&
+      new Date() > new Date(tournament.registration_deadline)
+    ) {
+      return res
+        .status(400)
+        .json({ success: false, message: "Đã hết hạn đăng ký giải đấu" });
+    }
+
     const approvedCount = await TournamentPlayer.countDocuments({
       tournament_id: tournament._id,
       status: "Approved",

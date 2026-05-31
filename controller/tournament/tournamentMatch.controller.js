@@ -38,7 +38,7 @@ const startRoundMatch = async (req, res) => {
     if (!managedClubId || String(tournament.club_id) !== String(managedClubId)) {
       return res.status(403).json({
         success: false,
-        message: "Báº¡n khÃ´ng cÃ³ quyá»n quáº£n lÃ½ tráº­n Ä‘áº¥u cá»§a giáº£i nÃ y",
+        message: "Bạn không có quyền quản lý trận đấu của giải này",
       });
     }
     if (tournament.status !== "InProgress") {
@@ -162,7 +162,7 @@ const updateMatchResult = async (req, res) => {
     if (!managedClubId || String(tournament.club_id) !== String(managedClubId)) {
       return res.status(403).json({
         success: false,
-        message: "Báº¡n khÃ´ng cÃ³ quyá»n cáº­p nháº­t káº¿t quáº£ cá»§a giáº£i nÃ y",
+        message: "Bạn không có quyền cập nhật kết quả của giải này",
       });
     }
     if (tournament.status !== "InProgress") {

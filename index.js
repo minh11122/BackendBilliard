@@ -8,6 +8,7 @@ const connectDB = require("./configs/db.connect");
 const routes = require("./routes/index");
 require("./cron/bookingCron");
 require("./cron/subscriptionCron");
+require("./cron/tournamentCron");
 
 
 const app = express();
