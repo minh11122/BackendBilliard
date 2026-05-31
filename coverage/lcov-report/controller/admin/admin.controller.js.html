@@ -25,14 +25,14 @@
             <div class='fl pad1y space-right2'>
                 <span class="strong">100% </span>
                 <span class="quiet">Statements</span>
-                <span class='fraction'>592/592</span>
+                <span class='fraction'>572/572</span>
             </div>
         
             
             <div class='fl pad1y space-right2'>
-                <span class="strong">87.09% </span>
+                <span class="strong">93.1% </span>
                 <span class="quiet">Branches</span>
-                <span class='fraction'>81/93</span>
+                <span class='fraction'>81/87</span>
             </div>
         
             
@@ -46,7 +46,7 @@
             <div class='fl pad1y space-right2'>
                 <span class="strong">100% </span>
                 <span class="quiet">Lines</span>
-                <span class='fraction'>592/592</span>
+                <span class='fraction'>572/572</span>
             </div>
         
             
@@ -634,27 +634,7 @@
 <a name='L569'></a><a href='#L569'>569</a>
 <a name='L570'></a><a href='#L570'>570</a>
 <a name='L571'></a><a href='#L571'>571</a>
-<a name='L572'></a><a href='#L572'>572</a>
-<a name='L573'></a><a href='#L573'>573</a>
-<a name='L574'></a><a href='#L574'>574</a>
-<a name='L575'></a><a href='#L575'>575</a>
-<a name='L576'></a><a href='#L576'>576</a>
-<a name='L577'></a><a href='#L577'>577</a>
-<a name='L578'></a><a href='#L578'>578</a>
-<a name='L579'></a><a href='#L579'>579</a>
-<a name='L580'></a><a href='#L580'>580</a>
-<a name='L581'></a><a href='#L581'>581</a>
-<a name='L582'></a><a href='#L582'>582</a>
-<a name='L583'></a><a href='#L583'>583</a>
-<a name='L584'></a><a href='#L584'>584</a>
-<a name='L585'></a><a href='#L585'>585</a>
-<a name='L586'></a><a href='#L586'>586</a>
-<a name='L587'></a><a href='#L587'>587</a>
-<a name='L588'></a><a href='#L588'>588</a>
-<a name='L589'></a><a href='#L589'>589</a>
-<a name='L590'></a><a href='#L590'>590</a>
-<a name='L591'></a><a href='#L591'>591</a>
-<a name='L592'></a><a href='#L592'>592</a></td><td class="line-coverage quiet"><span class="cline-any cline-yes">1x</span>
+<a name='L572'></a><a href='#L572'>572</a></td><td class="line-coverage quiet"><span class="cline-any cline-yes">1x</span>
 <span class="cline-any cline-yes">1x</span>
 <span class="cline-any cline-yes">1x</span>
 <span class="cline-any cline-yes">1x</span>
@@ -902,16 +882,6 @@
 <span class="cline-any cline-yes">2x</span>
 <span class="cline-any cline-yes">2x</span>
 <span class="cline-any cline-yes">2x</span>
-<span class="cline-any cline-yes">2x</span>
-<span class="cline-any cline-yes">2x</span>
-<span class="cline-any cline-yes">2x</span>
-<span class="cline-any cline-yes">2x</span>
-<span class="cline-any cline-yes">2x</span>
-<span class="cline-any cline-yes">2x</span>
-<span class="cline-any cline-yes">2x</span>
-<span class="cline-any cline-yes">2x</span>
-<span class="cline-any cline-yes">2x</span>
-<span class="cline-any cline-yes">2x</span>
 <span class="cline-any cline-yes">1x</span>
 <span class="cline-any cline-yes">1x</span>
 <span class="cline-any cline-yes">1x</span>
@@ -948,16 +918,6 @@
 <span class="cline-any cline-yes">3x</span>
 <span class="cline-any cline-yes">1x</span>
 <span class="cline-any cline-yes">1x</span>
-<span class="cline-any cline-yes">3x</span>
-<span class="cline-any cline-yes">3x</span>
-<span class="cline-any cline-yes">3x</span>
-<span class="cline-any cline-yes">3x</span>
-<span class="cline-any cline-yes">3x</span>
-<span class="cline-any cline-yes">3x</span>
-<span class="cline-any cline-yes">3x</span>
-<span class="cline-any cline-yes">3x</span>
-<span class="cline-any cline-yes">3x</span>
-<span class="cline-any cline-yes">3x</span>
 <span class="cline-any cline-yes">3x</span>
 <span class="cline-any cline-yes">3x</span>
 <span class="cline-any cline-yes">3x</span>
@@ -1478,10 +1438,7 @@ const createSubscription = async (req, res) =&gt; {
       name,
       price,
       description,
-      discount_percent,
-      duration_days,
       post_limit,
-      features,
       is_active
     } = req.body;
 &nbsp;
@@ -1489,14 +1446,7 @@ const createSubscription = async (req, res) =&gt; {
       name,
       price,
       description,
-      discount_percent,
-      duration_days,
       post_limit,
-      features: {
-        allow_priority_post: !!features<span class="branch-0 cbranch-no" title="branch not covered" >?.allow_priority_post,</span>
-        allow_highlight: !!features<span class="branch-0 cbranch-no" title="branch not covered" >?.allow_highlight,</span>
-        allow_pin_post: !!features<span class="branch-0 cbranch-no" title="branch not covered" >?.allow_pin_post</span>
-      },
       is_active: typeof is_active === "boolean"<span class="branch-0 cbranch-no" title="branch not covered" > ? is_active </span>: true,
       created_at: new Date(),
       created_by: req.user?._id // nếu có auth
@@ -1545,10 +1495,7 @@ const updateSubscription = async (req, res) =&gt; {
       name,
       price,
       description,
-      discount_percent,
-      duration_days,
       post_limit,
-      features,
       is_active
     } = req.body;
 &nbsp;
@@ -1558,14 +1505,7 @@ const updateSubscription = async (req, res) =&gt; {
         name,
         price,
         description,
-        discount_percent,
-        duration_days,
         post_limit,
-        features: {
-          allow_priority_post: !!features<span class="branch-0 cbranch-no" title="branch not covered" >?.allow_priority_post,</span>
-          allow_highlight: !!features<span class="branch-0 cbranch-no" title="branch not covered" >?.allow_highlight,</span>
-          allow_pin_post: !!features<span class="branch-0 cbranch-no" title="branch not covered" >?.allow_pin_post</span>
-        },
         is_active: typeof is_active === "boolean"<span class="branch-0 cbranch-no" title="branch not covered" > ? is_active </span>: true
       },
       { new: true }
@@ -1843,7 +1783,7 @@ module.exports = {
             <div class='footer quiet pad2 space-top1 center small'>
                 Code coverage generated by
                 <a href="https://istanbul.js.org/" target="_blank" rel="noopener noreferrer">istanbul</a>
-                at 2026-05-06T00:13:45.199Z
+                at 2026-05-31T13:05:05.263Z
             </div>
         <script src="../../prettify.js"></script>
         <script>

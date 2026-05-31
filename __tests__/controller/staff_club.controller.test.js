@@ -2,11 +2,13 @@ const Account = require("../../models/account.model");
 const Club = require("../../models/club.model");
 const Role = require("../../models/role.model");
 const bcrypt = require("bcryptjs");
-const staffClubController = require("../../controller/staff_club.controller");
+const staffClubController = require("../../controller/club/staff_club.controller");
 
 jest.mock("../../models/account.model");
 jest.mock("../../models/club.model");
 jest.mock("../../models/role.model");
+jest.mock("../../controller/club/club.helpers");
+const { canAccessClub } = require("../../controller/club/club.helpers");
 jest.mock("bcryptjs", () => ({
   hash: jest.fn().mockResolvedValue("hashed_password"),
 }));
@@ -29,6 +31,7 @@ const mockQuery = (val) => ({
 describe("Staff Club Controller - Unit Tests", () => {
   beforeEach(() => {
     jest.clearAllMocks();
+    canAccessClub.mockResolvedValue(true);
   });
 
   describe("createStaffClub", () => {
@@ -39,7 +42,7 @@ describe("Staff Club Controller - Unit Tests", () => {
           club_id: "c1",
           fullname: "Staff VIP",
           email: "staff@example.com",
-          password: "password123"
+          password: "Password123!"
         }
       };
       const res = createRes();
@@ -71,7 +74,7 @@ describe("Staff Club Controller - Unit Tests", () => {
         };
         const res = createRes();
   
-        Club.findOne.mockResolvedValue(null); // not owned
+        canAccessClub.mockResolvedValue(false);
   
         await staffClubController.createStaffClub(req, res);
   
@@ -128,15 +131,6 @@ describe("Staff Club Controller - Unit Tests", () => {
         expect(staffMock.save).toHaveBeenCalled();
     });
 
-    it("should delete a staff member (status DELETED)", async () => {
-        const req = { user: { accountId: "owner1" }, params: { id: "s1" } };
-        const res = createRes();
-        const staffMock = { _id: "s1", club_id: "c1", status: "ACTIVE", save: jest.fn() };
-        Account.findById.mockResolvedValue(staffMock);
-        Club.findOne.mockResolvedValue({ _id: "c1" });
-        await staffClubController.deleteStaffClub(req, res);
-        expect(staffMock.status).toBe("DELETED");
-    });
 
     it("should get staff detail by ID", async () => {
         const req = { user: { accountId: "owner1" }, params: { id: "s1" } };
@@ -152,7 +146,7 @@ describe("Staff Club Controller - Unit Tests", () => {
         const req = { 
             user: { accountId: "owner1" }, 
             params: { id: "s1" },
-            body: { fullname: "New Name", password: "newpassword" }
+            body: { fullname: "New Name", password: "NewPassword123!" }
         };
         const res = createRes();
         const staffMock = { 

@@ -11,7 +11,7 @@ const { timeToMinutes } = require("./club.helpers");
 
 const getAllClubs = async (req, res) => {
   try {
-    const { keyword, province_code, district_code } = req.query;
+    const { keyword, province_code, district_code } = req.query || {};
     const query = { status: "Approved", onboarding_completed: true };
 
     if (keyword) {
@@ -130,8 +130,8 @@ const getAllClubs = async (req, res) => {
 
 const getClubById = async (req, res) => {
   try {
-    const { id } = req.params;
-    const { play_date, startTime, duration } = req.query;
+    const { id } = req.params || {};
+    const { play_date, startTime, duration } = req.query || {};
 
     const club = await Club.findById(id).lean();
 

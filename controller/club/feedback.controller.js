@@ -1,9 +1,10 @@
-const Feedback = require("../models/feedback.model");
-const Booking = require("../models/booking.model");
-const BilliardTable = require("../models/billiard_table.model");
-const Account = require("../models/account.model");
-const Club = require("../models/club.model");
-const Notification = require("../models/notification.model");
+const Feedback = require("../../models/feedback.model");
+const Booking = require("../../models/booking.model");
+const BilliardTable = require("../../models/billiard_table.model");
+const Account = require("../../models/account.model");
+const Club = require("../../models/club.model");
+const Notification = require("../../models/notification.model");
+const { canAccessClub } = require("./club.helpers");
 
 const notifyClubStaff = async (club_id, title, message, link = null) => {
   try {
@@ -148,11 +149,8 @@ exports.getClubFeedbacks = async (req, res) => {
       return res.status(403).json({ success: false, message: "Bạn không thuộc quán nào hoặc chưa chọn quán" });
     }
 
-    if (req.user.role === "OWNER") {
-      const club = await Club.findOne({ _id: clubId, account_id: req.user.accountId });
-      if (!club) return res.status(403).json({ success: false, message: "Bạn không có quyền xem đánh giá của quán này" });
-    } else if (req.user.role === "STAFF_CLUB" && req.user.club_id !== clubId) {
-      return res.status(403).json({ success: false, message: "Bạn không có quyền xem đánh giá của quán khác" });
+    if (!(await canAccessClub(req, clubId))) {
+      return res.status(403).json({ success: false, message: "Bạn không có quyền xem đánh giá của quán này" });
     }
 
     const page = parseInt(req.query.page) || 1;
@@ -218,11 +216,8 @@ exports.replyFeedback = async (req, res) => {
       return res.status(403).json({ success: false, message: "Vui lòng truyền lên clubId của quán đang thao tác" });
     }
 
-    if (req.user.role === "OWNER") {
-      const club = await Club.findOne({ _id: activeClubId, account_id: req.user.accountId });
-      if (!club) return res.status(403).json({ success: false, message: "Bạn không có quyền thao tác trên quán này" });
-    } else if (req.user.role === "STAFF_CLUB" && req.user.club_id !== activeClubId) {
-      return res.status(403).json({ success: false, message: "Bạn không có quyền thao tác trên quán khác" });
+    if (!(await canAccessClub(req, activeClubId))) {
+      return res.status(403).json({ success: false, message: "Bạn không có quyền thao tác trên quán này" });
     }
 
     const feedback = await Feedback.findById(id);

@@ -1,20 +1,18 @@
 const mongoose = require("mongoose");
-const BilliardTable = require("../models/billiard_table.model");
-const Club = require("../models/club.model");
+const BilliardTable = require("../../models/billiard_table.model");
+const Club = require("../../models/club.model");
 
-const checkOwnerAccess = async (clubId, accountId) => {
-    if (!clubId || !accountId) return false;
-    const club = await Club.findOne({ _id: clubId, account_id: accountId });
-    return !!club;
-};
+const Booking = require("../../models/booking.model");
+const RoundMatch = require("../../models/round_match.model");
+const TableType = require("../../models/table_type.model");
+const cloudinary = require("../../configs/cloudinary.config");
+const { canAccessClub } = require("./club.helpers");
 
-const Booking = require("../models/booking.model");
-const TableType = require("../models/table_type.model");
-const cloudinary = require("../configs/cloudinary.config");
+
 
 const getBilliardTables = async (req, res) => {
     try {
-        const club_id = req.user?.club_id || req.query.club_id || req.body.club_id;
+        const club_id = req.user?.club_id || req.query?.club_id || req.body?.club_id;
         const { page = 1, limit = 5, search, table_type_id, status } = req.query;
 
         if (!club_id) {
@@ -22,7 +20,7 @@ const getBilliardTables = async (req, res) => {
         }
 
         if (req.user?.role === "OWNER") {
-            const isOwner = await checkOwnerAccess(club_id, req.user.accountId || req.user.id);
+            const isOwner = await canAccessClub(req, club_id);
             if (!isOwner) return res.status(403).json({ success: false, message: "Bạn không có quyền thao tác trên quán này!" });
         }
 
@@ -203,7 +201,7 @@ const getBilliardTableById = async (req, res) => {
         if (!table) return res.status(404).json({ success: false, message: "Không tìm thấy bàn!" });
 
         if (req.user?.role === "OWNER") {
-            const isOwner = await checkOwnerAccess(table.club_id, req.user.accountId || req.user.id);
+            const isOwner = await canAccessClub(req, table.club_id);
             if (!isOwner) return res.status(403).json({ success: false, message: "Bạn không có quyền xem bàn của quán khác!" });
         } else if (req.user?.role === "STAFF_CLUB" && req.user.club_id !== table.club_id.toString()) {
             return res.status(403).json({ success: false, message: "Nhân viên không có quyền xem bàn của quán khác!" });
@@ -252,7 +250,7 @@ const deleteCloudinaryImages = async (urls) => {
 const createBilliardTable = async (req, res) => {
     try {
         const { table_type_id, isActive } = req.body;
-        const club_id = req.user?.club_id || req.query.club_id || req.body.club_id;
+        const club_id = req.user?.club_id || req.query?.club_id || req.body?.club_id;
         let { table_number, price, description } = req.body;
 
         if (club_id && !(await canAccessClub(req, club_id))) {
@@ -337,7 +335,7 @@ const createBilliardTable = async (req, res) => {
 const updateBilliardTable = async (req, res) => {
     try {
         const { id } = req.params;
-        const club_id = req.user?.club_id || req.query.club_id || req.body.club_id;
+        const club_id = req.user?.club_id || req.query?.club_id || req.body?.club_id;
         const { table_type_id, status, isActive } = req.body;
         let { table_number, price, description } = req.body;
 
@@ -345,7 +343,7 @@ const updateBilliardTable = async (req, res) => {
         if (!club_id) return res.status(403).json({ success: false, message: "Không xác định được ID Quán." });
 
         if (req.user?.role === "OWNER") {
-            const isOwner = await checkOwnerAccess(club_id, req.user.accountId || req.user.id);
+            const isOwner = await canAccessClub(req, club_id);
             if (!isOwner) return res.status(403).json({ success: false, message: "Bạn không có quyền thao tác trên quán này!" });
         }
 
@@ -446,13 +444,13 @@ const updateBilliardTable = async (req, res) => {
 const deleteBilliardTable = async (req, res) => {
     try {
         const { id } = req.params;
-        const club_id = req.user?.club_id || req.query.club_id || req.body.club_id;
+        const club_id = req.user?.club_id || req.query?.club_id || req.body?.club_id;
 
         if (!isValidObjectId(id)) return res.status(400).json({ success: false, message: "Thiếu hoặc sai định dạng ID bàn" });
         if (!club_id) return res.status(403).json({ success: false, message: "Không xác định được ID Quán." });
 
         if (req.user?.role === "OWNER") {
-            const isOwner = await checkOwnerAccess(club_id, req.user.accountId || req.user.id);
+            const isOwner = await canAccessClub(req, club_id);
             if (!isOwner) return res.status(403).json({ success: false, message: "Bạn không có quyền thao tác trên quán này!" });
         }
 
@@ -472,6 +470,14 @@ const deleteBilliardTable = async (req, res) => {
         });
         if (activeBookings) {
             return res.status(400).json({ success: false, message: "Không thể xóa bàn vì đang có lịch đặt hoặc đang được chơi." });
+        }
+
+        const activeMatches = await RoundMatch.exists({
+            table_id: id,
+            status: { $in: ["Scheduled", "Ready", "Playing"] }
+        });
+        if (activeMatches) {
+            return res.status(400).json({ success: false, message: "Không thể xóa bàn vì bàn đang được gán cho một trận đấu giải." });
         }
 
         if (table.images && table.images.length > 0) {

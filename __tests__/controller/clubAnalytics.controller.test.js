@@ -1,4 +1,4 @@
-const clubAnalyticsController = require("../../controller/clubAnalytics.controller");
+const clubAnalyticsController = require("../../controller/club/clubAnalytics.controller");
 const Invoice = require("../../models/invoice.model");
 const Booking = require("../../models/booking.model");
 const BilliardTable = require("../../models/billiard_table.model");
@@ -20,6 +20,9 @@ jest.mock("../../models/feedback.model");
 jest.mock("../../models/club.model");
 jest.mock("../../models/tournament.model");
 jest.mock("../../models/transiction_history.model");
+jest.mock("../../controller/club/club.helpers", () => ({
+  canAccessClub: jest.fn().mockResolvedValue(true)
+}));
 
 const createRes = () => {
   const res = {};

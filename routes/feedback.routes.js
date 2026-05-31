@@ -1,6 +1,6 @@
 const express = require("express");
 const router = express.Router();
-const feedbackController = require("../controller/feedback.controller");
+const feedbackController = require("../controller/club/feedback.controller");
 const authenticate = require("../middleware/authenticate.middleware");
 
 // Customer creating a new feedback (Must be logged in)

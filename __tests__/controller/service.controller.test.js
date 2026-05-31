@@ -1,8 +1,12 @@
-const serviceController = require("../../controller/service.controller");
+const serviceController = require("../../controller/club/service.controller");
 const Service = require("../../models/service.model");
 const cloudinary = require("../../configs/cloudinary.config");
 
 jest.mock("../../models/service.model");
+jest.mock("../../controller/club/club.helpers", () => ({
+  canAccessClub: jest.fn().mockResolvedValue(true),
+  checkOwnerAccess: jest.fn().mockResolvedValue(true),
+}));
 jest.mock("../../configs/cloudinary.config", () => ({
     uploader: {
         destroy: jest.fn().mockResolvedValue({ result: "ok" }),

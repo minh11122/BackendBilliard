@@ -1,38 +1,24 @@
 const mongoose = require("mongoose");
-const Service = require("../models/service.model");
-const Club = require("../models/club.model");
+const Service = require("../../models/service.model");
+const Club = require("../../models/club.model");
 
-const checkOwnerAccess = async (clubId, accountId) => {
-    if (!clubId || !accountId) return false;
-    const club = await Club.findOne({ _id: clubId, account_id: accountId });
-    return !!club;
-};
-
-const cloudinary = require("../configs/cloudinary.config");
+const cloudinary = require("../../configs/cloudinary.config");
+const { canAccessClub } = require("./club.helpers");
 
 
-const canAccessClub = async (req, clubId) => {
-    if (!clubId || !req.user) return false;
-    if (req.user.role === "STAFF_CLUB") return String(req.user.club_id) === String(clubId);
-    if (req.user.role === "OWNER") {
-        const ownedClub = await Club.findOne({ _id: clubId, account_id: req.user.accountId }).select("_id").lean();
-        return !!ownedClub;
-    }
-    return false;
-};
+
 
 const getServices = async (req, res) => {
     try {
-        const club_id = req.user?.club_id || req.query.club_id || req.body.club_id;
-        const { page = 1, limit = 10, search, status = "Active" } = req.query;
+        const club_id = req.user?.club_id || req.query?.club_id || req.body?.club_id;
+        const { page = 1, limit = 10, search, status = "Active" } = req.query || {};
 
         if (!club_id) {
             return res.status(400).json({ success: false, message: "Khong xac dinh duoc ID quan." });
         }
 
-        if (req.user?.role === "OWNER") {
-            const isOwner = await checkOwnerAccess(club_id, req.user.accountId || req.user.id);
-            if (!isOwner) return res.status(403).json({ success: false, message: "Bạn không có quyền thao tác trên quán này!" });
+        if (!(await canAccessClub(req, club_id))) {
+            return res.status(403).json({ success: false, message: "Bạn không có quyền thao tác trên quán này!" });
         }
 
         const query = { club_id: new mongoose.Types.ObjectId(club_id), status };
@@ -95,7 +81,7 @@ const getServiceById = async (req, res) => {
         if (!service) return res.status(404).json({ success: false, message: "Không tìm thấy dịch vụ!" });
 
         if (req.user?.role === "OWNER") {
-            const isOwner = await checkOwnerAccess(service.club_id, req.user.accountId || req.user.id);
+            const isOwner = await canAccessClub(req, service.club_id);
             if (!isOwner) return res.status(403).json({ success: false, message: "Bạn không có quyền xem dịch vụ của quán khác!" });
         } else if (req.user?.role === "STAFF_CLUB" && req.user.club_id !== service.club_id.toString()) {
             return res.status(403).json({ success: false, message: "Nhân viên không có quyền xem dịch vụ của quán khác!" });
@@ -110,7 +96,7 @@ const getServiceById = async (req, res) => {
 const createService = async (req, res) => {
     try {
         const { name, price, description } = req.body;
-        const club_id = req.user?.club_id || req.query.club_id || req.body.club_id;
+        const club_id = req.user?.club_id || req.query?.club_id || req.body?.club_id;
 
         if (!club_id) {
             return res.status(400).json({ success: false, message: "Khong xac dinh duoc ID quan." });
@@ -120,25 +106,20 @@ const createService = async (req, res) => {
             return res.status(403).json({ success: false, message: "Ban khong co quyen tao dich vu cho quan nay." });
         }
 
-        if (req.user?.role === "OWNER") {
-            const isOwner = await checkOwnerAccess(club_id, req.user.accountId || req.user.id);
-            if (!isOwner) return res.status(403).json({ success: false, message: "Bạn không có quyền thao tác trên quán này!" });
-        }
-
         if (!name || !name.trim()) {
-            return res.status(400).json({ success: false, message: "Ten dich vu khong duoc de trong." });
+            return res.status(400).json({ success: false, message: "Tên dịch vụ không được để trống." });
         }
         if (name.trim().length > 150) {
-            return res.status(400).json({ success: false, message: "Ten dich vu toi da 150 ky tu." });
+            return res.status(400).json({ success: false, message: "Tên dịch vụ tối đa 150 ký tự." });
         }
         if (price === undefined || price === null || Number.isNaN(Number(price))) {
-            return res.status(400).json({ success: false, message: "Gia dich vu bat buoc va phai la so." });
+            return res.status(400).json({ success: false, message: "Giá dịch vụ bắt buộc và phải là số." });
         }
         if (Number(price) <= 0) {
-            return res.status(400).json({ success: false, message: "Gia dich vu phai lon hon 0." });
+            return res.status(400).json({ success: false, message: "Giá dịch vụ phải lớn hơn 0." });
         }
         if (description && description.length > 500) {
-            return res.status(400).json({ success: false, message: "Mo ta toi da 500 ky tu." });
+            return res.status(400).json({ success: false, message: "Mô tả tối đa 500 ký tự." });
         }
 
         // Kiểm tra trùng tên trong cùng Club
@@ -178,7 +159,7 @@ const updateService = async (req, res) => {
     try {
         const { id } = req.params;
         const { name, price, description, removedImages } = req.body;
-        const club_id = req.user?.club_id || req.query.club_id || req.body.club_id;
+        const club_id = req.user?.club_id || req.query?.club_id || req.body?.club_id;
 
         if (!club_id) {
             return res.status(400).json({ success: false, message: "Khong xac dinh duoc ID quan." });
@@ -186,11 +167,6 @@ const updateService = async (req, res) => {
 
         if (!(await canAccessClub(req, club_id))) {
             return res.status(403).json({ success: false, message: "Ban khong co quyen cap nhat dich vu cho quan nay." });
-        }
-
-        if (req.user?.role === "OWNER") {
-            const isOwner = await checkOwnerAccess(club_id, req.user.accountId || req.user.id);
-            if (!isOwner) return res.status(403).json({ success: false, message: "Bạn không có quyền thao tác trên quán này!" });
         }
 
         if (!name || !name.trim()) {
@@ -274,12 +250,11 @@ const deactivateService = async (req, res) => {
     try {
         const { id } = req.params;
         
-        const club_id = req.user?.club_id || req.query.club_id || req.body.club_id;
+        const club_id = req.user?.club_id || req.query?.club_id || req.body?.club_id;
         if (!club_id) return res.status(400).json({ success: false, message: "Không xác định được ID Quán." });
 
-        if (req.user?.role === "OWNER") {
-            const isOwner = await checkOwnerAccess(club_id, req.user.accountId || req.user.id);
-            if (!isOwner) return res.status(403).json({ success: false, message: "Bạn không có quyền thao tác trên quán này!" });
+        if (!(await canAccessClub(req, club_id))) {
+            return res.status(403).json({ success: false, message: "Bạn không có quyền thao tác trên quán này!" });
         }
 
         const existing = await Service.findById(id);
@@ -308,12 +283,11 @@ const reactivateService = async (req, res) => {
     try {
         const { id } = req.params;
         
-        const club_id = req.user?.club_id || req.query.club_id || req.body.club_id;
+        const club_id = req.user?.club_id || req.query?.club_id || req.body?.club_id;
         if (!club_id) return res.status(400).json({ success: false, message: "Không xác định được ID Quán." });
 
-        if (req.user?.role === "OWNER") {
-            const isOwner = await checkOwnerAccess(club_id, req.user.accountId || req.user.id);
-            if (!isOwner) return res.status(403).json({ success: false, message: "Bạn không có quyền thao tác trên quán này!" });
+        if (!(await canAccessClub(req, club_id))) {
+            return res.status(403).json({ success: false, message: "Bạn không có quyền thao tác trên quán này!" });
         }
 
         const existing = await Service.findById(id);
@@ -346,14 +320,11 @@ const deleteServicePermanently = async (req, res) => {
             return res.status(404).json({ success: false, message: "Không tìm thấy dịch vụ." });
         }
         
-        const club_id = req.user?.club_id || req.query.club_id || req.body.club_id;
+        const club_id = req.user?.club_id || req.query?.club_id || req.body?.club_id;
         if (!club_id) return res.status(400).json({ success: false, message: "Không xác định được ID Quán." });
 
-        if (req.user?.role === "OWNER") {
-            const isOwner = await checkOwnerAccess(club_id, req.user.accountId || req.user.id);
-            if (!isOwner) return res.status(403).json({ success: false, message: "Bạn không có quyền thao tác trên quán này!" });
-        } else if (req.user?.role === "STAFF_CLUB" && req.user.club_id !== service.club_id.toString()) {
-            return res.status(403).json({ success: false, message: "Nhân viên không có quyền xóa dịch vụ của quán khác!" });
+        if (!(await canAccessClub(req, club_id))) {
+            return res.status(403).json({ success: false, message: "Bạn không có quyền thao tác trên quán này!" });
         }
 
         if (service.club_id.toString() !== club_id.toString()) {

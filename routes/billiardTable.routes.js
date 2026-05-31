@@ -1,6 +1,6 @@
 const express = require("express");
 const router = express.Router();
-const tableController = require("../controller/billiardTable.controller");
+const tableController = require("../controller/club/billiardTable.controller");
 const uploadCloud = require("../middleware/uploadCloud.middleware");
 const authenticate = require("../middleware/authenticate.middleware");
 const authorizeRole = require("../middleware/authorizeRole.middleware");

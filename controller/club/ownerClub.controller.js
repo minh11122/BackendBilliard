@@ -7,7 +7,18 @@ const Account = require("../../models/account.model");
 const { findActiveSubscriptionForClub } = require("../../utils/subscription.util");
 const Role = require("../../models/role.model");
 const { geocodeAddress } = require("../../utils/geocoding");
+const {
+  validateName,
+  validateAddress,
+  validatePhone,
+  validateTaxCode,
+  validateDescription,
+  validateTimes,
+  validateAmenities,
+  validateLegalDocuments,
+} = require("./club.helpers");
 
+//hàm lấy danh sách CLB của chủ quán tại trang select club
 const getClubsByAccount = async (req, res) => {
   try {
     const account_id = req.user?.accountId || req.query.account_id;
@@ -87,6 +98,7 @@ const registerClub = async (req, res) => {
       amenities,
     } = req.body;
 
+    // ✅ Authentication check
     if (!req.user || !req.user.accountId) {
       return res.status(401).json({
         success: false,
@@ -94,6 +106,7 @@ const registerClub = async (req, res) => {
       });
     }
 
+    // Required fields check
     if (!name || !address || !phone || !tax_code) {
       return res.status(400).json({
         success: false,
@@ -102,7 +115,49 @@ const registerClub = async (req, res) => {
       });
     }
 
-    const existingClub = await Club.findOne({ tax_code });
+    // Validate using helpers
+    const nameValidation = validateName(name);
+    if (!nameValidation.valid) {
+      return res.status(400).json({ success: false, message: nameValidation.message });
+    }
+
+    const addressValidation = validateAddress(address);
+    if (!addressValidation.valid) {
+      return res.status(400).json({ success: false, message: addressValidation.message });
+    }
+
+    const phoneValidation = validatePhone(phone);
+    if (!phoneValidation.valid) {
+      return res.status(400).json({ success: false, message: phoneValidation.message });
+    }
+
+    const taxCodeValidation = validateTaxCode(tax_code);
+    if (!taxCodeValidation.valid) {
+      return res.status(400).json({ success: false, message: taxCodeValidation.message });
+    }
+
+    const descriptionValidation = validateDescription(description);
+    if (!descriptionValidation.valid) {
+      return res.status(400).json({ success: false, message: descriptionValidation.message });
+    }
+
+    const timesValidation = validateTimes(opening_time, closing_time);
+    if (!timesValidation.valid) {
+      return res.status(400).json({ success: false, message: timesValidation.message });
+    }
+
+    const amenitiesValidation = validateAmenities(amenities);
+    if (!amenitiesValidation.valid) {
+      return res.status(400).json({ success: false, message: amenitiesValidation.message });
+    }
+
+    const legalDocumentsValidation = validateLegalDocuments(legalDocuments);
+    if (!legalDocumentsValidation.valid) {
+      return res.status(400).json({ success: false, message: legalDocumentsValidation.message });
+    }
+
+    // Kiểm tra mã số thuế có bị trùng không
+    const existingClub = await Club.findOne({ tax_code: taxCodeValidation.value });
     if (existingClub) {
       return res.status(400).json({
         success: false,
@@ -110,6 +165,16 @@ const registerClub = async (req, res) => {
       });
     }
 
+    // Kiểm tra số điện thoại có bị trùng không
+    const existingPhone = await Club.findOne({ phone: phoneValidation.value });
+    if (existingPhone) {
+      return res.status(400).json({
+        success: false,
+        message: "Số điện thoại này đã được đăng ký",
+      });
+    }
+
+    // Geocoding
     let lat = frontendLat || 0;
     let lng = frontendLng || 0;
     let districtNameField = "";
@@ -122,7 +187,7 @@ const registerClub = async (req, res) => {
         }).lean();
 
         const geoData = await geocodeAddress(
-          address,
+          addressValidation.value,
           province ? province.name : "",
           districtDoc ? districtDoc.name_with_type || districtDoc.name : "",
         );
@@ -142,12 +207,13 @@ const registerClub = async (req, res) => {
         : "";
     }
 
+    // Create club
     const club = await Club.create({
       account_id: req.user.accountId,
-      name,
-      address,
-      phone,
-      tax_code,
+      name: nameValidation.value,
+      address: addressValidation.value,
+      phone: phoneValidation.value,
+      tax_code: taxCodeValidation.value,
       lat,
       lng,
       district: districtNameField,
@@ -155,44 +221,42 @@ const registerClub = async (req, res) => {
       district_code,
       province_name,
       district_name,
-      description: description || "",
+      description: descriptionValidation.value,
       opening_time: opening_time || "08:00",
       closing_time: closing_time || "23:30",
-      amenities: amenities || [],
+      amenities: amenitiesValidation.value,
       status: "Pending",
     });
 
-    if (Array.isArray(legalDocuments) && legalDocuments.length > 0) {
-      const images = legalDocuments
-        .filter((url) => !!url)
-        .map((url) => ({
-          club_id: club._id,
-          image_url: url,
-          image_type: "legal documents",
-        }));
-
-      if (images.length > 0) {
-        await Image.insertMany(images);
-      }
+    // Lưu hình ảnh pháp lý nếu có
+    if (legalDocumentsValidation.value && legalDocumentsValidation.value.length > 0) {
+      const images = legalDocumentsValidation.value.map((url) => ({
+        club_id: club._id,
+        image_url: url,
+        image_type: "legal documents",
+      }));
+      await Image.insertMany(images);
     }
 
+    // Lấy thông tin CLB vừa tạo để trả về
     const createdClub = await Club.findById(club._id).lean();
 
+    // Thông báo cho STAFF_SYSTEM về CLB mới đăng ký
     const staffSystemRole = await Role.findOne({
       name: "STAFF_SYSTEM",
     }).lean();
     const staffAccounts = staffSystemRole
       ? await Account.find({
-          role_id: staffSystemRole._id,
-          status: "ACTIVE",
-        }).lean()
+        role_id: staffSystemRole._id,
+        status: "ACTIVE",
+      }).lean()
       : [];
 
     if (staffAccounts && staffAccounts.length > 0) {
       const notifications = staffAccounts.map((staff) => ({
         account_id: staff._id,
         title: "CLB mới chờ duyệt!",
-        message: `Câu lạc bộ ${createdClub.name || "mới"} vừa đăng ký và đang chờ bạn phê duyệt.`,
+        message: `Câu lạc bộ ${createdClub.name} vừa đăng ký và đang chờ bạn phê duyệt.`,
         is_read: false,
       }));
       await Notification.insertMany(notifications);
@@ -233,6 +297,7 @@ const updateClub = async (req, res) => {
       legalDocuments,
     } = req.body;
 
+    // Authorization check
     const club = await Club.findOne({ _id: id, account_id });
     if (!club) {
       return res.status(404).json({
@@ -241,12 +306,56 @@ const updateClub = async (req, res) => {
       });
     }
 
-    if (name) club.name = name;
-    if (address) club.address = address;
-    if (phone) club.phone = phone;
-    if (description) club.description = description;
-    if (opening_time) club.opening_time = opening_time;
-    if (closing_time) club.closing_time = closing_time;
+    // Validate
+    if (name) {
+      const nameValidation = validateName(name);
+      if (!nameValidation.valid) {
+        return res.status(400).json({ success: false, message: nameValidation.message });
+      }
+      club.name = nameValidation.value;
+    }
+
+    if (address) {
+      const addressValidation = validateAddress(address);
+      if (!addressValidation.valid) {
+        return res.status(400).json({ success: false, message: addressValidation.message });
+      }
+      club.address = addressValidation.value;
+    }
+
+    if (phone) {
+      const phoneValidation = validatePhone(phone);
+      if (!phoneValidation.valid) {
+        return res.status(400).json({ success: false, message: phoneValidation.message });
+      }
+      club.phone = phoneValidation.value;
+    }
+
+    if (description) {
+      const descriptionValidation = validateDescription(description);
+      if (!descriptionValidation.valid) {
+        return res.status(400).json({ success: false, message: descriptionValidation.message });
+      }
+      club.description = descriptionValidation.value;
+    }
+
+    if (opening_time || closing_time) {
+      const timesValidation = validateTimes(opening_time || club.opening_time, closing_time || club.closing_time);
+      if (!timesValidation.valid) {
+        return res.status(400).json({ success: false, message: timesValidation.message });
+      }
+      if (opening_time) club.opening_time = opening_time;
+      if (closing_time) club.closing_time = closing_time;
+    }
+
+    if (amenities !== undefined) {
+      const amenitiesValidation = validateAmenities(amenities);
+      if (!amenitiesValidation.valid) {
+        return res.status(400).json({ success: false, message: amenitiesValidation.message });
+      }
+      club.amenities = amenitiesValidation.value;
+    }
+
     if (lat !== undefined) club.lat = lat;
     if (lng !== undefined) club.lng = lng;
     if (province_code) club.province_code = province_code;
@@ -256,10 +365,8 @@ const updateClub = async (req, res) => {
     if (deposit_percentage !== undefined) {
       club.deposit_percentage = Number(deposit_percentage);
     }
-    if (amenities !== undefined) {
-      club.amenities = Array.isArray(amenities) ? amenities : [amenities];
-    }
 
+    // Update district name
     if (province_code || district_code) {
       const districtDoc = await District.findOne({ code: district_code }).lean();
       if (districtDoc) {
@@ -267,6 +374,7 @@ const updateClub = async (req, res) => {
       }
     }
 
+    // Reset status if rejected
     if (club.status === "Rejected") {
       club.status = "Pending";
       club.reject_reason = null;
@@ -274,6 +382,7 @@ const updateClub = async (req, res) => {
 
     await club.save();
 
+    // Handle avatar
     if (avatar) {
       await Image.deleteMany({ club_id: id, image_type: "Avatar" });
       await Image.create({
@@ -283,6 +392,7 @@ const updateClub = async (req, res) => {
       });
     }
 
+    // Handle backgrounds
     if (Array.isArray(backgrounds)) {
       await Image.deleteMany({ club_id: id, image_type: "Background" });
       if (backgrounds.length > 0) {
@@ -295,20 +405,21 @@ const updateClub = async (req, res) => {
       }
     }
 
+    // Handle legal documents
     if (Array.isArray(legalDocuments)) {
-      await Image.deleteMany({ club_id: id, image_type: "legal documents" });
-      if (legalDocuments.length > 0) {
-        const legalImages = legalDocuments
-          .filter((url) => !!url)
-          .map((url) => ({
-            club_id: id,
-            image_url: url,
-            image_type: "legal documents",
-          }));
+      const legalDocumentsValidation = validateLegalDocuments(legalDocuments);
+      if (!legalDocumentsValidation.valid) {
+        return res.status(400).json({ success: false, message: legalDocumentsValidation.message });
+      }
 
-        if (legalImages.length > 0) {
-          await Image.insertMany(legalImages);
-        }
+      await Image.deleteMany({ club_id: id, image_type: "legal documents" });
+      if (legalDocumentsValidation.value && legalDocumentsValidation.value.length > 0) {
+        const legalImages = legalDocumentsValidation.value.map((url) => ({
+          club_id: id,
+          image_url: url,
+          image_type: "legal documents",
+        }));
+        await Image.insertMany(legalImages);
       }
     }
 
@@ -322,6 +433,7 @@ const updateClub = async (req, res) => {
     return res.status(500).json({ success: false, message: "Lỗi Server" });
   }
 };
+
 
 const completeOnboarding = async (req, res) => {
   try {

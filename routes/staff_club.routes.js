@@ -11,7 +11,7 @@ const {
     unbanStaffClub,
     getStaffClubById,
     updateStaffClub
-} = require("../controller/staff_club.controller");
+} = require("../controller/club/staff_club.controller");
 
 router.use(authenticate);
 router.use(authorizeRole("OWNER"));

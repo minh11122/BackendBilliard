@@ -1,13 +1,19 @@
 const mongoose = require("mongoose");
-const billiardTableController = require("../../controller/billiardTable.controller");
+const billiardTableController = require("../../controller/club/billiardTable.controller");
 const BilliardTable = require("../../models/billiard_table.model");
 const Booking = require("../../models/booking.model");
 const TableType = require("../../models/table_type.model");
+const RoundMatch = require("../../models/round_match.model");
 const cloudinary = require("../../configs/cloudinary.config");
 
 jest.mock("../../models/billiard_table.model");
 jest.mock("../../models/booking.model");
 jest.mock("../../models/table_type.model");
+jest.mock("../../models/round_match.model");
+jest.mock("../../controller/club/club.helpers", () => ({
+  canAccessClub: jest.fn().mockResolvedValue(true),
+  checkOwnerAccess: jest.fn().mockResolvedValue(true),
+}));
 jest.mock("../../configs/cloudinary.config", () => ({
   uploader: {
     destroy: jest.fn().mockResolvedValue({ result: "ok" }),
@@ -726,10 +732,37 @@ describe("Billiard Table Controller", () => {
       });
 
       Booking.exists.mockResolvedValue(true);
+      RoundMatch.exists.mockResolvedValue(false);
 
       await billiardTableController.deleteBilliardTable(req, res);
 
       expect(res.status).toHaveBeenCalledWith(400);
+    });
+
+    it("should return 400 when active tournament match exists", async () => {
+      const req = {
+        params: { id: tableId },
+        user: { club_id: clubId }
+      };
+
+      const res = createRes();
+
+      BilliardTable.findById.mockResolvedValue({
+        club_id: clubId,
+        status: "Available",
+        images: []
+      });
+
+      Booking.exists.mockResolvedValue(false);
+      RoundMatch.exists.mockResolvedValue(true);
+
+      await billiardTableController.deleteBilliardTable(req, res);
+
+      expect(res.status).toHaveBeenCalledWith(400);
+      expect(res.json).toHaveBeenCalledWith(expect.objectContaining({
+        success: false,
+        message: "Không thể xóa bàn vì bàn đang được gán cho một trận đấu giải."
+      }));
     });
 
     it("should delete successfully", async () => {
@@ -750,6 +783,7 @@ describe("Billiard Table Controller", () => {
       });
 
       Booking.exists.mockResolvedValue(false);
+      RoundMatch.exists.mockResolvedValue(false);
 
       BilliardTable.findByIdAndDelete.mockResolvedValue(true);
 

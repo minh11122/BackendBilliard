@@ -6,7 +6,7 @@ const Tournament = require("../../models/tournament.model");
 
 const getClubStatistics = async (req, res) => {
   try {
-    const { month, year } = req.query;
+    const { month, year } = req.query || {};
 
     let club_id;
     if (req.user.role === "STAFF_CLUB") {

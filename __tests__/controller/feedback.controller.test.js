@@ -1,4 +1,4 @@
-const feedbackController = require("../../controller/feedback.controller");
+const feedbackController = require("../../controller/club/feedback.controller");
 const Feedback = require("../../models/feedback.model");
 const Booking = require("../../models/booking.model");
 const BilliardTable = require("../../models/billiard_table.model");

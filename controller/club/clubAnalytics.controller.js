@@ -1,32 +1,30 @@
 const mongoose = require("mongoose");
-const Invoice = require("../models/invoice.model");
-const Booking = require("../models/booking.model");
-const BilliardTable = require("../models/billiard_table.model");
-const TableType = require("../models/table_type.model");
-const Service = require("../models/service.model");
-const BookingService = require("../models/booking_service.model");
-const Feedback = require("../models/feedback.model");
-const Tournament = require("../models/tournament.model");
+const Invoice = require("../../models/invoice.model");
+const Booking = require("../../models/booking.model");
+const BilliardTable = require("../../models/billiard_table.model");
+const TableType = require("../../models/table_type.model");
+const Service = require("../../models/service.model");
+const BookingService = require("../../models/booking_service.model");
+const Feedback = require("../../models/feedback.model");
+const Tournament = require("../../models/tournament.model");
+const { canAccessClub } = require("./club.helpers");
 
 const getClubAnalytics = async (req, res) => {
   try {
-    const { id: club_id } = req.params;
-    const { startDate, endDate } = req.query;
+    const { id: club_id } = req.params || {};
+    const { startDate, endDate } = req.query || {};
 
     if (!club_id) {
       return res.status(400).json({ success: false, message: "Thiếu club_id" });
     }
 
-    const currentClub = await require("../models/club.model").findById(club_id).lean();
+    const currentClub = await require("../../models/club.model").findById(club_id).lean();
     if (!currentClub) {
         return res.status(404).json({ success: false, message: "Không tìm thấy quán" });
     }
 
-    if (req.user?.role === "OWNER" && currentClub.account_id.toString() !== req.user.accountId) {
-        return res.status(403).json({ success: false, message: "Bạn không có quyền xem thống kê của quán khác" });
-    }
-    if (req.user?.role === "STAFF_CLUB" && req.user.club_id !== club_id) {
-        return res.status(403).json({ success: false, message: "Bạn không có quyền xem thống kê của quán khác" });
+    if (!(await canAccessClub(req, club_id))) {
+        return res.status(403).json({ success: false, message: "Bạn không có quyền xem thống kê của quán này" });
     }
 
     if (currentClub.plan_type === "free") {
@@ -56,7 +54,7 @@ const getClubAnalytics = async (req, res) => {
     const clubBookings = await Booking.find({ table_id: { $in: tableIds } }).select("_id").lean();
     const bookingIds = clubBookings.map(b => b._id);
 
-    const TransactionHistory = require("../models/transiction_history.model");
+    const TransactionHistory = require("../../models/transiction_history.model");
 
     const successfulTransactions = await TransactionHistory.find({
       booking_id: { $in: bookingIds },

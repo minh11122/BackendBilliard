@@ -1,28 +1,22 @@
-const Account = require("../models/account.model");
-const Club = require("../models/club.model");
-const Role = require("../models/role.model");
+const Account = require("../../models/account.model");
+const Role = require("../../models/role.model");
 const bcrypt = require("bcryptjs");
+const { canAccessClub } = require("./club.helpers");
 
-//Hàm kiểm tra xem chủ quán có sở hữu club_id mà frontend gửi lên không
-const verifyClubOwnership = async (clubId, ownerAccountId) => {
-    if (!clubId) return false;
-    const club = await Club.findOne({ _id: clubId, account_id: ownerAccountId });
-    return !!club;
-};
 
 const getActiveStaffClub = async (req, res) => {
     try {
-        // 🔥 THAY ĐỔI Ở ĐÂY: Lấy club_id do chủ quán chọn từ query URL (?club_id=...)
+        //Lấy club_id do chủ quán chọn từ query URL (?club_id=...)
         const { club_id } = req.query;
         const ownerAccountId = req.user.accountId;
 
-        if (!(await verifyClubOwnership(club_id, ownerAccountId))) {
+        if (!(await canAccessClub(req, club_id))) {
             return res.status(403).json({ message: "Bạn không có quyền hoặc không tìm thấy quán này" });
         }
 
         const staffList = await Account.find({
             club_id: club_id,
-            status: { $in: ["ACTIVE", "PENDING", "INACTIVE"] }
+            status: { $in: ["ACTIVE"] }
         }).select("-password_hash").sort({ created_at: -1 });
 
         res.json({ message: "Lấy danh sách nhân viên quán thành công", data: staffList });
@@ -36,7 +30,7 @@ const getBannedStaffClub = async (req, res) => {
         const { club_id } = req.query;
         const ownerAccountId = req.user.accountId;
 
-        if (!(await verifyClubOwnership(club_id, ownerAccountId))) {
+        if (!(await canAccessClub(req, club_id))) {
             return res.status(403).json({ message: "Bạn không có quyền truy cập quán này" });
         }
 
@@ -57,7 +51,7 @@ const createStaffClub = async (req, res) => {
         const { club_id, fullname, email, phone, password } = req.body;
         const ownerAccountId = req.user.accountId;
 
-        if (!(await verifyClubOwnership(club_id, ownerAccountId))) {
+        if (!(await canAccessClub(req, club_id))) {
             return res.status(403).json({ message: "Bạn không có quyền thêm nhân viên cho quán này" });
         }
 
@@ -131,7 +125,7 @@ const banStaffClub = async (req, res) => {
         const staffToBan = await Account.findById(id);
         if (!staffToBan) return res.status(404).json({ message: "Không tìm thấy nhân viên" });
 
-        if (!(await verifyClubOwnership(staffToBan.club_id, ownerAccountId))) {
+        if (!(await canAccessClub(req, staffToBan.club_id))) {
             return res.status(403).json({ message: "Bạn không có quyền thao tác trên nhân viên này" });
         }
 
@@ -155,7 +149,7 @@ const unbanStaffClub = async (req, res) => {
             return res.status(404).json({ message: "Không tìm thấy nhân viên trong danh sách bị cấm" });
         }
 
-        if (!(await verifyClubOwnership(staffToUnban.club_id, ownerAccountId))) {
+        if (!(await canAccessClub(req, staffToUnban.club_id))) {
             return res.status(403).json({ message: "Bạn không có quyền thao tác trên nhân viên này" });
         }
 
@@ -182,7 +176,7 @@ const getStaffClubById = async (req, res) => {
         }
 
         // Kiểm tra quyền sở hữu của chủ quán đối với nhân viên này
-        if (!(await verifyClubOwnership(staff.club_id, ownerAccountId))) {
+        if (!(await canAccessClub(req, staff.club_id))) {
             return res.status(403).json({ message: "Bạn không có quyền xem thông tin nhân viên này" });
         }
 
@@ -206,7 +200,7 @@ const updateStaffClub = async (req, res) => {
         }
 
         // Kiểm tra quyền sở hữu
-        if (!(await verifyClubOwnership(staff.club_id, ownerAccountId))) {
+        if (!(await canAccessClub(req, staff.club_id))) {
             return res.status(403).json({ message: "Bạn không có quyền cập nhật thông tin nhân viên này" });
         }
 
