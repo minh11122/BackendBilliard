@@ -3,6 +3,10 @@ const TournamentPlayer = require("../../models/tournament_player.model");
 const TransactionHistory = require("../../models/transiction_history.model");
 const ClubBank = require("../../models/club_bank.model");
 const payosService = require("../../services/payos.service");
+const {
+  PAYOS_CONFIG_MSG,
+  resolvePayosApiErrorMessage,
+} = require("../../utils/payosError.util");
 
 const PAYOS_EXPIRE_MINUTES = 10;
 const {
@@ -91,7 +95,7 @@ const createTournamentPayOSPayment = async (req, res) => {
     ) {
       return res.status(400).json({
         success: false,
-        message: "CLB chưa cấu hình PayOS (Client ID / API Key / Checksum Key)",
+        message: PAYOS_CONFIG_MSG,
       });
     }
 
@@ -142,9 +146,10 @@ const createTournamentPayOSPayment = async (req, res) => {
     });
   } catch (error) {
     console.error("Error createTournamentPayOSPayment:", error);
-    return res
-      .status(500)
-      .json({ success: false, message: "Lỗi server", error: error.message });
+    return res.status(500).json({
+      success: false,
+      message: resolvePayosApiErrorMessage(error),
+    });
   }
 };
 
@@ -192,7 +197,7 @@ const verifyTournamentPayOSPayment = async (req, res) => {
     ) {
       return res
         .status(400)
-        .json({ success: false, message: "CLB chưa cấu hình PayOS" });
+        .json({ success: false, message: PAYOS_CONFIG_MSG });
     }
 
     const paymentInfo = await payosService.getPaymentInfo(orderCode, {
@@ -214,9 +219,10 @@ const verifyTournamentPayOSPayment = async (req, res) => {
     });
   } catch (error) {
     console.error("Error verifyTournamentPayOSPayment:", error);
-    return res
-      .status(500)
-      .json({ success: false, message: "Lỗi server", error: error.message });
+    return res.status(500).json({
+      success: false,
+      message: resolvePayosApiErrorMessage(error),
+    });
   }
 };
 
@@ -257,7 +263,7 @@ const tournamentPayOSWebhook = async (req, res) => {
     ) {
       return res
         .status(400)
-        .json({ success: false, message: "CLB thiếu cấu hình PayOS" });
+        .json({ success: false, message: PAYOS_CONFIG_MSG });
     }
 
     let webhookData;

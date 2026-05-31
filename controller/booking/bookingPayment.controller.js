@@ -4,6 +4,10 @@ const Club = require("../../models/club.model");
 const ClubBank = require("../../models/club_bank.model");
 const BookingService = require("../../models/booking_service.model");
 const payosService = require("../../services/payos.service");
+const {
+  PAYOS_CONFIG_MSG,
+  resolvePayosApiErrorMessage,
+} = require("../../utils/payosError.util");
 const Notification = require("../../models/notification.model");
 const {
   PAYOS_EXPIRE_MINUTES,
@@ -55,8 +59,7 @@ const createBookingPayOSPayment = async (req, res) => {
     ) {
       return res.status(400).json({
         success: false,
-        message:
-          "CLB chưa thiết lập PayOS (Client ID / API Key / Checksum Key)",
+        message: PAYOS_CONFIG_MSG,
       });
     }
 
@@ -130,7 +133,10 @@ const createBookingPayOSPayment = async (req, res) => {
     });
   } catch (error) {
     console.error("Lỗi createBookingPayOSPayment:", error);
-    return res.status(500).json({ success: false, message: "Lỗi server" });
+    return res.status(500).json({
+      success: false,
+      message: resolvePayosApiErrorMessage(error),
+    });
   }
 };
 
@@ -181,7 +187,7 @@ const verifyBookingPayOSPayment = async (req, res) => {
     ) {
       return res
         .status(400)
-        .json({ success: false, message: "CLB chưa cấu hình PayOS" });
+        .json({ success: false, message: PAYOS_CONFIG_MSG });
     }
 
     const paymentInfo = await payosService.getPaymentInfo(orderCode, {
@@ -235,7 +241,10 @@ const verifyBookingPayOSPayment = async (req, res) => {
     });
   } catch (error) {
     console.error("Lỗi verifyBookingPayOSPayment:", error);
-    return res.status(500).json({ success: false, message: "Lỗi server" });
+    return res.status(500).json({
+      success: false,
+      message: resolvePayosApiErrorMessage(error),
+    });
   }
 };
 
@@ -535,8 +544,7 @@ const createBookingCheckoutPayOSPayment = async (req, res) => {
     ) {
       return res.status(400).json({
         success: false,
-        message:
-          "CLB chưa thiết lập PayOS (Client ID / API Key / Checksum Key)",
+        message: PAYOS_CONFIG_MSG,
       });
     }
 
@@ -580,7 +588,7 @@ const createBookingCheckoutPayOSPayment = async (req, res) => {
     console.error("Error createBookingCheckoutPayOSPayment:", error);
     return res.status(500).json({
       success: false,
-      message: error?.response?.data?.message || error?.message || "Lỗi server",
+      message: resolvePayosApiErrorMessage(error),
     });
   }
 };
@@ -659,7 +667,7 @@ const verifyBookingCheckoutPayOSPayment = async (req, res) => {
     ) {
       return res
         .status(400)
-        .json({ success: false, message: "CLB chưa cấu hình PayOS" });
+        .json({ success: false, message: PAYOS_CONFIG_MSG });
     }
 
     const paymentInfo = await payosService.getPaymentInfo(orderCode, {
@@ -743,7 +751,7 @@ const verifyBookingCheckoutPayOSPayment = async (req, res) => {
     console.error("Error verifyBookingCheckoutPayOSPayment:", error);
     return res.status(500).json({
       success: false,
-      message: error?.response?.data?.message || error?.message || "Lỗi server",
+      message: resolvePayosApiErrorMessage(error),
     });
   }
 };
@@ -788,7 +796,7 @@ const payosWebhook = async (req, res) => {
     ) {
       return res
         .status(400)
-        .json({ success: false, message: "CLB thiếu cấu hình PayOS" });
+        .json({ success: false, message: PAYOS_CONFIG_MSG });
     }
 
     try {
