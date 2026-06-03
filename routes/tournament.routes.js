@@ -27,8 +27,8 @@ const upload = require("../middleware/uploadCloud.middleware");
 const authenticate = require("../middleware/authenticate.middleware");
 const authorizeRole = require("../middleware/authorizeRole.middleware");
 
-// GET /tournaments - list all tournaments for a club (x-club-id header or ?club_id=)
-router.get("/", authenticate, getTournamentsByClub);
+// GET /tournaments - management list for a club (x-club-id header or ?club_id=)
+router.get("/", authenticate, authorizeRole("OWNER", "STAFF_CLUB"), getTournamentsByClub);
 
 // GET /tournaments/public - get public tournaments
 router.get("/public", getPublicTournaments);
@@ -51,8 +51,8 @@ router.post("/:id/start", authenticate, authorizeRole("OWNER"), startTournament)
 router.post("/:id/cancel", authenticate, authorizeRole("OWNER"), cancelTournament);
 
 // Match operations
-router.post("/:id/matches/:matchId/start", authenticate, startRoundMatch);
-router.post("/:id/matches/:matchId/result", authenticate, updateMatchResult);
+router.post("/:id/matches/:matchId/start", authenticate, authorizeRole("OWNER", "STAFF_CLUB"), startRoundMatch);
+router.post("/:id/matches/:matchId/result", authenticate, authorizeRole("OWNER", "STAFF_CLUB"), updateMatchResult);
 
 // Tournament registration via PayOS
 router.post("/:id/payos/create-payment", authenticate, createTournamentPayOSPayment);

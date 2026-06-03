@@ -140,7 +140,6 @@ const createBookingPayOSPayment = async (req, res) => {
   }
 };
 
-
 const verifyBookingPayOSPayment = async (req, res) => {
   try {
     const { orderCode } = req.body;
@@ -231,7 +230,7 @@ const verifyBookingPayOSPayment = async (req, res) => {
       clubId,
       "Đơn đặt bàn online mới",
       `Bàn ${booking.table_id.table_number} vừa được thanh toán thành công. Mã đơn: ${booking.code_number}`,
-      "/staff/bookings"
+      "/staff/bookings",
     );
 
     return res.status(200).json({
@@ -247,7 +246,6 @@ const verifyBookingPayOSPayment = async (req, res) => {
     });
   }
 };
-
 
 const checkOutBooking = async (req, res) => {
   try {
@@ -391,7 +389,6 @@ const checkOutBooking = async (req, res) => {
     res.status(500).json({ success: false, message: "Lỗi server" });
   }
 };
-
 
 const createBookingCheckoutPayOSPayment = async (req, res) => {
   try {
@@ -593,7 +590,6 @@ const createBookingCheckoutPayOSPayment = async (req, res) => {
   }
 };
 
-
 const verifyBookingCheckoutPayOSPayment = async (req, res) => {
   try {
     const { orderCode } = req.body;
@@ -700,7 +696,8 @@ const verifyBookingCheckoutPayOSPayment = async (req, res) => {
     const durationHours = (endMin - startMin) / 60;
     const playCost = Math.round(durationHours * (booking.hour_price || 0));
     const carryOver = Number(booking.carry_over_amount || 0);
-    const totalBill = Number(playCost || 0) + Number(serviceTotal || 0) + carryOver;
+    const totalBill =
+      Number(playCost || 0) + Number(serviceTotal || 0) + carryOver;
 
     if (booking.status !== "Completed") {
       booking.total_bill = totalBill;
@@ -812,8 +809,7 @@ const payosWebhook = async (req, res) => {
         .json({ success: false, message: "Webhook không hợp lệ" });
     }
 
-    const isPaid =
-      payload?.data?.code === "00" || payload?.success === true;
+    const isPaid = payload?.data?.code === "00" || payload?.success === true;
 
     if (!isPaid) {
       return res
@@ -823,7 +819,7 @@ const payosWebhook = async (req, res) => {
 
     const txType = tx.transaction_type;
 
-    // Deposit flow: Pending -> Booked
+    // Deposit flow: Pending -> Booked Khi khách thanh toán cọc
     if (txType !== "BOOKING_FINAL_PAYMENT_TRANSFER") {
       if (booking.status === "Booked") {
         return res.status(200).json({
@@ -902,7 +898,8 @@ const payosWebhook = async (req, res) => {
     const durationHours = (endMin - startMin) / 60;
     const playCost = Math.round(durationHours * (booking.hour_price || 0));
     const carryOver = Number(booking.carry_over_amount || 0);
-    const totalBill = Number(playCost || 0) + Number(serviceTotal || 0) + carryOver;
+    const totalBill =
+      Number(playCost || 0) + Number(serviceTotal || 0) + carryOver;
 
     if (booking.status !== "Completed") {
       booking.total_bill = totalBill;
