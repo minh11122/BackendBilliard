@@ -4,7 +4,7 @@ const Province = require("../../models/province.model");
 const District = require("../../models/district.model");
 const Notification = require("../../models/notification.model");
 const Account = require("../../models/account.model");
-const { findActiveSubscriptionForClub } = require("../../utils/subscription.util");
+const { findActiveSubscriptionForClub } = require("../subscription/subscription.helpers");
 const Role = require("../../models/role.model");
 const { geocodeAddress } = require("../../utils/geocoding");
 const {

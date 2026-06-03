@@ -1,8 +1,6 @@
 const Subscription = require("../../models/subscription.model");
 const Notification = require("../../models/notification.model");
-const {
-  findActiveSubscriptionForClub
-} = require("../../utils/subscription.util");
+const { findActiveSubscriptionForClub } = require("./subscription.helpers");
 
 const EXPIRING_SOON_DAYS = 3;
 
