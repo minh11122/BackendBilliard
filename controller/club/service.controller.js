@@ -251,6 +251,7 @@ const deactivateService = async (req, res) => {
         const { id } = req.params;
         
         const club_id = req.user?.club_id || req.query?.club_id || req.body?.club_id;
+        
         if (!club_id) return res.status(400).json({ success: false, message: "Không xác định được ID Quán." });
 
         if (!(await canAccessClub(req, club_id))) {
