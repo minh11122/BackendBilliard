@@ -2,10 +2,7 @@
 const BilliardTable = require("../../models/billiard_table.model");
 const Club = require("../../models/club.model");
 const Parameter = require("../../models/parameter.model");
-const {
-  HOLD_MINUTES_OVERRIDE,
-  timeToMinutes,
-} = require("./booking.helpers");
+const { HOLD_MINUTES_OVERRIDE, timeToMinutes } = require("./booking.helpers");
 
 const createBooking = async (req, res) => {
   try {
@@ -140,7 +137,7 @@ const createBooking = async (req, res) => {
     // Tạo mã đơn đặt
     const codeNumber = "BK" + Date.now().toString().slice(-8);
 
-    // Tạo booking
+    // Tạo booking Khi khách đặt bàn hệ thống tạo booking với: status: "Pending"
     const booking = await Booking.create({
       account_id: accountId,
       table_id,
@@ -166,7 +163,7 @@ const createBooking = async (req, res) => {
         console.warn("Không lấy được Parameter, dùng mặc định 5 phút");
       }
     }
-
+    // bàn được giữ chỗ
     const heldUntil = new Date(Date.now() + finalHoldMinutes * 60 * 1000);
     await BilliardTable.findByIdAndUpdate(table_id, {
       status: "Holding",
@@ -196,10 +193,10 @@ const createBooking = async (req, res) => {
         },
         club: club
           ? {
-            _id: club._id,
-            name: club.name,
-            address: club.address,
-          }
+              _id: club._id,
+              name: club.name,
+              address: club.address,
+            }
           : null,
         holdMinutes: finalHoldMinutes,
         heldUntil,
@@ -210,7 +207,6 @@ const createBooking = async (req, res) => {
     res.status(500).json({ success: false, message: "Lỗi server" });
   }
 };
-
 
 const cancelHold = async (req, res) => {
   try {
@@ -251,7 +247,6 @@ const cancelHold = async (req, res) => {
     res.status(500).json({ success: false, message: "Lỗi server" });
   }
 };
-
 
 const getMyBookings = async (req, res) => {
   try {
@@ -294,11 +289,11 @@ const getMyBookings = async (req, res) => {
           }).lean();
           b.club = club
             ? {
-              _id: club._id,
-              name: club.name,
-              address: club.address,
-              avatar: banner?.image_url || null,
-            }
+                _id: club._id,
+                name: club.name,
+                address: club.address,
+                avatar: banner?.image_url || null,
+              }
             : null;
           b.table_info = {
             table_number: table.table_number,
@@ -339,7 +334,6 @@ const getMyBookings = async (req, res) => {
     res.status(500).json({ success: false, message: "Lỗi server" });
   }
 };
-
 
 module.exports = {
   createBooking,

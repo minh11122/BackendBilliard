@@ -5,7 +5,7 @@ const Feedback = require("../../models/feedback.model");
 const Province = require("../../models/province.model");
 const District = require("../../models/district.model");
 const Booking = require("../../models/booking.model");
-const { findActiveSubscriptionForClub } = require("../../utils/subscription.util");
+const { findActiveSubscriptionForClub } = require("../subscription/subscription.helpers");
 const { geocodeAddress } = require("../../utils/geocoding");
 const { timeToMinutes } = require("./club.helpers");
 

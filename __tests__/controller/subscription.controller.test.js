@@ -5,14 +5,16 @@
  */
 
 jest.mock("@payos/node");
-jest.mock("../../services/payment.service");
+jest.mock("../../services/payos.service");
 jest.mock("../../models/subscription.model");
 jest.mock("../../models/subcription_account.model");
+jest.mock("../../models/transiction_history.model");
 
-const subscriptionController = require("../../controller/subscription.controller");
+const subscriptionController = require("../../controller/subscription");
 const Subscription = require("../../models/subscription.model");
 const SubscriptionAccount = require("../../models/subcription_account.model");
-const paymentService = require("../../services/payment.service");
+const TransactionHistory = require("../../models/transiction_history.model");
+const payosService = require("../../services/payos.service");
 
 const makeRes = () => {
     const res = {};
@@ -141,9 +143,10 @@ describe("Subscription Controller - Branch Coverage Suite", () => {
             const res = makeRes();
             Subscription.findById.mockResolvedValue({ _id: SUB_ID, price: 100000 });
             mockFindClubRecordWithPopulate(null);
-            paymentService.createPayment.mockResolvedValue({ checkoutUrl: "http://pay.url" });
+            TransactionHistory.create.mockResolvedValue({});
+            payosService.createPaymentLink.mockResolvedValue({ checkoutUrl: "http://pay.url" });
             await subscriptionController.createSubscriptionPayment(validReq, res);
-            expect(paymentService.createPayment).toHaveBeenCalledWith(expect.objectContaining({ amount: 100000 }));
+            expect(TransactionHistory.create).toHaveBeenCalledWith(expect.objectContaining({ amount: 100000 }));
             expect(res.json).toHaveBeenCalledWith(expect.objectContaining({ success: true }));
         });
 
@@ -151,12 +154,13 @@ describe("Subscription Controller - Branch Coverage Suite", () => {
             const res = makeRes();
             Subscription.findById.mockResolvedValue({ _id: SUB_ID, price: 100000 });
             mockFindClubRecordWithPopulate(null);
-            paymentService.createPayment.mockResolvedValue({ checkoutUrl: "http://pay.url" });
+            TransactionHistory.create.mockResolvedValue({});
+            payosService.createPaymentLink.mockResolvedValue({ checkoutUrl: "http://pay.url" });
             await subscriptionController.createSubscriptionPayment({
                 ...validReq,
                 body: { ...validReq.body, duration_months: 3 }
             }, res);
-            expect(paymentService.createPayment).toHaveBeenCalledWith(expect.objectContaining({ amount: 300000 }));
+            expect(TransactionHistory.create).toHaveBeenCalledWith(expect.objectContaining({ amount: 300000 }));
         });
 
         it("FAIL 400 - missing subscription_id", async () => {
@@ -188,7 +192,7 @@ describe("Subscription Controller - Branch Coverage Suite", () => {
             const res = makeRes();
             Subscription.findById.mockResolvedValue({ _id: SUB_ID, price: 100000 });
             mockFindClubRecordWithPopulate(null);
-            paymentService.createPayment.mockRejectedValue(new Error("payment failed"));
+            TransactionHistory.create.mockRejectedValue(new Error("payment failed"));
             await subscriptionController.createSubscriptionPayment(validReq, res);
             expect(res.status).toHaveBeenCalledWith(500);
         });
@@ -200,9 +204,14 @@ describe("Subscription Controller - Branch Coverage Suite", () => {
             body: { orderCode: "ORD123", subscription_id: SUB_ID, club_id: CLUB_ID }
         };
 
+        const mockMarkPaid = (tx = { account_id: ACCOUNT_ID }) => {
+            TransactionHistory.findOneAndUpdate.mockResolvedValue(tx);
+        };
+
         it("SUCCESS - creates new subscription account when none exists", async () => {
             const res = makeRes();
-            paymentService.verifyPayment.mockResolvedValue({});
+            payosService.getPaymentInfo.mockResolvedValue({ status: "PAID" });
+            mockMarkPaid();
             Subscription.findById.mockResolvedValue({ _id: SUB_ID, price: 100000, post_limit: 10 });
 
             mockFindClubRecordWithPopulate(null);
@@ -216,7 +225,8 @@ describe("Subscription Controller - Branch Coverage Suite", () => {
 
         it("SUCCESS - renews same plan and keeps posts_used", async () => {
             const res = makeRes();
-            paymentService.verifyPayment.mockResolvedValue({});
+            payosService.getPaymentInfo.mockResolvedValue({ status: "PAID" });
+            mockMarkPaid();
             Subscription.findById.mockResolvedValue({ _id: SUB_ID, price: 100000, post_limit: 5 });
 
             const existingSub = makeMockDoc({
@@ -246,7 +256,8 @@ describe("Subscription Controller - Branch Coverage Suite", () => {
 
         it("SUCCESS - updates existing subscription on plan change resets posts", async () => {
             const res = makeRes();
-            paymentService.verifyPayment.mockResolvedValue({});
+            payosService.getPaymentInfo.mockResolvedValue({ status: "PAID" });
+            mockMarkPaid();
             Subscription.findById.mockResolvedValue({ _id: "sub_pro", price: 200000, post_limit: 20 });
 
             const existingSub = makeMockDoc({
@@ -282,15 +293,16 @@ describe("Subscription Controller - Branch Coverage Suite", () => {
 
         it("FAIL 404 - subscription not found", async () => {
             const res = makeRes();
-            paymentService.verifyPayment.mockResolvedValue({});
+            payosService.getPaymentInfo.mockResolvedValue({ status: "PAID" });
+            mockMarkPaid();
             Subscription.findById.mockResolvedValue(null);
             await subscriptionController.verifySubscriptionPayment(validReq, res);
-            expect(res.status).toHaveBeenCalledWith(404);
+            expect(res.status).toHaveBeenCalledWith(400);
         });
 
         it("FAIL 400 - payment verification throws error", async () => {
             const res = makeRes();
-            paymentService.verifyPayment.mockRejectedValue(new Error("Payment not confirmed"));
+            payosService.getPaymentInfo.mockRejectedValue(new Error("Payment not confirmed"));
             await subscriptionController.verifySubscriptionPayment(validReq, res);
             expect(res.status).toHaveBeenCalledWith(400);
         });

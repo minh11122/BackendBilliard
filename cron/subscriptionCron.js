@@ -1,5 +1,5 @@
 const cron = require("node-cron");
-const { expireOverdueSubscriptions } = require("../utils/subscription.util");
+const { expireOverdueSubscriptions } = require("../controller/subscription/subscription.helpers");
 
 // Kiểm tra gói hết hạn mỗi giờ
 cron.schedule("0 * * * *", async () => {

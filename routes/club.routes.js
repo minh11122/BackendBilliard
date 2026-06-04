@@ -3,6 +3,7 @@ const router = express.Router();
 const clubController = require("../controller/club");
 const clubBankController = require("../controller/clubBank.controller");
 const authenticate = require("../middleware/authenticate.middleware");
+const authorizeRole = require("../middleware/authorizeRole.middleware");
 
 // Chủ quán đăng ký thông tin CLB
 router.post("/register-owner-account", authenticate, clubController.registerClub);
@@ -10,7 +11,6 @@ router.get("/", clubController.getAllClubs);
 router.get("/owner/clubs", authenticate, clubController.getClubsByAccount);
 router.put("/:id", authenticate, clubController.updateClub);
 
-const authorizeRole = require("../middleware/authorizeRole.middleware");
 router.get("/staff/statistics", authenticate, authorizeRole("OWNER", "STAFF_CLUB"), clubController.getClubStatistics);
 
 router.get("/:id", clubController.getClubById);
@@ -20,7 +20,7 @@ const clubAnalyticsController = require("../controller/club/clubAnalytics.contro
 router.get("/:id/analytics", authenticate, authorizeRole("OWNER", "STAFF_CLUB"), clubAnalyticsController.getClubAnalytics);
 
 // Thông tin tài khoản ngân hàng của CLB
-router.get("/:id/bank", authenticate, clubBankController.getBankByClub);
-router.put("/:id/bank", authenticate, clubBankController.upsertBankByClub);
+router.get("/:id/bank", authenticate, authorizeRole("OWNER", "STAFF_CLUB"), clubBankController.getBankByClub);
+router.put("/:id/bank", authenticate, authorizeRole("OWNER"), clubBankController.upsertBankByClub);
 
 module.exports = router;
