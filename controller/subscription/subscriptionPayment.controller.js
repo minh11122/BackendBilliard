@@ -14,6 +14,11 @@ const {
 
 const DEFAULT_RETURN_URL = "http://localhost:5173/owner/payment-success";
 const DEFAULT_CANCEL_URL = "http://localhost:5173/owner/settings";
+const PAYOS_DESCRIPTION_MAX_LENGTH = 25;
+const SUBSCRIPTION_PAYOS_DESCRIPTION = "Gia han goi dich vu";
+
+const getPayosDescription = () =>
+  SUBSCRIPTION_PAYOS_DESCRIPTION.slice(0, PAYOS_DESCRIPTION_MAX_LENGTH);
 
 const getDefaultPayosCreds = () => ({
   clientId: process.env.PAYOS_CLIENT_ID,
@@ -62,7 +67,7 @@ const createSubscriptionPaymentLink = async ({
   const paymentLink = await payosService.createPaymentLink({
     orderCode,
     amount,
-    description,
+    description: getPayosDescription(),
     returnUrl,
     cancelUrl
   });
