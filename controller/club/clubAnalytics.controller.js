@@ -95,30 +95,33 @@ const getClubAnalytics = async (req, res) => {
     // --- 1.5 DOANH THU GIẢI ĐẤU ---
     const Tournament = require("../../models/tournament.model");
     
-    // Lấy các giải đấu hợp lệ (khác Draft, Cancelled) diễn ra trong khoảng thời gian dateFilter
-    const tournamentQuery = {
-      club_id: clubObjectId,
-      status: { $nin: ["Draft", "Cancelled"] }
-    };
-    if (dateFilter.$gte) {
-      tournamentQuery.play_date = dateFilter;
-    }
-    
-    const validTournaments = await Tournament.find(tournamentQuery).select("_id name status registered_player").lean();
-    
-    const tournamentStatsMap = {};
-    let totalTournamentPlayers = 0;
-    
-    validTournaments.forEach(t => {
-      totalTournamentPlayers += (t.registered_player || 0);
-      tournamentStatsMap[t._id.toString()] = {
+    // Lấy TẤT CẢ giải đấu của quán để map doanh thu (để không bị lọt doanh thu của giải chưa set play_date)
+    const allClubTournaments = await Tournament.find({ club_id: clubObjectId, status: { $nin: ["Draft", "Cancelled"] } })
+      .select("_id name status registered_player play_date").lean();
+      
+    const tournamentMapAll = {};
+    allClubTournaments.forEach(t => {
+      tournamentMapAll[t._id.toString()] = {
         name: t.name,
         status: t.status,
-        revenue: 0
+        revenue: 0,
+        registered_player: t.registered_player,
+        play_date: t.play_date
       };
     });
+
+    // Lọc ra các giải hợp lệ (diễn ra trong khoảng thời gian dateFilter) để đếm "Số giải đấu" và "Người tham gia"
+    const validTournaments = allClubTournaments.filter(t => {
+      if (!dateFilter.$gte || !dateFilter.$lte) return true;
+      if (!t.play_date) return false; // Nếu đang lọc theo ngày mà giải chưa có ngày chơi thì ko đếm vào KPI chung
+      const pDate = new Date(t.play_date).getTime();
+      return pDate >= dateFilter.$gte.getTime() && pDate <= dateFilter.$lte.getTime();
+    });
     
-    const validTournamentIds = validTournaments.map(t => t._id.toString());
+    let totalTournamentPlayers = 0;
+    validTournaments.forEach(t => {
+      totalTournamentPlayers += (t.registered_player || 0);
+    });
     
     const tournamentTransactions = await TransactionHistory.find({
       transaction_type: "TOURNAMENT_FEE",
@@ -131,15 +134,15 @@ const getClubAnalytics = async (req, res) => {
     tournamentTransactions.forEach(tx => {
       if (tx.description && tx.description.startsWith("TournamentFee:")) {
          const tId = tx.description.split(":")[1];
-         if (tournamentStatsMap[tId]) {
+         if (tournamentMapAll[tId]) {
            const amount = tx.amount || 0;
            totalTournamentRevenue += amount;
-           tournamentStatsMap[tId].revenue += amount;
+           tournamentMapAll[tId].revenue += amount;
          }
       }
     });
     
-    const tournamentChartData = Object.values(tournamentStatsMap)
+    const tournamentChartData = Object.values(tournamentMapAll)
       .filter(t => t.revenue > 0)
       .sort((a, b) => b.revenue - a.revenue)
       .slice(0, 6)

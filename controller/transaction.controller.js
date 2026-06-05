@@ -191,7 +191,7 @@ const getClubTransferHistory = async (req, res) => {
     ]);
 
     const tournamentRows = await TransactionHistory.aggregate([
-      { $match: { transaction_type: "TOURNAMENT_FEE" } },
+      { $match: { transaction_type: "TOURNAMENT_FEE", amount: { $gt: 0 } } },
       {
         $addFields: {
           tournament_id: {
