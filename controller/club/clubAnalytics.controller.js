@@ -1,12 +1,9 @@
 const mongoose = require("mongoose");
-const Invoice = require("../../models/invoice.model");
 const Booking = require("../../models/booking.model");
 const BilliardTable = require("../../models/billiard_table.model");
-const TableType = require("../../models/table_type.model");
 const Service = require("../../models/service.model");
 const BookingService = require("../../models/booking_service.model");
 const Feedback = require("../../models/feedback.model");
-const Tournament = require("../../models/tournament.model");
 const { canAccessClub } = require("./club.helpers");
 
 const getClubAnalytics = async (req, res) => {
@@ -31,23 +28,24 @@ const getClubAnalytics = async (req, res) => {
         return res.status(403).json({ success: false, message: "Tính năng Báo cáo doanh thu chỉ dành cho gói Basic hoặc Pro." });
     }
 
-    // Prepare Date Range Filter
+    // Lọc ngày tháng: Định dạng múi giờ VN (+07:00) từ 00:00:00 đến 23:59:59.
+    // -> Dùng chung cho: Bộ lọc thời gian (Hôm nay, 7 ngày, 30 ngày...) ở cả FE Dashboard và FE Reports.
     const dateFilter = {};
     if (startDate && endDate) {
       dateFilter.$gte = startDate.includes("T") ? new Date(startDate) : new Date(`${startDate}T00:00:00.000+07:00`);
       dateFilter.$lte = endDate.includes("T") ? new Date(endDate) : new Date(`${endDate}T23:59:59.999+07:00`);
     } else {
-      // Default to last 30 days if no range provided
       const end = new Date();
       const start = new Date();
       start.setDate(start.getDate() - 30);
       dateFilter.$gte = start;
       dateFilter.$lte = end;
     }
-
+    
     const clubObjectId = new mongoose.Types.ObjectId(club_id);
 
-    // --- 1. REVENUE & TRANSACTIONS ---
+    // --- 1. DOANH THU & GIAO DỊCH ---
+    // -> Tính tổng doanh thu và xu hướng cho Dashboard/Reports.
     const clubTables = await BilliardTable.find({ club_id: clubObjectId }).select("_id").lean();
     const tableIds = clubTables.map(t => t._id);
 
@@ -56,6 +54,7 @@ const getClubAnalytics = async (req, res) => {
 
     const TransactionHistory = require("../../models/transiction_history.model");
 
+    // Lấy các giao dịch (cọc, thanh toán) có trạng thái "SUCCESS" của các bàn trên.
     const successfulTransactions = await TransactionHistory.find({
       booking_id: { $in: bookingIds },
       status: "SUCCESS",
@@ -71,10 +70,11 @@ const getClubAnalytics = async (req, res) => {
 
     const revenueByDateMap = {};
     let totalRevenue = 0;
-    const paymentMixMap = { cash: 0, bank: 0 };
     const validBookingIds = new Set();
 
     successfulTransactions.forEach(tx => {
+      // Tách lấy phần ngày (YYYY-MM-DD) để gom nhóm doanh thu theo từng ngày.
+      // -> Dùng cho: Biểu đồ đường (LineChart) "Xu hướng doanh thu" ở FE Reports.
       const dateStr = new Date(tx.transaction_time).toISOString().split('T')[0];
       const amount = tx.amount || 0;
       
@@ -85,91 +85,41 @@ const getClubAnalytics = async (req, res) => {
       revenueByDateMap[dateStr].total += amount;
       totalRevenue += amount;
       
-      if (tx.transaction_type === "BOOKING_FINAL_PAYMENT_CASH") {
-         paymentMixMap.cash += amount;
-      } else {
-         paymentMixMap.bank += amount;
-      }
-
       if (tx.booking_id) {
+         // Dùng Set() lọc ID đơn hàng (chống tính trùng 1 đơn thanh toán nhiều lần).
+         // -> Dùng tính "Trung bình / hóa đơn" ở FE Reports (averageOrderValue = totalRevenue / validInvoiceCount).
          validBookingIds.add(tx.booking_id.toString());
       }
     });
 
     const revenueTimeline = Object.values(revenueByDateMap).sort((a, b) => a.date.localeCompare(b.date));
     const validInvoiceCount = validBookingIds.size;
-    let totalBookingsCount = validBookingIds.size; // Chỉ tính những đơn có giao dịch thành công là đơn hợp lệ
-
-    // Tính tổng tiền dịch vụ từ các đơn hợp lệ
     const validBookingIdsArray = Array.from(validBookingIds);
-    const validBookingServices = await BookingService.find({
-      booking_id: { $in: validBookingIdsArray }
-    }).lean();
 
-    let totalServiceRevenue = 0;
-    validBookingServices.forEach(s => {
-      totalServiceRevenue += (s.unit_price * s.quantity);
-    });
-    let totalTableRevenue = totalRevenue - totalServiceRevenue;
-    if (totalTableRevenue < 0) totalTableRevenue = 0;
-
-    // --- 2. TABLE PERFORMANCE (Bàn đắt khách) ---
-    // Analyze bookings within date range (Only valid bookings)
+    // --- 2. THỜI GIAN CHƠI ---
+    // -> Dùng cho: Tính "Giờ chơi TB" (averagePlayMinutes) hiển thị ở FE Dashboard.
     const bookingsInRange = await Booking.find({
       _id: { $in: validBookingIdsArray }
     }).populate('table_id').lean();
 
-    const tableStatsMap = {};
-    const tableTypeStatsMap = {};
     let totalPlayMinutes = 0;
 
     bookingsInRange.forEach(b => {
-       if (!b.table_id) return;
-       const tId = b.table_id._id.toString();
-       const tName = b.table_id.table_number || "Bàn ẩn";
-       const tType = b.table_id.table_type_id?.toString() || "Khác";
-
-       if (!tableStatsMap[tId]) {
-         tableStatsMap[tId] = { id: tId, name: tName, revenue: 0, playMinutes: 0, typeId: tType };
-       }
-       if (!tableTypeStatsMap[tType]) {
-         tableTypeStatsMap[tType] = { id: tType, revenue: 0, playMinutes: 0 };
-       }
-
-       const rev = b.status === "Cancelled" ? (b.deposit || 0) : (b.total_bill || 0);
-       tableStatsMap[tId].revenue += rev;
-       tableTypeStatsMap[tType].revenue += rev;
-
-       // Calculate play duration in minutes
        if (b.start_time && b.end_time && b.status !== "Cancelled") {
          const toMins = (timeStr) => {
+           // Đổi "HH:mm" sang phút
            const [h, m] = timeStr.split(':').map(Number);
            return h * 60 + m;
          };
          let mins = toMins(b.end_time) - toMins(b.start_time);
-         if (mins < 0) mins += 24 * 60; // Cross midnight
-         tableStatsMap[tId].playMinutes += mins;
-         tableTypeStatsMap[tType].playMinutes += mins;
+         // Nếu chơi qua đêm (âm phút), cộng thêm 24h
+         if (mins < 0) mins += 24 * 60; 
          totalPlayMinutes += mins;
        }
     });
 
-    const topTables = Object.values(tableStatsMap).sort((a, b) => b.revenue - a.revenue);
-    
-    // Resolve Table Types names
-    const typeIds = Object.keys(tableTypeStatsMap);
-    const typesDocs = await TableType.find({ _id: { $in: typeIds } }).lean();
-    const typeNameMap = {};
-    typesDocs.forEach(t => typeNameMap[t._id.toString()] = t.name);
-
-    const tableTypeDistribution = Object.values(tableTypeStatsMap).map(t => ({
-       name: typeNameMap[t.id] || "Không xác định",
-       revenue: t.revenue,
-       playMinutes: t.playMinutes
-    }));
-
-    // --- 3. SERVICE PERFORMANCE (Dịch vụ bán chạy / ế) ---
-    // Lấy tất cả BookingService trong các booking
+    // --- 3. HIỆU SUẤT DỊCH VỤ ---
+    // -> Dùng cho: Bảng "Dịch vụ Gọi nhiều nhất" và "Ít gọi / Cần chú ý" ở FE Dashboard.
     const bookingServices = await BookingService.find({
        booking_id: { $in: bookingIds },
        created_at: dateFilter
@@ -177,7 +127,7 @@ const getClubAnalytics = async (req, res) => {
 
     const serviceStatsMap = {};
     
-    // Khởi tạo map với tất cả service của quán để tìm rathành phần "ế"
+    // Lấy toàn bộ dịch vụ của quán (để tìm ra những món bán được 0 lượt).
     const allServices = await Service.find({ club_id: clubObjectId, status: 'Active' }).lean();
     allServices.forEach(s => {
        serviceStatsMap[s._id.toString()] = { id: s._id, name: s.name, quantity: 0, revenue: 0 };
@@ -195,20 +145,25 @@ const getClubAnalytics = async (req, res) => {
        serviceStatsMap[sId].revenue += (qty * price);
     });
 
-    const serviceStatsArray = Object.values(serviceStatsMap).sort((a, b) => b.quantity - a.quantity);
+    const serviceStatsArray = Object.values(serviceStatsMap).sort((a, b) => {
+       if (b.quantity !== a.quantity) return b.quantity - a.quantity;
+       return b.revenue - a.revenue;
+    });
     
-    // Lấy top 5 bán chạy (có lượt gọi > 0)
-    const topServices = serviceStatsArray.slice(0, 5).filter(s => s.quantity > 0);
+    // Top 5 món bán chạy nhất (lượt gọi > 0)
+    // "Gọi nhiều nhất" (FE Dashboard).
+    const topServices = serviceStatsArray.filter(s => s.quantity > 0).slice(0, 5);
     
-    // Lấy danh sách ế: Lọc những món không nằm trong topServices, và lượt gọi = 0 hoặc DThu < 50k
+    // Top 5 món ế nhất (lượt gọi thấp nhất)
+    // "Ít gọi / Cần chú ý" (FE Dashboard).
     const topServiceIds = new Set(topServices.map(s => s.id));
     const bottomServices = [...serviceStatsArray]
        .reverse()
-       .filter(s => !topServiceIds.has(s.id))
-       .filter(s => s.quantity === 0 || s.revenue < 50000)
+       .filter(s => !topServiceIds.has(s.id)) 
        .slice(0, 5);
 
-    // --- 4. FEEDBACK (Đánh giá) ---
+    // --- 4. ĐÁNH GIÁ (FEEDBACK) ---
+    // Bảng điểm sao đánh giá (Rating) ở FE Dashboard.
     const feedbacks = await Feedback.find({ club_id: clubObjectId, created_at: dateFilter }).lean();
     const feedbackDistribution = { 5: 0, 4: 0, 3: 0, 2: 0, 1: 0 };
     let totalRating = 0;
@@ -227,76 +182,32 @@ const getClubAnalytics = async (req, res) => {
        count: feedbackDistribution[k]
     }));
 
-    // --- 5. UNPAID / DEBT (Công nợ) ---
-    const unpaidInvoices = await Invoice.countDocuments({
-      booking_id: { $in: bookingIds },
-      status: "Unpaid"
-    });
-
-    // --- 6. TOURNAMENT STATS ---
-    const tournaments = await Tournament.find({
-        club_id: clubObjectId,
-        created_at: dateFilter
-    }).lean();
-
-    let totalTournaments = tournaments.length;
-    let totalTournamentRevenue = 0;
-    let totalTournamentPlayers = 0;
-    
-    tournaments.forEach(t => {
-       // Only count revenue for some statuses or maybe all, but let's just use what's generated.
-       const fee = t.fee || 0;
-       const players = t.registered_player || 0;
-       totalTournamentRevenue += (fee * players);
-       totalTournamentPlayers += players;
-    });
-
-    const tournamentStats = {
-       totalTournaments,
-       totalRevenue: totalTournamentRevenue,
-       totalPlayers: totalTournamentPlayers,
-       tournamentsList: tournaments.map(t => ({
-           id: t._id,
-           name: t.name,
-           fee: t.fee,
-           players: t.registered_player,
-           status: t.status,
-           revenue: (t.fee || 0) * (t.registered_player || 0)
-       })).sort((a,b) => b.revenue - a.revenue).slice(0, 5)
-    };
-
-    // XONG TẤT CẢ DATA - TRẢ VỀ
+    // --- 5. TỔNG HỢP & TRẢ VỀ ---
+    // FE nhận cục data này qua biến analyticsData (Dashboard) hoặc bookingData (Reports).
     return res.status(200).json({
       success: true,
       data: {
         kpi: {
-          totalRevenue: totalRevenue,
-          totalBookings: totalBookingsCount,
+          totalRevenue: totalRevenue, // Tổng doanh thu -> FE hiện: "Tạm tính doanh thu"
           averageOrderValue: validInvoiceCount > 0
-            ? Math.round(totalRevenue / validInvoiceCount)
-            : 0,
-          averagePlayMinutes: totalBookingsCount > 0 ? Math.round(totalPlayMinutes / totalBookingsCount) : 0,
-          unpaidCount: unpaidInvoices
+            ? Math.round(totalRevenue / validInvoiceCount) // (Tổng tiền / Số đơn) 
+            : 0, // -> FE hiện: "Trung bình / hóa đơn" (trang Reports)
+          averagePlayMinutes: validInvoiceCount > 0 
+            ? Math.round(totalPlayMinutes / validInvoiceCount) // (Tổng số phút / Số đơn)
+            : 0 // -> FE hiện: "Giờ chơi TB" (trang Dashboard)
         },
         revenue: {
-          timeline: revenueTimeline,
-          breakdown: { table: totalTableRevenue, service: totalServiceRevenue },
-          paymentMix: paymentMixMap
-        },
-        tables: {
-          topList: topTables.slice(0, 10),
-          typeDistribution: tableTypeDistribution
+          timeline: revenueTimeline // Mảng gom doanh thu theo từng ngày -> FE vẽ biểu đồ đường LineChart
         },
         services: {
-          topList: topServices,
-          bottomList: bottomServices
+          topList: topServices, // Top 5 món bán chạy -> FE hiện danh sách " Gọi nhiều nhất"
+          bottomList: bottomServices // Top 5 món bán ế -> FE hiện danh sách " Ít gọi / Cần chú ý"
         },
         feedback: {
-          average: Number(averageRating),
-          total: feedbacks.length,
-          distribution: feedbackList
-        },
-        tournaments: tournamentStats
+          average: Number(averageRating), // Điểm đánh giá TB (VD: 4.8 sao) -> FE hiện ở khung to
+          total: feedbacks.length, // Tổng số lượt đánh giá -> FE hiện chữ "xx lượt"
+          distribution: feedbackList // Mảng đếm số người chấm 5 sao, 4 sao... -> FE dùng vẽ 5 thanh ngang (Progress bar)
+        }
       }
     });
 
