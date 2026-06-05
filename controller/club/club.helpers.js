@@ -92,6 +92,11 @@ const validateTimes = (openingTime, closingTime) => {
 
   // So sánh thời gian
   if (openingTime && closingTime) {
+    // Quán mở cửa 24/24
+    if (openingTime === "00:00" && closingTime === "00:00") {
+      return { valid: true };
+    }
+
     const openingMinutes = timeToMinutes(openingTime);
     const closingMinutes = timeToMinutes(closingTime);
 
