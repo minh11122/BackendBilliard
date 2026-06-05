@@ -452,7 +452,9 @@ const createBookingCheckoutPayOSPayment = async (req, res) => {
     booking.actual_end_time = realEndTimeStr;
     await booking.save();
 
-    const totalBill = Number(playCost || 0) + Number(serviceTotal || 0);
+    const carryOver = Number(booking.carry_over_amount || 0);
+    const totalBill =
+      Number(playCost || 0) + Number(serviceTotal || 0) + carryOver;
     const deposit = Number(booking.deposit || 0);
     const dueAmount = Math.max(0, Math.round(totalBill - deposit));
 
@@ -524,6 +526,7 @@ const createBookingCheckoutPayOSPayment = async (req, res) => {
           invoice: {
             playCost,
             serviceTotal,
+            carryOver,
             totalBill,
             deposit,
             dueAmount,
@@ -575,6 +578,7 @@ const createBookingCheckoutPayOSPayment = async (req, res) => {
         invoice: {
           playCost,
           serviceTotal,
+          carryOver,
           totalBill,
           deposit,
           dueAmount,
