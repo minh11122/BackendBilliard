@@ -92,6 +92,64 @@ const getClubAnalytics = async (req, res) => {
       }
     });
 
+    // --- 1.5 DOANH THU GIẢI ĐẤU ---
+    const Tournament = require("../../models/tournament.model");
+    
+    // Lấy các giải đấu hợp lệ (khác Draft, Cancelled) diễn ra trong khoảng thời gian dateFilter
+    const tournamentQuery = {
+      club_id: clubObjectId,
+      status: { $nin: ["Draft", "Cancelled"] }
+    };
+    if (dateFilter.$gte) {
+      tournamentQuery.play_date = dateFilter;
+    }
+    
+    const validTournaments = await Tournament.find(tournamentQuery).select("_id name status registered_player").lean();
+    
+    const tournamentStatsMap = {};
+    let totalTournamentPlayers = 0;
+    
+    validTournaments.forEach(t => {
+      totalTournamentPlayers += (t.registered_player || 0);
+      tournamentStatsMap[t._id.toString()] = {
+        name: t.name,
+        status: t.status,
+        revenue: 0
+      };
+    });
+    
+    const validTournamentIds = validTournaments.map(t => t._id.toString());
+    
+    const tournamentTransactions = await TransactionHistory.find({
+      transaction_type: "TOURNAMENT_FEE",
+      status: "SUCCESS",
+      transaction_time: dateFilter
+    }).lean();
+
+    let totalTournamentRevenue = 0;
+    
+    tournamentTransactions.forEach(tx => {
+      if (tx.description && tx.description.startsWith("TournamentFee:")) {
+         const tId = tx.description.split(":")[1];
+         if (tournamentStatsMap[tId]) {
+           const amount = tx.amount || 0;
+           totalTournamentRevenue += amount;
+           tournamentStatsMap[tId].revenue += amount;
+         }
+      }
+    });
+    
+    const tournamentChartData = Object.values(tournamentStatsMap)
+      .filter(t => t.revenue > 0)
+      .sort((a, b) => b.revenue - a.revenue)
+      .slice(0, 6)
+      .map(t => ({
+        name: t.name.length > 16 ? `${t.name.slice(0, 14)}…` : t.name,
+        fullName: t.name,
+        revenue: t.revenue,
+        status: t.status
+      }));
+
     const revenueTimeline = Object.values(revenueByDateMap).sort((a, b) => a.date.localeCompare(b.date));
     const validInvoiceCount = validBookingIds.size;
     const validBookingIdsArray = Array.from(validBookingIds);
@@ -130,25 +188,19 @@ const getClubAnalytics = async (req, res) => {
     // Lấy toàn bộ dịch vụ của quán (để tìm ra những món bán được 0 lượt).
     const allServices = await Service.find({ club_id: clubObjectId, status: 'Active' }).lean();
     allServices.forEach(s => {
-       serviceStatsMap[s._id.toString()] = { id: s._id, name: s.name, quantity: 0, revenue: 0 };
+       serviceStatsMap[s._id.toString()] = { id: s._id, name: s.name, quantity: 0 };
     });
 
     bookingServices.forEach(bs => {
        if (!bs.service_id) return;
        const sId = bs.service_id._id.toString();
        if (!serviceStatsMap[sId]) {
-         serviceStatsMap[sId] = { id: sId, name: bs.service_id.name, quantity: 0, revenue: 0 };
+         serviceStatsMap[sId] = { id: sId, name: bs.service_id.name, quantity: 0 };
        }
-       const qty = bs.quantity || 1;
-       const price = bs.unit_price || 0;
-       serviceStatsMap[sId].quantity += qty;
-       serviceStatsMap[sId].revenue += (qty * price);
+       serviceStatsMap[sId].quantity += (bs.quantity || 1);
     });
 
-    const serviceStatsArray = Object.values(serviceStatsMap).sort((a, b) => {
-       if (b.quantity !== a.quantity) return b.quantity - a.quantity;
-       return b.revenue - a.revenue;
-    });
+    const serviceStatsArray = Object.values(serviceStatsMap).sort((a, b) => b.quantity - a.quantity);
     
     // Top 5 món bán chạy nhất (lượt gọi > 0)
     // "Gọi nhiều nhất" (FE Dashboard).
@@ -188,13 +240,19 @@ const getClubAnalytics = async (req, res) => {
       success: true,
       data: {
         kpi: {
-          totalRevenue: totalRevenue, // Tổng doanh thu -> FE hiện: "Tạm tính doanh thu"
+          totalRevenue: totalRevenue, // Tổng doanh thu (Chỉ Booking) -> FE hiện: "Tạm tính doanh thu"
+          totalTournamentRevenue: totalTournamentRevenue, // Tổng doanh thu giải đấu
           averageOrderValue: validInvoiceCount > 0
-            ? Math.round(totalRevenue / validInvoiceCount) // (Tổng tiền / Số đơn) 
+            ? Math.round(totalRevenue / validInvoiceCount) // (Tổng tiền booking / Số đơn) 
             : 0, // -> FE hiện: "Trung bình / hóa đơn" (trang Reports)
           averagePlayMinutes: validInvoiceCount > 0 
             ? Math.round(totalPlayMinutes / validInvoiceCount) // (Tổng số phút / Số đơn)
             : 0 // -> FE hiện: "Giờ chơi TB" (trang Dashboard)
+        },
+        tournaments: {
+          totalCount: validTournaments.length,
+          totalPlayers: totalTournamentPlayers,
+          chartData: tournamentChartData
         },
         revenue: {
           timeline: revenueTimeline // Mảng gom doanh thu theo từng ngày -> FE vẽ biểu đồ đường LineChart
@@ -217,6 +275,50 @@ const getClubAnalytics = async (req, res) => {
   }
 };
 
+const getClubFeedbackStats = async (req, res) => {
+  try {
+    const { id: club_id } = req.params;
+    if (!club_id) return res.status(400).json({ success: false, message: "Thiếu club_id" });
+
+    const mongoose = require("mongoose");
+    const Feedback = require("../../models/feedback.model");
+    
+    // API này không cần filter theo ngày vì dashboard lấy all-time
+    const feedbacks = await Feedback.find({ club_id: new mongoose.Types.ObjectId(club_id) }).select("rating").lean();
+    
+    const distribution = { 5: 0, 4: 0, 3: 0, 2: 0, 1: 0 };
+    let totalRating = 0;
+    
+    feedbacks.forEach(f => {
+       const star = Math.floor(f.rating || 5);
+       totalRating += f.rating;
+       if (distribution[star] !== undefined) distribution[star]++;
+    });
+
+    const averageRating = feedbacks.length > 0 ? (totalRating / feedbacks.length).toFixed(1) : 0;
+    const feedbackList = Object.keys(distribution).sort((a,b) => b-a).map(k => ({
+       stars: Number(k),
+       count: distribution[k]
+    }));
+
+    return res.status(200).json({
+      success: true,
+      data: {
+        feedback: {
+          average: Number(averageRating),
+          total: feedbacks.length,
+          distribution: feedbackList
+        }
+      }
+    });
+
+  } catch (error) {
+    console.error("Lỗi lấy Feedback Stats:", error);
+    return res.status(500).json({ success: false, message: "Lỗi Server", error: error.message });
+  }
+};
+
 module.exports = {
-  getClubAnalytics
+  getClubAnalytics,
+  getClubFeedbackStats
 };

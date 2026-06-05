@@ -18,6 +18,7 @@ router.patch("/:id/complete-onboarding", authenticate, clubController.completeOn
 
 const clubAnalyticsController = require("../controller/club/clubAnalytics.controller");
 router.get("/:id/analytics", authenticate, authorizeRole("OWNER", "STAFF_CLUB"), clubAnalyticsController.getClubAnalytics);
+router.get("/:id/feedback-stats", authenticate, authorizeRole("OWNER", "STAFF_CLUB"), clubAnalyticsController.getClubFeedbackStats);
 
 // Thông tin tài khoản ngân hàng của CLB
 router.get("/:id/bank", authenticate, authorizeRole("OWNER", "STAFF_CLUB"), clubBankController.getBankByClub);
