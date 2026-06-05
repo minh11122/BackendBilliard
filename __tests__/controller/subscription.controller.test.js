@@ -44,23 +44,38 @@ const pastExpireDate = () => {
     return d;
 };
 
-const mockFindClubRecord = (record) => {
-    SubscriptionAccount.findOne.mockReturnValue({
-        sort: jest.fn().mockResolvedValue(record)
+let findOneMock;
+
+const mockFindClubRecord = (...records) => {
+    if (!findOneMock) {
+        findOneMock = jest.fn();
+    }
+    SubscriptionAccount.findOne.mockImplementation(findOneMock);
+    findOneMock.mockReset();
+    records.forEach(record => {
+        findOneMock.mockReturnValueOnce({
+            sort: jest.fn().mockReturnValue({
+                populate: jest.fn().mockResolvedValue(record),
+                then: (resolve) => resolve(record)
+            })
+        });
     });
+    // Default to the last record if called more times
+    if (records.length > 0) {
+        findOneMock.mockReturnValue({
+            sort: jest.fn().mockReturnValue({
+                populate: jest.fn().mockResolvedValue(records[records.length - 1]),
+                then: (resolve) => resolve(records[records.length - 1])
+            })
+        });
+    }
 };
 
-const mockFindClubRecordWithPopulate = (record) => {
-    SubscriptionAccount.findOne.mockReturnValue({
-        sort: jest.fn().mockReturnValue({
-            populate: jest.fn().mockResolvedValue(record)
-        })
-    });
-};
+
 
 describe("Subscription Controller - Branch Coverage Suite", () => {
     beforeAll(() => {
-        jest.spyOn(console, "error").mockImplementation(() => {});
+        // jest.spyOn(console, "error")
     });
 
     beforeEach(() => {
@@ -87,7 +102,7 @@ describe("Subscription Controller - Branch Coverage Suite", () => {
     describe("getCurrentSubscription", () => {
         it("SUCCESS - returns active subscription for club", async () => {
             const res = makeRes();
-            mockFindClubRecordWithPopulate({
+            mockFindClubRecord({
                 _id: "sa1",
                 status: "active",
                 expire_date: futureExpireDate(),
@@ -104,7 +119,7 @@ describe("Subscription Controller - Branch Coverage Suite", () => {
                 status: "active",
                 expire_date: pastExpireDate()
             });
-            mockFindClubRecordWithPopulate(expired);
+            mockFindClubRecord(expired);
             await subscriptionController.getCurrentSubscription({ query: { club_id: CLUB_ID } }, res);
             expect(res.status).toHaveBeenCalledWith(200);
             expect(res.json).toHaveBeenCalledWith(expect.objectContaining({ data: null }));
@@ -113,7 +128,7 @@ describe("Subscription Controller - Branch Coverage Suite", () => {
 
         it("SUCCESS - returns null when no subscription", async () => {
             const res = makeRes();
-            mockFindClubRecordWithPopulate(null);
+            mockFindClubRecord(null);
             await subscriptionController.getCurrentSubscription({ query: { club_id: CLUB_ID } }, res);
             expect(res.status).toHaveBeenCalledWith(200);
             expect(res.json).toHaveBeenCalledWith(expect.objectContaining({ data: null }));
@@ -142,7 +157,7 @@ describe("Subscription Controller - Branch Coverage Suite", () => {
         it("SUCCESS - creates payment with price * months", async () => {
             const res = makeRes();
             Subscription.findById.mockResolvedValue({ _id: SUB_ID, price: 100000 });
-            mockFindClubRecordWithPopulate(null);
+            mockFindClubRecord(null);
             TransactionHistory.create.mockResolvedValue({});
             payosService.createPaymentLink.mockResolvedValue({ checkoutUrl: "http://pay.url" });
             await subscriptionController.createSubscriptionPayment(validReq, res);
@@ -153,7 +168,7 @@ describe("Subscription Controller - Branch Coverage Suite", () => {
         it("SUCCESS - multiplies price by duration_months", async () => {
             const res = makeRes();
             Subscription.findById.mockResolvedValue({ _id: SUB_ID, price: 100000 });
-            mockFindClubRecordWithPopulate(null);
+            mockFindClubRecord(null);
             TransactionHistory.create.mockResolvedValue({});
             payosService.createPaymentLink.mockResolvedValue({ checkoutUrl: "http://pay.url" });
             await subscriptionController.createSubscriptionPayment({
@@ -191,7 +206,7 @@ describe("Subscription Controller - Branch Coverage Suite", () => {
         it("FAIL 500 - payment service error", async () => {
             const res = makeRes();
             Subscription.findById.mockResolvedValue({ _id: SUB_ID, price: 100000 });
-            mockFindClubRecordWithPopulate(null);
+            mockFindClubRecord(null);
             TransactionHistory.create.mockRejectedValue(new Error("payment failed"));
             await subscriptionController.createSubscriptionPayment(validReq, res);
             expect(res.status).toHaveBeenCalledWith(500);
@@ -214,8 +229,7 @@ describe("Subscription Controller - Branch Coverage Suite", () => {
             mockMarkPaid();
             Subscription.findById.mockResolvedValue({ _id: SUB_ID, price: 100000, post_limit: 10 });
 
-            mockFindClubRecordWithPopulate(null);
-            mockFindClubRecord(null);
+            mockFindClubRecord(null, null);
 
             SubscriptionAccount.create.mockResolvedValue({ _id: "sa1", status: "active" });
             await subscriptionController.verifySubscriptionPayment(validReq, res);
@@ -240,8 +254,7 @@ describe("Subscription Controller - Branch Coverage Suite", () => {
                 start_date: new Date("2026-01-01")
             });
 
-            mockFindClubRecordWithPopulate(null);
-            mockFindClubRecord(existingSub);
+            mockFindClubRecord(null, existingSub);
 
             await subscriptionController.verifySubscriptionPayment({
                 ...validReq,
@@ -270,8 +283,7 @@ describe("Subscription Controller - Branch Coverage Suite", () => {
                 post_limit: 10
             });
 
-            mockFindClubRecordWithPopulate(null);
-            mockFindClubRecord(existingSub);
+            mockFindClubRecord(null, existingSub);
 
             await subscriptionController.verifySubscriptionPayment({
                 ...validReq,

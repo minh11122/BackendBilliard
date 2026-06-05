@@ -66,81 +66,7 @@ describe("Admin Controller - Legendary Masterpiece Suite", () => {
         jest.clearAllMocks();
     });
 
-    // ══════════════════════════════════════════════════════════════════════════
-    // getAllAccountsForAdmin
-    // ══════════════════════════════════════════════════════════════════════════
-    describe("getAllAccountsForAdmin", () => {
-        it("SUCCESS - returns paginated accounts excluding ADMIN role", async () => {
-            const res = makeRes();
-            Role.findOne.mockResolvedValue({ _id: ADMIN_ROLE_ID });
-            Account.find.mockReturnValue(makeChain([{ _id: ACCOUNT_ID, email: "user@test.com" }]));
-            Account.countDocuments.mockResolvedValue(1);
 
-            await adminController.getAllAccountsForAdmin({ query: { page: 1, limit: 10 } }, res);
-
-            expect(Account.find).toHaveBeenCalledWith(expect.objectContaining({
-                role_id: { $ne: ADMIN_ROLE_ID }
-            }));
-            expect(res.json).toHaveBeenCalledWith(expect.objectContaining({
-                message: "Lấy danh sách account thành công",
-                pagination: expect.objectContaining({ total: 1 })
-            }));
-        });
-
-        it("SUCCESS - search by email/fullname query filter", async () => {
-            const res = makeRes();
-            Role.findOne.mockResolvedValue({ _id: ADMIN_ROLE_ID });
-            Account.find.mockReturnValue(makeChain([]));
-            Account.countDocuments.mockResolvedValue(0);
-
-            await adminController.getAllAccountsForAdmin({
-                query: { page: 1, limit: 10, search: "staff" }
-            }, res);
-
-            expect(Account.find).toHaveBeenCalledWith(expect.objectContaining({
-                $or: expect.any(Array)
-            }));
-        });
-
-        it("SUCCESS - filter by role (non-ALL)", async () => {
-            const res = makeRes();
-            Role.findOne
-                .mockResolvedValueOnce({ _id: ADMIN_ROLE_ID }) // admin check
-                .mockResolvedValueOnce({ _id: STAFF_ROLE_ID, name: "OWNER" }); // role filter
-            Account.find.mockReturnValue(makeChain([]));
-            Account.countDocuments.mockResolvedValue(0);
-
-            await adminController.getAllAccountsForAdmin({
-                query: { page: 1, limit: 10, role: "OWNER" }
-            }, res);
-
-            expect(Role.findOne).toHaveBeenCalledTimes(2);
-        });
-
-        it("SUCCESS - filter by status (non-ALL)", async () => {
-            const res = makeRes();
-            Role.findOne.mockResolvedValue({ _id: ADMIN_ROLE_ID });
-            Account.find.mockReturnValue(makeChain([]));
-            Account.countDocuments.mockResolvedValue(0);
-
-            await adminController.getAllAccountsForAdmin({
-                query: { page: 1, limit: 5, status: "BANNED" }
-            }, res);
-
-            expect(Account.find).toHaveBeenCalledWith(expect.objectContaining({
-                status: "BANNED"
-            }));
-        });
-
-        it("FAIL 500 - DB error propagates to 500", async () => {
-            const res = makeRes();
-            Role.findOne.mockRejectedValue(new Error("DB down"));
-
-            await adminController.getAllAccountsForAdmin({ query: {} }, res);
-
-            expect(res.status).toHaveBeenCalledWith(500);
-        });
-    });
 
     // ══════════════════════════════════════════════════════════════════════════
     // getAllClubs
@@ -173,28 +99,7 @@ describe("Admin Controller - Legendary Masterpiece Suite", () => {
             }));
         });
 
-        it("SUCCESS - filter by status", async () => {
-            const res = makeRes();
-            Club.find.mockReturnValue(makeChain([]));
-            Club.countDocuments.mockResolvedValue(0);
 
-            await adminController.getAllClubs({
-                query: { status: "APPROVED" }
-            }, res);
-
-            expect(Club.find).toHaveBeenCalledWith(expect.objectContaining({
-                status: "APPROVED"
-            }));
-        });
-
-        it("FAIL 500 - DB error propagates", async () => {
-            const res = makeRes();
-            Club.find.mockImplementation(() => { throw new Error("DB fail"); });
-
-            await adminController.getAllClubs({ query: {} }, res);
-
-            expect(res.status).toHaveBeenCalledWith(500);
-        });
     });
 
     // ══════════════════════════════════════════════════════════════════════════

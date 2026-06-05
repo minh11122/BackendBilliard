@@ -94,30 +94,25 @@ describe("Club Analytics Controller - Unit Tests", () => {
       TableType.find.mockReturnValue({ lean: jest.fn().mockResolvedValue([{ _id: validTypeId, name: "Pool" }]) });
 
       // 7. Mock Services (2 calls: first .lean() then .populate().lean())
-      BookingService.find
-        .mockReturnValueOnce({
+      BookingService.find.mockReturnValue({
+        populate: jest.fn().mockReturnValue({
           lean: jest.fn().mockResolvedValue([{
-             service_id: validServiceId,
+             service_id: { _id: validServiceId, name: "Pepsi" },
              booking_id: validBookingId,
              quantity: 2,
              unit_price: 15000
           }])
         })
-        .mockReturnValueOnce({
-          populate: jest.fn().mockReturnValue({
-            lean: jest.fn().mockResolvedValue([{
-               service_id: { _id: validServiceId, name: "Pepsi" },
-               quantity: 2,
-               unit_price: 15000
-            }])
-          })
-        });
+      });
       Service.find.mockReturnValue({ lean: jest.fn().mockResolvedValue([{ _id: validServiceId, name: "Pepsi", status: "Active" }]) });
 
       // 8. Mock Feedback
       Feedback.find.mockReturnValue({ lean: jest.fn().mockResolvedValue([{ rating: 5 }, { rating: 4 }]) });
       Invoice.countDocuments.mockResolvedValue(1); // Unpaid debt
-      Tournament.find.mockReturnValue({ lean: jest.fn().mockResolvedValue([]) }); // No tournaments
+      Tournament.find.mockReturnValue({
+        select: jest.fn().mockReturnThis(),
+        lean: jest.fn().mockResolvedValue([])
+      });
 
       await clubAnalyticsController.getClubAnalytics(req, res);
 
