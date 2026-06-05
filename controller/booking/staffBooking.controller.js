@@ -1,4 +1,4 @@
-﻿const Booking = require("../../models/booking.model");
+const Booking = require("../../models/booking.model");
 const BilliardTable = require("../../models/billiard_table.model");
 const Club = require("../../models/club.model");
 const BookingService = require("../../models/booking_service.model");
@@ -535,11 +535,68 @@ const changeTable = async (req, res) => {
     const endH = now.getHours();
     const endM = now.getMinutes();
     const realEndTimeStr = `${String(endH).padStart(2, "0")}:${String(endM).padStart(2, "0")}`;
-
     const scheduledEndStr = oldBooking.end_time;
+
+    // KIỂM TRA TRÙNG LỊCH BÀN MỚI
+    const targetDate = new Date(now);
+    targetDate.setHours(0, 0, 0, 0);
+
+    const prevDay = new Date(targetDate);
+    prevDay.setDate(prevDay.getDate() - 1);
+
+    const nextTwoDays = new Date(targetDate);
+    nextTwoDays.setDate(nextTwoDays.getDate() + 2);
+
+    const otherBookings = await Booking.find({
+      table_id: new_table_id,
+      play_date: { $gte: prevDay, $lt: nextTwoDays },
+      status: { $in: ["Pending", "Booked", "Playing"] },
+    }).lean();
+
+    let startA = timeToMinutes(realEndTimeStr);
+    let endA = timeToMinutes(scheduledEndStr);
+    if (endA <= startA) endA += 24 * 60;
+
+    for (const b of otherBookings) {
+      const bDate = new Date(b.play_date);
+      bDate.setHours(0, 0, 0, 0);
+
+      let startB = timeToMinutes(b.start_time);
+      let endB = timeToMinutes(b.end_time);
+
+      if (bDate.getTime() < targetDate.getTime()) {
+        startB -= 24 * 60;
+        endB -= 24 * 60;
+        if (endB <= startB) endB += 24 * 60;
+      } else if (bDate.getTime() > targetDate.getTime()) {
+        startB += 24 * 60;
+        endB += 24 * 60;
+        if (endB <= startB) endB += 24 * 60;
+      } else {
+        if (endB <= startB) endB += 24 * 60;
+      }
+
+      if (startA < endB && endA > startB) {
+        return res.status(409).json({
+          success: false,
+          message: `Không thể đổi sang bàn ${newTable.table_number} do trùng lịch với đơn khác bắt đầu lúc ${b.start_time}.`,
+        });
+      }
+    }
+
     let endMin = timeToMinutes(realEndTimeStr); // Tính tiền bàn cũ theo giờ thực tế chuyển
     const startMin = timeToMinutes(oldBooking.start_time);
-    if (endMin <= startMin) endMin += 24 * 60;
+    
+    const playDate = new Date(oldBooking.play_date);
+    playDate.setHours(0, 0, 0, 0);
+    const today = new Date(now);
+    today.setHours(0, 0, 0, 0);
+
+    if (today.getTime() > playDate.getTime()) {
+      endMin += 24 * 60;
+    } else if (endMin < startMin) {
+      endMin = startMin;
+    }
 
     const durationHours = (endMin - startMin) / 60;
     const playCost = Math.round(durationHours * (oldBooking.hour_price || 0));
