@@ -45,7 +45,7 @@ const getTournamentPlayers = async (req, res) => {
     if (managedClubId && String(tournament.club_id) !== String(managedClubId)) {
       return res.status(403).json({
         success: false,
-        message: "Báº¡n khÃ´ng cÃ³ quyá»n xem danh sÃ¡ch ngÆ°á»i chÆ¡i cá»§a giáº£i nÃ y",
+        message: "Bạn không có quyền xem danh sách người chơi của giải này",
       });
     }
 
