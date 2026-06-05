@@ -5,6 +5,9 @@ const mongoose = require("mongoose");
 
 jest.mock("../../models/transiction_history.model");
 jest.mock("../../models/club.model");
+jest.mock("../../controller/transaction.helpers", () => ({
+  syncPendingTransactions: jest.fn(async (rows) => rows),
+}));
 
 const createRes = () => {
   const res = {};
