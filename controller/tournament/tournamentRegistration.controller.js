@@ -75,7 +75,7 @@ const getMyRegisteredTournamentIds = async (req, res) => {
 
     const rows = await TournamentPlayer.find({
       account_id: accountId,
-      status: "Approved",
+      status: { $in: ["Approved", "Eliminated", "Champion"] },
     })
       .select("tournament_id")
       .lean();
