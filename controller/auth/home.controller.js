@@ -6,7 +6,8 @@ const Post = require("../../models/post.model");
 
 const getLatestTournaments = async (req, res) => {
   try {
-    const tournaments = await Tournament.find()
+    const tournaments = await Tournament.find({
+          status: { $in: ["Open", "Closed", "InProgress", "Completed"] }})
       .sort({ created_at: -1 }) // mới nhất
       .limit(3);
 
