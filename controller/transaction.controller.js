@@ -1,6 +1,7 @@
 const mongoose = require("mongoose");
 const TransactionHistory = require("../models/transiction_history.model");
 const Club = require("../models/club.model");
+const { syncPendingTransactions } = require("./transaction.helpers");
 
 /**
  * Customer: lấy lịch sử giao dịch của chính tài khoản đang đăng nhập.
@@ -74,6 +75,8 @@ const getMyTransferHistory = async (req, res) => {
         },
       },
     ]);
+
+    await syncPendingTransactions(rows);
 
     res.status(200).json({ success: true, data: rows });
   } catch (error) {
@@ -267,6 +270,8 @@ const getClubTransferHistory = async (req, res) => {
         new Date(b.transaction_time || 0).getTime() -
         new Date(a.transaction_time || 0).getTime()
     );
+
+    await syncPendingTransactions(rows, { clubIdHint: club_id });
 
     res.status(200).json({ success: true, data: rows });
   } catch (error) {
