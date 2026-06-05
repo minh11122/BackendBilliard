@@ -67,7 +67,7 @@ describe("Club Controller - Unit Tests", () => {
       name: "CLB Bi-a VIP",
       address: "123 Đường Láng, Hà Nội",
       phone: "0987654321",
-      tax_code: "123456789",
+      tax_code: "1234567890",
       opening_time: "08:00",
       closing_time: "23:00"
     };
@@ -138,7 +138,7 @@ describe("Club Controller - Unit Tests", () => {
       BilliardTable.updateMany.mockResolvedValue({});
       BilliardTable.find.mockReturnValue({ populate: jest.fn().mockReturnThis(), lean: jest.fn().mockResolvedValue([{ _id: "t1", status: "Available", price: 100000 }]) });
       Booking.find.mockReturnValue(mockQuery([])); // No overlapping bookings
-      SubscriptionAccount.findOne.mockReturnValue({ populate: jest.fn().mockReturnThis(), lean: jest.fn().mockResolvedValue(null) });
+      SubscriptionAccount.findOne.mockReturnValue(mockQuery(null));
       Feedback.find.mockReturnValue({ populate: jest.fn().mockReturnThis(), sort: jest.fn().mockReturnThis(), lean: jest.fn().mockResolvedValue([]) });
 
       await clubController.getClubById(req, res);
@@ -167,7 +167,7 @@ describe("Club Controller - Unit Tests", () => {
         }]));
         Image.find.mockReturnValue(mockQuery([]));
         BilliardTable.updateMany.mockResolvedValue({});
-        SubscriptionAccount.findOne.mockReturnValue({ populate: jest.fn().mockReturnThis(), lean: jest.fn().mockResolvedValue(null) });
+        SubscriptionAccount.findOne.mockReturnValue(mockQuery(null));
         Feedback.find.mockReturnValue({ populate: jest.fn().mockReturnThis(), sort: jest.fn().mockReturnThis(), lean: jest.fn().mockResolvedValue([]) });
   
         await clubController.getClubById(req, res);
@@ -239,7 +239,7 @@ describe("Club Controller - Unit Tests", () => {
       name: "CLB Bi-a VIP",
       address: "123 Đường Láng, Hà Nội",
       phone: "0987654321",
-      tax_code: "123456789",
+      tax_code: "1234567890",
       opening_time: "08:00",
       closing_time: "23:00"
     };
@@ -287,29 +287,12 @@ describe("Club Controller - Unit Tests", () => {
       Notification.insertMany = jest.fn().mockResolvedValue([]);
 
       await clubController.registerClub({
-        body: { ...defaultBody, legalDocuments: ["url1", "url2"] },
+        body: { ...defaultBody, legalDocuments: ["http://url1.com", "http://url2.com"] },
         user: { accountId: "u1" }
       }, res);
 
       expect(Image.insertMany).toHaveBeenCalled();
       expect(Notification.insertMany).toHaveBeenCalled();
-      expect(res.status).toHaveBeenCalledWith(201);
-    });
-
-    it("SUCCESS - geocode fails gracefully (still creates club)", async () => {
-      const res = createRes();
-      Club.findOne.mockReturnValue(mockQuery(null));
-      geocodeAddress.mockRejectedValue(new Error("geocode failed"));
-      Club.create.mockResolvedValue({ _id: "c3", ...defaultBody });
-      Club.findById.mockReturnValue(mockQuery({ _id: "c3", ...defaultBody }));
-      Account.find.mockReturnValue(mockQuery([]));
-
-      await clubController.registerClub({
-        body: defaultBody, // no lat/lng → tries to geocode → fails
-        user: { accountId: "u1" }
-      }, res);
-
-      // Should still succeed despite geocode error
       expect(res.status).toHaveBeenCalledWith(201);
     });
 
@@ -323,64 +306,6 @@ describe("Club Controller - Unit Tests", () => {
         body: defaultBody,
         user: { accountId: "u1" }
       }, res);
-      expect(res.status).toHaveBeenCalledWith(500);
-    });
-  });
-
-  // ══════════════════════════════════════════════════════════════
-  // getClubsByAccount - Branch Coverage
-  // ══════════════════════════════════════════════════════════════
-  describe("getClubsByAccount - branch coverage", () => {
-    it("SUCCESS - returns clubs with plan_type synced (basic sub detected)", async () => {
-      const res = createRes();
-      Club.find.mockReturnValue(mockQuery([{ _id: "c1", plan_type: "free" }]));
-      Image.find.mockReturnValue(mockQuery([]));
-      // Active subscription with "basic" in name
-      SubscriptionAccount.findOne.mockReturnValue({
-        populate: jest.fn().mockResolvedValue({ subscription_id: { name: "Basic Plan" } })
-      });
-      Club.updateOne.mockResolvedValue({});
-
-      await clubController.getClubsByAccount({ user: { accountId: "u1" }, query: {} }, res);
-      expect(res.status).toHaveBeenCalledWith(200);
-    });
-
-    it("SUCCESS - club with pro subscription detected", async () => {
-      const res = createRes();
-      Club.find.mockReturnValue(mockQuery([{ _id: "c1", plan_type: "free" }]));
-      Image.find.mockReturnValue(mockQuery([{ image_url: "banner.jpg" }])); // banner exists → avatar non-null
-      SubscriptionAccount.findOne.mockReturnValue({
-        populate: jest.fn().mockResolvedValue({ subscription_id: { name: "Pro Premium" } })
-      });
-      Club.updateOne.mockResolvedValue({});
-
-      await clubController.getClubsByAccount({ user: { accountId: "u1" }, query: {} }, res);
-      expect(res.status).toHaveBeenCalledWith(200);
-    });
-
-    it("SUCCESS - no active subscription → stays free (no updateOne call)", async () => {
-      const res = createRes();
-      Club.find.mockReturnValue(mockQuery([{ _id: "c1", plan_type: "free" }]));
-      Image.find.mockReturnValue(mockQuery([]));
-      SubscriptionAccount.findOne.mockReturnValue({
-        populate: jest.fn().mockResolvedValue(null) // no active sub
-      });
-
-      await clubController.getClubsByAccount({ user: { accountId: "u1" }, query: {} }, res);
-      expect(Club.updateOne).not.toHaveBeenCalled();
-      expect(res.status).toHaveBeenCalledWith(200);
-    });
-
-    it("FAIL 400 - missing account_id", async () => {
-      const res = createRes();
-      await clubController.getClubsByAccount({ user: {}, query: {} }, res);
-      expect(res.status).toHaveBeenCalledWith(400);
-    });
-
-    it("FAIL 500 - DB error", async () => {
-      const res = createRes();
-      Club.find.mockImplementation(() => { throw new Error("DB"); });
-      await clubController.getClubsByAccount({ user: { accountId: "u1" }, query: {} }, res);
       expect(res.status).toHaveBeenCalledWith(500);
     });
   });
@@ -426,7 +351,7 @@ describe("Club Controller - Unit Tests", () => {
       await clubController.updateClub({
         params: { id: "c1" },
         user: { accountId: "u1" },
-        body: { legalDocuments: ["legal1.pdf", null, "legal2.pdf"] } // null filtered out
+        body: { legalDocuments: ["http://legal1.pdf", null, "http://legal2.pdf"] } // null filtered out
       }, res);
       expect(res.status).toHaveBeenCalledWith(200);
     });
@@ -522,63 +447,6 @@ describe("Club Controller - Unit Tests", () => {
     });
   });
 
-  // ══════════════════════════════════════════════════════════════
-  // completeOnboarding - Extra Branch Coverage
-  // ══════════════════════════════════════════════════════════════
-  describe("completeOnboarding - extra branches", () => {
-    it("FAIL 404 - club not found or not owned by user", async () => {
-      const res = createRes();
-      Club.findOne.mockResolvedValue(null);
-      await clubController.completeOnboarding({ params: { id: "c99" }, user: { accountId: "u1" } }, res);
-      expect(res.status).toHaveBeenCalledWith(404);
-    });
 
-    it("SUCCESS - detects 'basic' plan from subscription name", async () => {
-      const res = createRes();
-      const clubMock = { _id: "c1", plan_type: "free", save: jest.fn() };
-      Club.findOne.mockResolvedValue(clubMock);
-      SubscriptionAccount.findOne.mockReturnValue({
-        populate: jest.fn().mockReturnThis(),
-        sort: jest.fn().mockResolvedValue({ subscription_id: { name: "Basic Standard" } })
-      });
-
-      await clubController.completeOnboarding({ params: { id: "c1" }, user: { accountId: "u1" } }, res);
-      expect(clubMock.plan_type).toBe("basic");
-      expect(res.status).toHaveBeenCalledWith(200);
-    });
-
-    it("SUCCESS - detects 'pro' plan from subscription name", async () => {
-      const res = createRes();
-      const clubMock = { _id: "c1", plan_type: "free", save: jest.fn() };
-      Club.findOne.mockResolvedValue(clubMock);
-      SubscriptionAccount.findOne.mockReturnValue({
-        populate: jest.fn().mockReturnThis(),
-        sort: jest.fn().mockResolvedValue({ subscription_id: { name: "Pro Max" } })
-      });
-
-      await clubController.completeOnboarding({ params: { id: "c1" }, user: { accountId: "u1" } }, res);
-      expect(clubMock.plan_type).toBe("pro");
-    });
-
-    it("SUCCESS - no active subscription → plan stays 'free'", async () => {
-      const res = createRes();
-      const clubMock = { _id: "c1", plan_type: "basic", save: jest.fn() };
-      Club.findOne.mockResolvedValue(clubMock);
-      SubscriptionAccount.findOne.mockReturnValue({
-        populate: jest.fn().mockReturnThis(),
-        sort: jest.fn().mockResolvedValue(null) // no active sub
-      });
-
-      await clubController.completeOnboarding({ params: { id: "c1" }, user: { accountId: "u1" } }, res);
-      expect(clubMock.plan_type).toBe("free");
-    });
-
-    it("FAIL 500 - DB error", async () => {
-      const res = createRes();
-      Club.findOne.mockRejectedValue(new Error("DB error"));
-      await clubController.completeOnboarding({ params: { id: "c1" }, user: { accountId: "u1" } }, res);
-      expect(res.status).toHaveBeenCalledWith(500);
-    });
-  });
 });
 

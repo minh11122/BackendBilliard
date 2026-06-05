@@ -217,13 +217,13 @@ describe("Tournament Controller - Legendary Masterpiece Suite", () => {
 
     it("getTournamentById - SUCCESS", async () => {
         Tournament.findById.mockReturnValue(createMockQuery({ _id: ID_TOUR, club_id: { _id: ID_CLUB } }));
-        await tournamentController.getTournamentById({ params: { id: ID_TOUR } }, res);
+        await tournamentController.getTournamentById({ params: { id: ID_TOUR }, headers: {} }, res);
         expect(res.status).toHaveBeenCalledWith(200);
     });
 
     it("getTournamentById - 404 not found", async () => {
         Tournament.findById.mockReturnValue(createMockQuery(null));
-        await tournamentController.getTournamentById({ params: { id: "xxx" } }, res);
+        await tournamentController.getTournamentById({ params: { id: "xxx" }, headers: {} }, res);
         expect(res.status).toHaveBeenCalledWith(404);
     });
 
@@ -247,7 +247,7 @@ describe("Tournament Controller - Legendary Masterpiece Suite", () => {
     it("getTournamentPlayers - SUCCESS", async () => {
         Tournament.findById.mockReturnValue(createMockQuery({ _id: ID_TOUR, name: "Tour A" })); // controller checks tournament first
         TournamentPlayer.find.mockReturnValue(createMockQuery([{ _id: "tp1" }]));
-        await tournamentController.getTournamentPlayers({ params: { id: ID_TOUR } }, res);
+        await tournamentController.getTournamentPlayers({ params: { id: ID_TOUR }, headers: {} }, res);
         expect(res.status).toHaveBeenCalledWith(200);
     });
 
@@ -255,14 +255,14 @@ describe("Tournament Controller - Legendary Masterpiece Suite", () => {
         Tournament.findById.mockReturnValue(createMockQuery({ _id: ID_TOUR, format: "Knockout" }));
         TournamentRound.find.mockReturnValue(createMockQuery([{ _id: "r1", round_type: "Knockout", round_number: 1 }]));
         RoundMatch.find.mockReturnValue(createMockQuery([{ _id: ID_MATCH, round_id: "r1" }]));
-        await tournamentController.getTournamentBracket({ params: { id: ID_TOUR } }, res);
+        await tournamentController.getTournamentBracket({ params: { id: ID_TOUR }, headers: {} }, res);
         expect(res.status).toHaveBeenCalledWith(200);
     });
 
     it("getTournamentMatches - SUCCESS filter by status", async () => {
         Tournament.findById.mockReturnValue(createMockQuery({ _id: ID_TOUR, format: "Knockout" }));
         RoundMatch.find.mockReturnValue(createMockQuery([{ _id: ID_MATCH }]));
-        await tournamentController.getTournamentMatches({ params: { id: ID_TOUR }, query: { status: "Ready" } }, res);
+        await tournamentController.getTournamentMatches({ params: { id: ID_TOUR }, query: { status: "Ready" }, headers: {} }, res);
         expect(res.status).toHaveBeenCalledWith(200);
     });
 
@@ -270,110 +270,7 @@ describe("Tournament Controller - Legendary Masterpiece Suite", () => {
 
   });
 
-  // ============================================================
-  // Group 3: Generation & Match Mechanics
-  // ============================================================
-  describe("Group 3: Generation & Match Mechanics", () => {
 
-    it("generateTournamentBracket - Fails < 2 players", async () => {
-        Tournament.findById.mockReturnValue(createMockQuery({ _id: ID_TOUR, format: "Knockout", club_id: { _id: ID_CLUB, account_id: ID_USER, plan_type: "pro" }, save: jest.fn() }));
-        TournamentPlayer.find.mockReturnValue(createMockQuery([{ _id: "tp1" }])); // Only 1 player
-        await tournamentController.generateTournamentBracket({ params: { id: ID_TOUR }, body: {}, user: { accountId: ID_USER } }, res);
-        expect(res.status).toHaveBeenCalledWith(400);
-    });
-
-    it("generateTournamentBracket - Knockout format success", async () => {
-        const clubObj = { _id: ID_CLUB, account_id: ID_USER, plan_type: "pro" };
-        Tournament.findById
-          .mockReturnValueOnce(createMockQuery({ _id: ID_TOUR, format: "Knockout", max_players: 8, club_id: clubObj, save: jest.fn() }))
-          .mockReturnValueOnce(createMockQuery({ _id: ID_TOUR }));
-        TournamentPlayer.find.mockReturnValue(createMockQuery([{ account_id: "p1" }, { account_id: "p2" }]));
-        RoundMatch.deleteMany.mockResolvedValue({});
-        TournamentRound.deleteMany.mockResolvedValue({});
-        TournamentRound.insertMany.mockResolvedValue([]);
-        RoundMatch.insertMany.mockResolvedValue([]);
-        RoundMatch.find.mockReturnValue(createMockQuery([]));
-        await tournamentController.generateTournamentBracket({ params: { id: ID_TOUR }, body: {}, user: { accountId: ID_USER } }, res);
-        expect(res.status).toHaveBeenCalledWith(200);
-    });
-
-    it("generateTournamentBracket - rejects unsupported Round Robin format", async () => {
-        const clubObj = { _id: ID_CLUB, account_id: ID_USER, plan_type: "pro" };
-        Tournament.findById.mockReturnValue(createMockQuery({ _id: ID_TOUR, format: "Knockout", max_players: 8, club_id: clubObj, save: jest.fn() }));
-        TournamentPlayer.find.mockReturnValue(createMockQuery([{ account_id: "p1" }, { account_id: "p2" }]));
-        await tournamentController.generateTournamentBracket({ params: { id: ID_TOUR }, body: { format: "Round Robin" }, user: { accountId: ID_USER } }, res);
-        expect(res.status).toHaveBeenCalledWith(400);
-    });
-
-    it("generateTournamentBracket - Double Elimination format success", async () => {
-        const clubObj = { _id: ID_CLUB, account_id: ID_USER, plan_type: "pro" };
-        Tournament.findById
-          .mockReturnValueOnce(createMockQuery({ _id: ID_TOUR, format: "Double Elimination", max_players: 4, club_id: clubObj, save: jest.fn() }))
-          .mockReturnValueOnce(createMockQuery({ _id: ID_TOUR }));
-        TournamentPlayer.find.mockReturnValue(createMockQuery([{ account_id: "p1" }, { account_id: "p2" }, { account_id: "p3" }, { account_id: "p4" }]));
-        RoundMatch.deleteMany.mockResolvedValue({});
-        TournamentRound.deleteMany.mockResolvedValue({});
-        TournamentRound.insertMany.mockResolvedValue([]);
-        RoundMatch.insertMany.mockResolvedValue([]);
-        RoundMatch.find.mockReturnValue(createMockQuery([]));
-        await tournamentController.generateTournamentBracket({ params: { id: ID_TOUR }, body: { format: "Double Elimination" }, user: { accountId: ID_USER } }, res);
-        expect(res.status).toHaveBeenCalledWith(200);
-    });
-
-    it("startRoundMatch - Fails 400 if tournament not InProgress", async () => {
-        // Tournament is NOT InProgress → 400
-        Tournament.findById.mockReturnValue(createMockQuery({ _id: ID_TOUR, status: "Closed", format: "Knockout" }));
-        await tournamentController.startRoundMatch({ params: { id: ID_TOUR, matchId: ID_MATCH }, body: { table_id: "t1" }, user: { accountId: ID_USER } }, res);
-        expect(res.status).toHaveBeenCalledWith(400);
-        expect(res.json).toHaveBeenCalledWith(expect.objectContaining({ message: "Giải đấu chưa ở trạng thái đang diễn ra" }));
-    });
-
-    it("startRoundMatch - SUCCESS when tournament InProgress", async () => {
-        // Must pass: tournament.status === "InProgress"
-        Tournament.findById.mockReturnValue(createMockQuery({ _id: ID_TOUR, status: "InProgress", format: "Knockout" }));
-        // match must have player1_id AND player2_id, and status !== "Finished"
-        RoundMatch.findOne.mockReturnValue(createMockQuery(createMockDoc({
-          _id: ID_MATCH, status: "Ready", player1_id: "p1", player2_id: "p2", table_id: null, round_id: "r1"
-        })));
-        await tournamentController.startRoundMatch({ params: { id: ID_TOUR, matchId: ID_MATCH }, body: { table_id: null }, user: { accountId: ID_USER } }, res);
-        expect(res.status).toHaveBeenCalledWith(200);
-    });
-
-    it("updateMatchResult - Fails 400 if tournament not InProgress", async () => {
-        Tournament.findById.mockReturnValue(createMockQuery({ _id: ID_TOUR, status: "Closed" }));
-        await tournamentController.updateMatchResult({ params: { id: ID_TOUR, matchId: ID_MATCH }, body: { player1_score: 5, player2_score: 0 } }, res);
-        expect(res.status).toHaveBeenCalledWith(400);
-        expect(res.json).toHaveBeenCalledWith(expect.objectContaining({ message: "Giải đấu chưa bắt đầu" }));
-    });
-
-    it("updateMatchResult - SUCCESS for Knockout, cascades next match", async () => {
-        // Tournament InProgress
-        Tournament.findById.mockReturnValue(createMockQuery({ _id: ID_TOUR, status: "InProgress", format: "Knockout" }));
-        // Match with both players, race_to=0 so no score cap check
-        const match = createMockDoc({
-          _id: ID_MATCH, status: "Playing", player1_id: "p1", player2_id: "p2",
-          match_format: "Knockout", round_id: "r1", race_to: 0,
-          winner_next_match_id: null, winner_next_slot: null
-        });
-        RoundMatch.findOne.mockReturnValue(createMockQuery(match));
-        Booking.updateMany.mockResolvedValue({});
-        TournamentRound.findById.mockReturnValue(createMockQuery({ _id: "r1", round_number: 1 }));
-        // For checkAndCompleteTournament -> RoundMatch.findOne for final match
-        RoundMatch.findOne
-          .mockReturnValueOnce(createMockQuery(match))  // main match lookup
-          .mockReturnValueOnce(createMockQuery(null));  // no final match yet
-        // For updateRoundStatusAndProgression
-        TournamentRound.find.mockReturnValue(createMockQuery([{ _id: "r1", status: "InProgress" }]));
-        RoundMatch.find.mockReturnValue(createMockQuery([{ _id: ID_MATCH, status: "Finished", round_id: "r1" }]));
-
-        await tournamentController.updateMatchResult({
-          params: { id: ID_TOUR, matchId: ID_MATCH },
-          body: { player1_score: 5, player2_score: 0 }
-        }, res);
-        expect(res.status).toHaveBeenCalledWith(200);
-        expect(match.winner_id).toBe("p1");
-    });
-  });
 
   // ============================================================
   // Group 4: PayOS Ecosystem

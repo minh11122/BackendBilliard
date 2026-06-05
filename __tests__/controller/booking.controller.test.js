@@ -223,21 +223,25 @@ describe("Booking Controller - Legendary Masterpiece Suite v2", () => {
     
     it("getBookingById - success", async () => {
         const req = { params: { id: ID_BOOKING }, user: { club_id: ID_CLUB } };
-        Booking.findById.mockReturnValue(createMockQuery({ _id: ID_BOOKING, status: "Booked", table_id: { club_id: ID_CLUB } }));
+        Booking.findOne.mockReturnValue(createMockQuery({ _id: ID_BOOKING, status: "Booked", table_id: { club_id: ID_CLUB } }));
         await bookingController.getBookingById(req, res);
         expect(res.status).toHaveBeenCalledWith(200);
     });
 
     it("getBookingById - fails 403 wrong club", async () => {
         const req = { params: { id: ID_BOOKING }, user: { club_id: "other" } };
-        Booking.findById.mockReturnValue(createMockQuery({ _id: ID_BOOKING, status: "Booked", table_id: { club_id: ID_CLUB } }));
+        Booking.findOne.mockReturnValue(createMockQuery({ _id: ID_BOOKING, status: "Booked", table_id: null }));
         await bookingController.getBookingById(req, res);
-        expect(res.status).toHaveBeenCalledWith(403);
+        expect(res.status).toHaveBeenCalledWith(404);
     });
   });
 
   // --- Group 3: PayOS System (Lines 619-1630) ---
   describe("PayOS System Flows", () => {
+    beforeEach(() => {
+      ClubBank.findOne.mockReturnValue(createMockQuery({ payos_client_id: "c", payos_api_key: "a", payos_checksum_key: "k" }));
+    });
+
     it("payosWebhook - verify fails (400)", async () => {
         const req = { body: { data: { orderCode: "123" } } };
         TransactionHistory.findOne.mockReturnValue(createMockQuery({ booking_id: ID_BOOKING, transaction_type: "DEPOSIT" }));
@@ -254,7 +258,7 @@ describe("Booking Controller - Legendary Masterpiece Suite v2", () => {
         payosService.verifyWebhook.mockResolvedValue({ data: { code: "00" } });
         TransactionHistory.findOne.mockReturnValue(createMockQuery({ booking_id: ID_BOOKING, transaction_type: "DEPOSIT" }));
         const b = createMockDoc({ _id: ID_BOOKING, status: "Booked", account_id: ID_USER, table_id: { table_number: "1" } }); // Already Booked
-        Booking.findById.mockReturnValue(createMockQuery(b));
+        Booking.findById.mockReturnValue(createMockQuery(b));Booking.findOne.mockReturnValue(createMockQuery(b)); Booking.findById.mockReturnValue(createMockQuery(b));
 
         await bookingController.payosWebhook(req, res);
         expect(res.status).toHaveBeenCalledWith(200);
@@ -266,7 +270,7 @@ describe("Booking Controller - Legendary Masterpiece Suite v2", () => {
         payosService.verifyWebhook.mockResolvedValue({ data: { code: "00" } });
         TransactionHistory.findOne.mockReturnValue(createMockQuery({ booking_id: ID_BOOKING, transaction_type: "BOOKING_FINAL_PAYMENT_TRANSFER" }));
         const b = createMockDoc({ _id: ID_BOOKING, status: "Playing", start_time: "10:00", end_time: "12:00", hour_price: 100000, account_id: ID_USER, table_id: { table_number: "1" } }); 
-        Booking.findById.mockReturnValue(createMockQuery(b));
+        Booking.findById.mockReturnValue(createMockQuery(b));Booking.findOne.mockReturnValue(createMockQuery(b)); Booking.findById.mockReturnValue(createMockQuery(b));
 
         await bookingController.payosWebhook(req, res);
         expect(res.status).toHaveBeenCalledWith(200);
@@ -279,7 +283,7 @@ describe("Booking Controller - Legendary Masterpiece Suite v2", () => {
         payosService.verifyWebhook.mockResolvedValue({ data: { code: "00" } });
         TransactionHistory.findOne.mockReturnValue(createMockQuery({ booking_id: ID_BOOKING, transaction_type: "BOOKING_FINAL_PAYMENT_TRANSFER" }));
         const b = createMockDoc({ _id: ID_BOOKING, status: "Completed", account_id: ID_USER, table_id: { table_number: "1" } }); 
-        Booking.findById.mockReturnValue(createMockQuery(b));
+        Booking.findById.mockReturnValue(createMockQuery(b));Booking.findOne.mockReturnValue(createMockQuery(b)); Booking.findById.mockReturnValue(createMockQuery(b));
 
         await bookingController.payosWebhook(req, res);
         expect(res.status).toHaveBeenCalledWith(200);
@@ -288,7 +292,7 @@ describe("Booking Controller - Legendary Masterpiece Suite v2", () => {
 
     it("createBookingPayOSPayment - SUCCESS", async () => {
         const b = createMockDoc({ _id: ID_BOOKING, status: "Pending", account_id: ID_USER, code_number: "BK2", table_id: { club_id: ID_CLUB } });
-        Booking.findById.mockReturnValue(createMockQuery(b));
+        Booking.findById.mockReturnValue(createMockQuery(b));Booking.findOne.mockReturnValue(createMockQuery(b)); Booking.findById.mockReturnValue(createMockQuery(b));
         payosService.createPaymentLink.mockResolvedValue({ checkoutUrl: "url" });
         await bookingController.createBookingPayOSPayment({ params: { id: ID_BOOKING }, user: { accountId: ID_USER } }, res);
         expect(res.status).toHaveBeenCalledWith(200);
@@ -297,7 +301,7 @@ describe("Booking Controller - Legendary Masterpiece Suite v2", () => {
     it("verifyBookingPayOSPayment - PAID success", async () => {
         TransactionHistory.findOne.mockReturnValue(createMockQuery({ booking_id: ID_BOOKING }));
         const b = createMockDoc({ _id: ID_BOOKING, status: "Pending", table_id: { _id: ID_TABLE } });
-        Booking.findById.mockReturnValue(createMockQuery(b));
+        Booking.findById.mockReturnValue(createMockQuery(b));Booking.findOne.mockReturnValue(createMockQuery(b)); Booking.findById.mockReturnValue(createMockQuery(b));
         payosService.getPaymentInfo.mockResolvedValue({ status: "PAID" });
         await bookingController.verifyBookingPayOSPayment({ body: { orderCode: "x" } }, res);
         expect(b.status).toBe("Booked");
@@ -307,7 +311,7 @@ describe("Booking Controller - Legendary Masterpiece Suite v2", () => {
     it("verifyBookingPayOSPayment - idempotency (Already booked)", async () => {
         TransactionHistory.findOne.mockReturnValue(createMockQuery({ booking_id: ID_BOOKING }));
         const b = createMockDoc({ _id: ID_BOOKING, status: "Booked", table_id: { _id: ID_TABLE } });
-        Booking.findById.mockReturnValue(createMockQuery(b));
+        Booking.findById.mockReturnValue(createMockQuery(b));Booking.findOne.mockReturnValue(createMockQuery(b)); Booking.findById.mockReturnValue(createMockQuery(b));
         await bookingController.verifyBookingPayOSPayment({ body: { orderCode: "x" } }, res);
         expect(res.status).toHaveBeenCalledWith(200);
         expect(res.json).toHaveBeenCalledWith(expect.objectContaining({ message: "Đơn đã được xác nhận trước đó" }));
@@ -316,7 +320,7 @@ describe("Booking Controller - Legendary Masterpiece Suite v2", () => {
     it("createBookingCheckoutPayOSPayment - Success dueAmount <= 0", async () => {
         const req = { params: { id: ID_BOOKING }, user: { club_id: ID_CLUB } };
         const b = createMockDoc({ _id: ID_BOOKING, status: "Playing", deposit: 300000, hour_price: 100000, start_time: "10:00", end_time: "11:00", account_id: ID_USER, table_id: { _id: ID_TABLE, club_id: ID_CLUB, table_number: "1" } });
-        Booking.findById.mockReturnValue(createMockQuery(b));
+        Booking.findById.mockReturnValue(createMockQuery(b));Booking.findOne.mockReturnValue(createMockQuery(b)); Booking.findById.mockReturnValue(createMockQuery(b));
         // total playcost is 100000. Deposit is 300000. dueAmount <= 0.
         
         await bookingController.createBookingCheckoutPayOSPayment(req, res);
@@ -328,7 +332,7 @@ describe("Booking Controller - Legendary Masterpiece Suite v2", () => {
     it("createBookingCheckoutPayOSPayment - Success dueAmount > 0 link generated", async () => {
         const req = { params: { id: ID_BOOKING }, user: { club_id: ID_CLUB } };
         const b = createMockDoc({ _id: ID_BOOKING, status: "Playing", deposit: 0, hour_price: 100000, start_time: "10:00", end_time: "11:00", account_id: ID_USER, table_id: { _id: ID_TABLE, club_id: ID_CLUB } });
-        Booking.findById.mockReturnValue(createMockQuery(b));
+        Booking.findById.mockReturnValue(createMockQuery(b));Booking.findOne.mockReturnValue(createMockQuery(b)); Booking.findById.mockReturnValue(createMockQuery(b));
         payosService.createPaymentLink.mockResolvedValue({ checkoutUrl: "u" });
         
         await bookingController.createBookingCheckoutPayOSPayment(req, res);
@@ -339,7 +343,7 @@ describe("Booking Controller - Legendary Masterpiece Suite v2", () => {
     it("verifyBookingCheckoutPayOSPayment - PAID success", async () => {
         TransactionHistory.findOne.mockReturnValue(createMockQuery({ booking_id: ID_BOOKING, transaction_type: "BOOKING_FINAL_PAYMENT_TRANSFER" }));
         const b = createMockDoc({ _id: ID_BOOKING, status: "Playing", table_id: { club_id: ID_CLUB, _id: ID_TABLE, table_number: "1" }, start_time: "10:00", end_time: "12:00", hour_price: 100000, account_id: ID_USER });
-        Booking.findById.mockReturnValue(createMockQuery(b));
+        Booking.findById.mockReturnValue(createMockQuery(b));Booking.findOne.mockReturnValue(createMockQuery(b)); Booking.findById.mockReturnValue(createMockQuery(b));
         payosService.getPaymentInfo.mockResolvedValue({ status: "PAID" });
         await bookingController.verifyBookingCheckoutPayOSPayment({ body: { orderCode: "x" }, user: { club_id: ID_CLUB } }, res);
         expect(b.status).toBe("Completed");
@@ -349,7 +353,7 @@ describe("Booking Controller - Legendary Masterpiece Suite v2", () => {
     it("verifyBookingCheckoutPayOSPayment - idempotency", async () => {
         TransactionHistory.findOne.mockReturnValue(createMockQuery({ booking_id: ID_BOOKING, transaction_type: "BOOKING_FINAL_PAYMENT_TRANSFER" }));
         const b = createMockDoc({ _id: ID_BOOKING, status: "Completed", table_id: { club_id: ID_CLUB }});
-        Booking.findById.mockReturnValue(createMockQuery(b));
+        Booking.findById.mockReturnValue(createMockQuery(b));Booking.findOne.mockReturnValue(createMockQuery(b)); Booking.findById.mockReturnValue(createMockQuery(b));
         await bookingController.verifyBookingCheckoutPayOSPayment({ body: { orderCode: "x" }, user: { club_id: ID_CLUB } }, res);
         expect(res.status).toHaveBeenCalledWith(200);
         expect(res.json).toHaveBeenCalledWith(expect.objectContaining({ message: "Đã được hoàn tất trước đó" }));
@@ -361,7 +365,7 @@ describe("Booking Controller - Legendary Masterpiece Suite v2", () => {
     it("checkInBooking - Success", async () => {
         const req = { body: { code_number: "BK1" }, user: { club_id: ID_CLUB, accountId: ID_USER } };
         const b = createMockDoc({ _id: ID_BOOKING, status: "Booked", account_id: ID_USER, table_id: { _id: ID_TABLE, club_id: ID_CLUB, table_number: "01" } });
-        Booking.findOne.mockReturnValue(createMockQuery(b));
+        Booking.findById.mockReturnValue(createMockQuery(b));Booking.findOne.mockReturnValue(createMockQuery(b)); Booking.findById.mockReturnValue(createMockQuery(b));
         
         await bookingController.checkInBooking(req, res);
         expect(res.status).toHaveBeenCalledWith(200);
@@ -372,7 +376,7 @@ describe("Booking Controller - Legendary Masterpiece Suite v2", () => {
         // start time 23:00, end time 01:00 -> duration 2 hours
         const req = { params: { id: ID_BOOKING }, user: { club_id: ID_CLUB } };
         const b = createMockDoc({ _id: ID_BOOKING, status: "Playing", start_time: "23:00", end_time: "01:00", hour_price: 100000, table_id: { club_id: ID_CLUB, _id: ID_TABLE, table_number: "1" }, account_id: ID_USER });
-        Booking.findById.mockReturnValue(createMockQuery(b));
+        Booking.findById.mockReturnValue(createMockQuery(b));Booking.findOne.mockReturnValue(createMockQuery(b)); Booking.findById.mockReturnValue(createMockQuery(b));
         
         await bookingController.checkOutBooking(req, res);
         // Playcost = 2 hours * 100k = 200k. Expected service cost = 0.
@@ -384,7 +388,7 @@ describe("Booking Controller - Legendary Masterpiece Suite v2", () => {
     it("extendBooking - Overnight math (23:00 + 120min = 01:00)", async () => {
         const req = { params: { id: ID_BOOKING }, body: { minutes: 120 }, user: { club_id: ID_CLUB } };
         const b = createMockDoc({ _id: ID_BOOKING, status: "Playing", start_time: "21:00", end_time: "23:00", play_date: "2026-05-10", hour_price: 100000, total_bill: 200000, table_id: { _id: ID_TABLE, club_id: ID_CLUB, table_number: "01" } });
-        Booking.findById.mockReturnValue(createMockQuery(b));
+        Booking.findById.mockReturnValue(createMockQuery(b));Booking.findOne.mockReturnValue(createMockQuery(b)); Booking.findById.mockReturnValue(createMockQuery(b));
         Booking.find.mockReturnValue(createMockQuery([])); // No conflicting bookings
         Club.findById.mockReturnValue(createMockQuery({ _id: ID_CLUB, opening_time: "00:00", closing_time: "00:00" })); // 24h club
         await bookingController.extendBooking(req, res);
@@ -398,8 +402,8 @@ describe("Booking Controller - Legendary Masterpiece Suite v2", () => {
             table_id: { _id: "old_id", club_id: ID_CLUB, table_number: "01", table_type_id: "type1" },
             toObject: () => ({ _id: ID_BOOKING, account_id: ID_USER })
         });
-        Booking.findById.mockReturnValue(createMockQuery(oldB));
-        BilliardTable.findById.mockReturnValue(createMockQuery({ _id: "new_id", club_id: ID_CLUB, status: "Available", table_number: "02", table_type_id: "type1" }));
+        Booking.findOne.mockReturnValue(createMockQuery(oldB));
+        BilliardTable.findOne.mockReturnValue(createMockQuery({ _id: "new_id", club_id: ID_CLUB, status: "Available", table_number: "02", table_type_id: "type1" }));
         BookingService.find.mockResolvedValue([]);
         Booking.create.mockResolvedValue(createMockDoc({ _id: "bnew", status: "Playing" }));
         
@@ -413,7 +417,7 @@ describe("Booking Controller - Legendary Masterpiece Suite v2", () => {
   describe("Service Management", () => {
     it("addBookingService - Merge identical quantity (Lines 1671-1678)", async () => {
         const b = createMockDoc({ _id: ID_BOOKING, total_bill: 50000, table_id: { club_id: ID_CLUB, table_number: "01" } });
-        Booking.findById.mockReturnValue(createMockQuery(b));
+        Booking.findById.mockReturnValue(createMockQuery(b));Booking.findOne.mockReturnValue(createMockQuery(b)); Booking.findById.mockReturnValue(createMockQuery(b));
         Service.findOne.mockReturnValue(createMockQuery({ _id: "s1", price: 10000, name: "Sting" }));
         const existingBS = createMockDoc({ _id: "bs1", quantity: 1, unit_price: 10000 });
         BookingService.findOne.mockReturnValue(createMockQuery(existingBS));
@@ -426,7 +430,7 @@ describe("Booking Controller - Legendary Masterpiece Suite v2", () => {
 
     it("addBookingService - New record", async () => {
         const b = createMockDoc({ _id: ID_BOOKING, total_bill: 50000, table_id: { club_id: ID_CLUB, table_number: "01" } });
-        Booking.findById.mockReturnValue(createMockQuery(b));
+        Booking.findById.mockReturnValue(createMockQuery(b));Booking.findOne.mockReturnValue(createMockQuery(b)); Booking.findById.mockReturnValue(createMockQuery(b));
         Service.findOne.mockReturnValue(createMockQuery({ _id: "s2", price: 10000, name: "Sting" }));
         BookingService.findOne.mockReturnValue(createMockQuery(null));
         BookingService.create.mockResolvedValue(createMockDoc({ unit_price: 10000, quantity: 2 }));
@@ -440,7 +444,7 @@ describe("Booking Controller - Legendary Masterpiece Suite v2", () => {
         const bs = createMockDoc({ _id: "bs1", quantity: 2, unit_price: 10000 });
         const b = createMockDoc({ _id: ID_BOOKING, total_bill: 100000, table_id: { club_id: ID_CLUB, table_number: "1" } });
         BookingService.findById.mockResolvedValue(bs);
-        Booking.findById.mockReturnValue(createMockQuery(b));
+        Booking.findById.mockReturnValue(createMockQuery(b));Booking.findOne.mockReturnValue(createMockQuery(b)); Booking.findById.mockReturnValue(createMockQuery(b));
         
         await bookingController.updateBookingServiceQuantity({ params: { bookingServiceId: "bs1" }, body: { quantity: 10 }, user: { club_id: ID_CLUB } }, res);
         // Diff = new (10*10) - old (2*10) = 80k.
@@ -452,7 +456,7 @@ describe("Booking Controller - Legendary Masterpiece Suite v2", () => {
         const bs = createMockDoc({ _id: "bs1", quantity: 2, unit_price: 10000 });
         const b = createMockDoc({ _id: ID_BOOKING, total_bill: 100000, table_id: { club_id: ID_CLUB, table_number: "1" } });
         BookingService.findById.mockResolvedValue(bs);
-        Booking.findById.mockReturnValue(createMockQuery(b));
+        Booking.findById.mockReturnValue(createMockQuery(b));Booking.findOne.mockReturnValue(createMockQuery(b)); Booking.findById.mockReturnValue(createMockQuery(b));
         BookingService.findByIdAndDelete.mockResolvedValue(true);
         
         await bookingController.deleteBookingService({ params: { id: ID_BOOKING, bookingServiceId: "bs1" }, user: { club_id: ID_CLUB } }, res);
@@ -461,8 +465,9 @@ describe("Booking Controller - Legendary Masterpiece Suite v2", () => {
     });
 
     it("getBookingServices - Success list", async () => {
+        Booking.findOne.mockReturnValue(createMockQuery({ _id: ID_BOOKING, table_id: { club_id: ID_CLUB } }));
         BookingService.find.mockReturnValue(createMockQuery([{ _id: "bs1" }]));
-        await bookingController.getBookingServices({ params: { id: ID_BOOKING } }, res);
+        await bookingController.getBookingServices({ params: { id: ID_BOOKING }, user: { club_id: ID_CLUB } }, res);
         expect(res.status).toHaveBeenCalledWith(200);
     });
   });
@@ -470,18 +475,20 @@ describe("Booking Controller - Legendary Masterpiece Suite v2", () => {
   // --- Group 6: Secondary & Administrative ---
   describe("Secondary Methods", () => {
     it("cancelHold - Success", async () => {
-        const b = createMockDoc({ account_id: ID_USER, status: "Pending", table_id: ID_TABLE });
-        Booking.findById.mockReturnValue(createMockQuery(b));
-        await bookingController.cancelHold({ params: { id: ID_BOOKING }, user: { accountId: ID_USER } }, res);
+        const req = { params: { id: ID_BOOKING }, user: { accountId: ID_USER } };
+        const b = createMockDoc({ _id: ID_BOOKING, status: "Pending", account_id: ID_USER, table_id: ID_TABLE });
+        Booking.findById.mockResolvedValue(b);
+        await bookingController.cancelHold(req, res);
         expect(b.status).toBe("Cancelled");
         expect(res.status).toHaveBeenCalledWith(200);
         expect(res.json).toHaveBeenCalledWith(expect.objectContaining({ message: "Đã hủy giữ chỗ, bàn đã được trả về trạng thái trống" }));
     });
     
     it("cancelHold - 403 user mismatch", async () => {
-        const b = createMockDoc({ account_id: "otherUser", status: "Pending", table_id: ID_TABLE });
-        Booking.findById.mockReturnValue(createMockQuery(b));
-        await bookingController.cancelHold({ params: { id: ID_BOOKING }, user: { accountId: ID_USER } }, res);
+        const req = { params: { id: ID_BOOKING }, user: { accountId: "other" } };
+        const b = createMockDoc({ _id: ID_BOOKING, status: "Pending", account_id: ID_USER, table_id: ID_TABLE });
+        Booking.findById.mockResolvedValue(b);
+        await bookingController.cancelHold(req, res);
         expect(res.status).toHaveBeenCalledWith(403);
     });
   });
@@ -490,10 +497,10 @@ describe("Booking Controller - Legendary Masterpiece Suite v2", () => {
   describe("Error Compliance Matrix", () => {
     test.each([
         [404, "checkInBooking - logic", bookingController.checkInBooking, { body: { code_number: "err" }, user: { club_id: "c" } }],
-        [403, "extendBooking - wrong club", bookingController.extendBooking, { params: { id: "x" }, body: { minutes: 30 }, user: { club_id: "wrong" } }],
+        [404, "extendBooking - wrong club", bookingController.extendBooking, { params: { id: "x" }, body: { minutes: 30 }, user: { club_id: "wrong" } }],
         [400, "changeTable - not playing", bookingController.changeTable, { params: { id: "x" }, body: { new_table_id: "y" }, user: { club_id: "c" } }],
         [404, "verifyBookingPayOSPayment - not found tx", bookingController.verifyBookingPayOSPayment, { body: { orderCode: "x" } }],
-        [403, "checkOutBooking - wrong club", bookingController.checkOutBooking, { params: { id: "x" }, user: { club_id: "wrong" } }],
+        [404, "checkOutBooking - wrong club", bookingController.checkOutBooking, { params: { id: "x" }, user: { club_id: "wrong" } }],
         [400, "updateBookingServiceQuantity - invalid q", bookingController.updateBookingServiceQuantity, { params: { id: "x" }, body: { quantity: 0 }, user: { club_id: "c" } }],
         [404, "deleteBookingService - bs not found", bookingController.deleteBookingService, { params: { id: "x" }, user: { club_id: "c" } }],
         [403, "createBookingPayOSPayment - wrong user", bookingController.createBookingPayOSPayment, { params: { id: "x" }, user: { accountId: "wrong" } }],
@@ -501,18 +508,25 @@ describe("Booking Controller - Legendary Masterpiece Suite v2", () => {
         [400, "verifyBookingCheckoutPayOSPayment - not paid", bookingController.verifyBookingCheckoutPayOSPayment, { body: { orderCode: "x" }, user: { club_id: ID_CLUB } }],
     ])("returns %p for %s", async (status, name, fn, req) => {
         if (name.includes("checkInBooking")) Booking.findOne.mockReturnValue(createMockQuery(null));
-        if (name.includes("wrong club") || name.includes("wrong user")) {
-            Booking.findById.mockReturnValue(createMockQuery(createMockDoc({ account_id: "originalUser", table_id: { club_id: "origin" } })));
+        if (name.includes("wrong club")) {
+            const mockVal = createMockQuery(createMockDoc({ account_id: "originalUser", table_id: null }));
+            Booking.findOne.mockReturnValue(mockVal);
+            Booking.findById.mockReturnValue(mockVal);
+        }
+        if (name.includes("wrong user")) {
+            const mockVal = createMockQuery(createMockDoc({ account_id: "originalUser", table_id: { club_id: "c" } }));
+            Booking.findOne.mockReturnValue(mockVal);
+            Booking.findById.mockReturnValue(mockVal);
         }
         if (name.includes("not playing")) {
-            Booking.findById.mockReturnValue(createMockQuery(createMockDoc({ status: "Booked", table_id: { club_id: "c" } })));
+            Booking.findOne.mockReturnValue(createMockQuery(createMockDoc({ status: "Booked", table_id: { club_id: "c" } })));
         }
         if (name.includes("not found tx")) TransactionHistory.findOne.mockReturnValue(createMockQuery(null));
         if (name.includes("deleteBookingService") || name.includes("updateBookingServiceQuantity")) BookingService.findById.mockResolvedValue(null);
-        if (name.includes("createBookingCheckoutPayOSPayment")) Booking.findById.mockReturnValue(createMockQuery(null));
+        if (name.includes("createBookingCheckoutPayOSPayment")) Booking.findOne.mockReturnValue(createMockQuery(null));
         if (name.includes("not paid")) {
              TransactionHistory.findOne.mockReturnValue(createMockQuery({ booking_id: ID_BOOKING, transaction_type: "BOOKING_FINAL_PAYMENT_TRANSFER" }));
-             Booking.findById.mockReturnValue(createMockQuery(createMockDoc({ status: "Playing", table_id: { club_id: ID_CLUB } })));
+             Booking.findOne.mockReturnValue(createMockQuery(createMockDoc({ status: "Playing", table_id: { club_id: ID_CLUB } })));
              payosService.getPaymentInfo.mockResolvedValue({ status: "PENDING" });
         }
         

@@ -50,7 +50,9 @@ describe("Transaction Controller - Unit Tests", () => {
       const res = createRes();
 
       Club.findOne.mockReturnValue({ select: jest.fn().mockResolvedValue({ _id: validClubId }) });
-      TransactionHistory.aggregate.mockResolvedValue([{ _id: "tx1", amount: 100000 }]);
+      TransactionHistory.aggregate
+        .mockResolvedValueOnce([{ _id: "tx1", amount: 100000 }])
+        .mockResolvedValueOnce([]);
 
       await transactionController.getClubTransferHistory(req, res);
 
