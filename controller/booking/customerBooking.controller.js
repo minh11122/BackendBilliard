@@ -1,4 +1,4 @@
-﻿const Booking = require("../../models/booking.model");
+const Booking = require("../../models/booking.model");
 const BilliardTable = require("../../models/billiard_table.model");
 const Club = require("../../models/club.model");
 const Parameter = require("../../models/parameter.model");
@@ -328,7 +328,15 @@ const getMyBookings = async (req, res) => {
       }),
     );
 
-    res.status(200).json({ success: true, data: enriched });
+    // Lọc bỏ các đơn 0đ do đã chuyển sang bàn khác (tránh hiển thị rác trong lịch sử của khách)
+    const finalBookings = enriched.filter((b) => {
+      if (b.status === "Completed" && b.total_bill === 0 && b.note && b.note.includes("[Chuyển bàn")) {
+        return false;
+      }
+      return true;
+    });
+
+    res.status(200).json({ success: true, data: finalBookings });
   } catch (error) {
     console.error("Lỗi getMyBookings:", error);
     res.status(500).json({ success: false, message: "Lỗi server" });
