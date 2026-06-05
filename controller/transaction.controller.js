@@ -178,6 +178,7 @@ const getClubTransferHistory = async (req, res) => {
           booking: {
             _id: "$booking._id",
             code_number: "$booking.code_number",
+            guest_name: "$booking.guest_name",
           },
           table: {
             _id: "$table._id",
